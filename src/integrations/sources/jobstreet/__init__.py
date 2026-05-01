@@ -1,0 +1,1 @@
+"""JobStreet source adapter."""

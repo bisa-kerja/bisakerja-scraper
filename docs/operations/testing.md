@@ -96,6 +96,24 @@ Minimum smoke checks:
 | Sync dry-run | Sync validates shape without mutating production DB |
 | Redaction | Logs and artifacts contain no token/cookie/session strings |
 
+## Local Verification Commands
+
+Use the locked environment for routine validation:
+
+```bash
+uv sync --locked
+uv run ruff format --check .
+uv run ruff check .
+uv run pytest
+```
+
+For dependency visibility:
+
+```bash
+uv run python --version
+uv tree --depth 1
+```
+
 ## Release Gate
 
 A scraper release is not ready until:
@@ -115,4 +133,3 @@ A scraper release is not ready until:
 - [Raw Payload Contract](../references/raw-payload-contract.md)
 - [Source Field Mapping Matrix](../references/source-field-mapping-matrix.md)
 - [Payload Redaction Policy](../standards/payload-redaction-policy.md)
-

@@ -1,0 +1,1 @@
+"""Dealls source adapter."""

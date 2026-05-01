@@ -13,6 +13,8 @@ last_reviewed: 2026-05-01
 
 Scraper configuration must fail fast. Required variables must be explicit in every environment file and must not silently fall back to hidden defaults.
 
+Runtime validation lives in `src/config/settings.py` and uses `pydantic-settings`. Environment variables are read directly from the process environment and from optional `.env` files during local development.
+
 ## Groups
 
 | Group | Purpose |
@@ -39,6 +41,7 @@ Scraper configuration must fail fast. Required variables must be explicit in eve
 | --- | --- | --- |
 | `SCRAPER_DATABASE_URL` | Yes | Local scraper raw/staging DB |
 | `BACKEND_DATABASE_URL` | Yes when sync is enabled | Main DB write target for normalized jobs |
+| `BACKEND_SYNC_ENABLED` | Yes | Explicit `true` or `false` |
 | `RUN_DATABASE_TESTS` | Yes in test env | Explicit `true` or `false` |
 
 Rules:
@@ -58,6 +61,24 @@ Rules:
 | `SYNC_SCHEDULE_CRON` | Yes | Daily sync schedule |
 | `WORKER_CONCURRENCY` | Yes | Positive bounded integer |
 | `SCRAPER_RUN_LOCK_TTL_SECONDS` | Yes | Prevent overlapping runs |
+
+## HTTP And Retry Variables
+
+| Variable | Required | Rule |
+| --- | --- | --- |
+| `HTTP_TIMEOUT_SECONDS` | Yes | Positive request timeout |
+| `HTTP_MAX_RETRIES` | Yes | Bounded retry count |
+| `HTTP_RESPONSE_MAX_BYTES` | Yes | Maximum response body size accepted from external sources |
+| `DEFAULT_RATE_LIMIT_PER_MINUTE` | Yes | Default bounded source request rate |
+
+## Backend Sync Variables
+
+| Variable | Required | Rule |
+| --- | --- | --- |
+| `BACKEND_SYNC_BASE_URL` | Yes when sync is enabled | Backend API or internal sync endpoint base URL |
+| `BACKEND_SYNC_SERVICE_TOKEN` | Yes when sync is enabled | Internal service credential from secret storage |
+| `BACKEND_SYNC_TIMEOUT_SECONDS` | Yes | Positive sync request timeout |
+| `BACKEND_SYNC_BATCH_SIZE` | Yes | Positive batch size |
 
 Baseline schedule:
 
@@ -116,10 +137,10 @@ Logs must redact source credentials and raw payload bodies.
 - Use safe non-empty placeholders for required secrets.
 - Never include real bearer tokens, cookies, source sessions, or DB credentials.
 - Keep examples aligned with runtime validation.
+- Keep optional secret values absent unless the related feature is enabled, or use safe non-empty placeholders.
 
 ## Related Docs
 
 - [Operations Environments](./operations/environments.md)
 - [Security](./operations/security.md)
 - [Job Sources](./integrations/job-sources.md)
-
