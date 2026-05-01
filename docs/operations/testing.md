@@ -114,6 +114,18 @@ uv run python --version
 uv tree --depth 1
 ```
 
+## Current Automated Checks
+
+The scraper test suite covers:
+
+- Settings validation for required and conditional environment variables.
+- JSON logging shape, correlation context, and sensitive field redaction.
+- Pipeline error categories and retryability metadata.
+- SQLAlchemy metadata for operational scraper tables.
+- Database uniqueness for source platform plus external job identity.
+- Alembic upgrade and downgrade on an isolated test database.
+- Raw fixture sanitization and secret-pattern scanning.
+
 ## Release Gate
 
 A scraper release is not ready until:

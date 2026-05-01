@@ -1,0 +1,322 @@
+{
+  "__N_SSP": true,
+  "pageProps": {
+    "companyFilter": null,
+    "count": 283,
+    "featuredJobsCountry": "Philippines",
+    "filters": {
+      "limit": 15,
+      "offset": 0,
+      "text": "developer"
+    },
+    "geoCountry": {
+      "actualCountry": "ID",
+      "country": "ID",
+      "countryFull": "Indonesia"
+    },
+    "host": "www.kalibrr.id",
+    "isFeaturedJobs": false,
+    "isSearchWhitelisted": false,
+    "jobBoardCorrection": {
+      "correctionTextSearch": "",
+      "count": 283,
+      "fromAlternative": false,
+      "fromCorrection": false,
+      "jobs": [
+        {
+          "activationDate": "2026-05-01T03:51:58.260489+00:00",
+          "applicationEndDate": "2026-06-29T17:00:00+00:00",
+          "applyRedirectUrl": null,
+          "baseSalary": null,
+          "bookmarked": false,
+          "company": {
+            "code": "simbadda-group",
+            "description": "Starting an unincorporated business in 1996, Simbadda Group has been distributing high quality consumer electronics throughout Indonesia. The business unit has started to form a corporate business since 2002.\n\nOne of our leading brands is SIMBADDA, which is known by the Indonesian people as a pioneer of speakers, cases and power supplies. We are also involved in the distribution of premium gadget accessories and PC components. Simbadda Group will continue to expand its distribution business to grow in the consumer electronics industry in Indonesia.\n\nSimbadda Group always upholds the value of honesty, among others: honesty of quality,  honesty of cooperation in business and trying to establish cooperation with all partners  throughout Indonesia. \n\nCurrently, Simbadda Group is expanding towards digital transformation that is looking for  enthusiastic, passionate, ambitious individuals to be part of us. \n",
+            "id": 27179,
+            "industry": "Consumer Goods",
+            "logoSmall": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/G6QKB267HDCMJH4UMJQ7PPD2J66BJN2ZDGT5DKDY-614d672a.png",
+            "name": "Simbadda Group",
+            "verifiedBusiness": true,
+            "visible": true
+          },
+          "companyInfo": {
+            "code": "simbadda-group",
+            "description": "Starting an unincorporated business in 1996, Simbadda Group has been distributing high quality consumer electronics throughout Indonesia. The business unit has started to form a corporate business since 2002.\n\nOne of our leading brands is SIMBADDA, which is known by the Indonesian people as a pioneer of speakers, cases and power supplies. We are also involved in the distribution of premium gadget accessories and PC components. Simbadda Group will continue to expand its distribution business to grow in the consumer electronics industry in Indonesia.\n\nSimbadda Group always upholds the value of honesty, among others: honesty of quality,  honesty of cooperation in business and trying to establish cooperation with all partners  throughout Indonesia. \n\nCurrently, Simbadda Group is expanding towards digital transformation that is looking for  enthusiastic, passionate, ambitious individuals to be part of us. \n",
+            "hidden": false,
+            "industry": "Consumer Goods",
+            "isDemo": false,
+            "logo": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/ZZ7HQ2NZKZHP36EGNVJUXLJ6WH7KCERNKWCWWYQ6-614d672a.png",
+            "logoSmall": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/G6QKB267HDCMJH4UMJQ7PPD2J66BJN2ZDGT5DKDY-614d672a.png",
+            "logo_1200x630": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/4A4UMF9Q4CYHPSYSGSJR8WHGMLQUXKANSUJZ4CQ5-614d672c.jpg",
+            "logo_160x90": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/9GVX7DDSB69P7YU7JL2YDG6RSU6D2G2TUVFHRURD-614d672b.png",
+            "name": "Simbadda Group",
+            "url": "https://simbaddagroup.com"
+          },
+          "companyName": "Simbadda Group",
+          "createdAt": "2026-03-21T14:50:39.231999+00:00",
+          "description": "<p><strong>1. Revenue Ownership</strong></p>\n\n<ul>\n\t<li>Take full ownership of company revenue targets across B2B, B2C, retail, distributor, project, and online channels.</li>\n\t<li>Develop annual, quarterly, and monthly commercial growth strategies to achieve sales and profit targets.</li>\n\t<li>Monitor revenue performance, margin health, and business profitability.</li>\n\t<li>Identify new revenue opportunities, market gaps, and growth acceleration initiatives.</li>\n</ul>\n\n<p><strong>2. Full Funnel Integration</strong></p>\n\n<ul>\n\t<li>Build and manage end-to-end customer journey from awareness, acquisition, conversion, retention, and loyalty.</li>\n\t<li>Ensure seamless coordination between brand marketing, digital marketing, sales operations, CRM, and after-sales support.</li>\n\t<li>Improve customer acquisition cost (CAC), lifetime value (LTV), and overall conversion efficiency.</li>\n\t<li>Establish strong reporting systems for full-funnel performance tracking.</li>\n</ul>\n\n<p><strong>3. Commercial Strategy</strong></p>\n\n<ul>\n\t<li>Lead business development strategy for key accounts, modern trade, distributors, retail channels, and strategic partnerships.</li>\n\t<li>Drive market expansion initiatives including offline channel growth and omnichannel development.</li>\n\t<li>Develop pricing strategy, promotional planning, and channel optimization.</li>\n\t<li>Support product launch strategy and market penetration planning.</li>\n</ul>\n\n<p><strong>4. Marketing Strategy Alignment</strong></p>\n\n<ul>\n\t<li>Ensure brand strategy supports commercial objectives and revenue targets.</li>\n\t<li>Align marketing campaigns with sales priorities, product launches, festive campaigns, and market demand.</li>\n\t<li>Oversee brand marketing, digital marketing, CRM, loyalty programs, retail activation, and campaign effectiveness.</li>\n\t<li>Strengthen brand positioning and customer engagement across all touchpoints.</li>\n</ul>\n\n<p><strong>5. Performance Management</strong></p>\n\n<ul>\n\t<li>Set KPI frameworks for commercial and marketing teams with strong accountability systems.</li>\n\t<li>Lead performance review processes for managers and team leaders.</li>\n\t<li>Ensure data-driven decision making through dashboards, CRM reports, and business analytics.</li>\n\t<li>Improve operational efficiency and execution excellence across departments.</li>\n</ul>\n\n<p><strong>6. Cross-Function Alignment</strong></p>\n\n<ul>\n\t<li>Collaborate closely with Finance, Supply Chain, IT, and People &amp; Culture to ensure smooth business operations.</li>\n\t<li>Support digital transformation initiatives involving CRM, ERP, CDP, AI tools, and omnichannel systems.</li>\n\t<li>Ensure sales execution is supported by inventory planning, financial discipline, and system infrastructure.</li>\n\t<li>Act as strategic partner to Managing Director for business growth decisions.</li>\n</ul>\n\n<p><strong>Leadership Responsibilities</strong></p>\n\n<p>Lead and manage:</p>\n\n<ul>\n\t<li>Brand Marketing Manager</li>\n\t<li>Digital Marketing Manager</li>\n\t<li>Retail Marketing Manager</li>\n\t<li>CRM &amp; Loyalty Manager</li>\n\t<li>Creative Designer Manager</li>\n\t<li>Regional Business Development Manager</li>\n</ul>",
+          "distanceFromUser": null,
+          "educationLevel": 550,
+          "esIsTopBrand": false,
+          "esRecruiterLastSeen": "2026-05-01T04:03:08.121173+00:00",
+          "examVersions": [],
+          "function": "Sales and Marketing",
+          "googleLocation": {
+            "addressComponents": {
+              "addressLine_1": "50, RT07/RW02, Jalan Pantai Indah Kapuk, Kamal Muara Kel., Penjaringan",
+              "city": "North Jakarta",
+              "country": "Indonesia",
+              "region": "DKI Jakarta"
+            }
+          },
+          "id": 265196,
+          "isFeatured": false,
+          "isHybrid": false,
+          "isOpenToFreshGrads": false,
+          "isWorkFromHome": false,
+          "jobSdsSkills": [],
+          "maximumSalary": null,
+          "name": "Head of Commercial Strategy & Marketing",
+          "numberOfOpenings": 1,
+          "perks": {
+            "other": null,
+            "types": []
+          },
+          "photoUrls": [],
+          "priorityScore": 0.5,
+          "qualifications": "<p><u>Education</u></p>\n\n<ul>\n\t<li>Bachelor’s degree in Business, Marketing, Management, or related field</li>\n\t<li>Master’s degree (MBA or equivalent) is preferred</li>\n</ul>\n\n<p><u>Experience</u></p>\n\n<ul>\n\t<li>Minimum 8–12 years of experience in sales, marketing, or commercial roles</li>\n\t<li>At least 3–5 years in a leadership position managing cross-functional teams</li>\n\t<li>Build a high-performance commercial culture focused on accountability, execution speed, and measurable results.</li>\n\t<li>Develop strong succession planning and team capability building.</li>\n\t<li>Proven track record in driving revenue growth and market expansion</li>\n\t<li>Experience in multi-channel business (retail, distributor, and online)</li>\n\t<li>Experience in electronics, FMCG, or consumer goods industry is preferred</li>\n</ul>",
+          "responseRate": 93.72549019607843,
+          "salaryCurrency": null,
+          "salaryInterval": null,
+          "salaryShown": true,
+          "slug": "head-of-commercial-strategy-marketing",
+          "tenure": "Full time",
+          "visibility": "public",
+          "workExperience": 400
+        },
+        {
+          "activationDate": "2026-05-01T03:51:29.154020+00:00",
+          "applicationEndDate": "2026-06-29T17:00:00+00:00",
+          "applyRedirectUrl": null,
+          "baseSalary": null,
+          "bookmarked": false,
+          "company": {
+            "code": "simbadda-group",
+            "description": "Starting an unincorporated business in 1996, Simbadda Group has been distributing high quality consumer electronics throughout Indonesia. The business unit has started to form a corporate business since 2002.\n\nOne of our leading brands is SIMBADDA, which is known by the Indonesian people as a pioneer of speakers, cases and power supplies. We are also involved in the distribution of premium gadget accessories and PC components. Simbadda Group will continue to expand its distribution business to grow in the consumer electronics industry in Indonesia.\n\nSimbadda Group always upholds the value of honesty, among others: honesty of quality,  honesty of cooperation in business and trying to establish cooperation with all partners  throughout Indonesia. \n\nCurrently, Simbadda Group is expanding towards digital transformation that is looking for  enthusiastic, passionate, ambitious individuals to be part of us. \n",
+            "id": 27179,
+            "industry": "Consumer Goods",
+            "logoSmall": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/G6QKB267HDCMJH4UMJQ7PPD2J66BJN2ZDGT5DKDY-614d672a.png",
+            "name": "Simbadda Group",
+            "verifiedBusiness": true,
+            "visible": true
+          },
+          "companyInfo": {
+            "code": "simbadda-group",
+            "description": "Starting an unincorporated business in 1996, Simbadda Group has been distributing high quality consumer electronics throughout Indonesia. The business unit has started to form a corporate business since 2002.\n\nOne of our leading brands is SIMBADDA, which is known by the Indonesian people as a pioneer of speakers, cases and power supplies. We are also involved in the distribution of premium gadget accessories and PC components. Simbadda Group will continue to expand its distribution business to grow in the consumer electronics industry in Indonesia.\n\nSimbadda Group always upholds the value of honesty, among others: honesty of quality,  honesty of cooperation in business and trying to establish cooperation with all partners  throughout Indonesia. \n\nCurrently, Simbadda Group is expanding towards digital transformation that is looking for  enthusiastic, passionate, ambitious individuals to be part of us. \n",
+            "hidden": false,
+            "industry": "Consumer Goods",
+            "isDemo": false,
+            "logo": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/ZZ7HQ2NZKZHP36EGNVJUXLJ6WH7KCERNKWCWWYQ6-614d672a.png",
+            "logoSmall": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/G6QKB267HDCMJH4UMJQ7PPD2J66BJN2ZDGT5DKDY-614d672a.png",
+            "logo_1200x630": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/4A4UMF9Q4CYHPSYSGSJR8WHGMLQUXKANSUJZ4CQ5-614d672c.jpg",
+            "logo_160x90": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/9GVX7DDSB69P7YU7JL2YDG6RSU6D2G2TUVFHRURD-614d672b.png",
+            "name": "Simbadda Group",
+            "url": "https://simbaddagroup.com"
+          },
+          "companyName": "Simbadda Group",
+          "createdAt": "2025-06-21T03:09:26.099001+00:00",
+          "description": "<ul>\n\t<li><strong>Legal Strategy &amp; Compliance:</strong> Develop and implement legal strategies that protect company interests and ensure compliance with corporate, labor, and commercial laws.</li>\n\t<li><strong>Contract Management:</strong> Draft, review, and negotiate contracts and agreements with clients, vendors, and partners to ensure favorable terms and minimize risks.</li>\n\t<li><strong>Corporate Governance:</strong> Maintain corporate documents, licenses, and legal records across entities; ensure all operations comply with local and international regulations.</li>\n\t<li><strong>Risk Management &amp; Advisory:</strong> Identify potential legal risks and provide practical business-oriented solutions to management and stakeholders.</li>\n\t<li><strong>Litigation &amp; Dispute Resolution: </strong>Manage external legal counsel, handle disputes, and oversee litigation or arbitration processes as needed.</li>\n\t<li><strong>Cross-Department Collaboration:</strong> Partner with Finance, HR, Procurement, and Business Development to ensure legal compliance in all company initiatives.</li>\n\t<li><strong>Transformation &amp; Standardization:</strong> Establish standardized legal templates, approval processes, and digital document management systems to modernize legal operations.</li>\n</ul>",
+          "distanceFromUser": null,
+          "educationLevel": 550,
+          "esIsTopBrand": false,
+          "esRecruiterLastSeen": "2026-05-01T04:03:08.121173+00:00",
+          "examVersions": [],
+          "function": "Legal",
+          "googleLocation": {
+            "addressComponents": {
+              "addressLine_1": "50, RT07/RW02, Jalan Pantai Indah Kapuk, Kamal Muara Kel., Penjaringan",
+              "city": "North Jakarta",
+              "country": "Indonesia",
+              "region": "DKI Jakarta"
+            }
+          },
+          "id": 256304,
+          "isFeatured": false,
+          "isHybrid": false,
+          "isOpenToFreshGrads": false,
+          "isWorkFromHome": false,
+          "maximumSalary": null,
+          "name": "Legal Counsel Manager",
+          "numberOfOpenings": 1,
+          "perks": {
+            "other": null,
+            "types": []
+          },
+          "photoUrls": [],
+          "priorityScore": 0.5,
+          "qualifications": "<ul>\n\t<li>Bachelor’s or Master’s degree in Law from a reputable university; licensed advocate Peradi preferred.</li>\n\t<li>8–10 years of progressive legal experience, including at least 3–5 years in a managerial or in-house counsel role within mid-to-large organizations.</li>\n\t<li>Proven expertise in corporate, commercial, contract, and labor law.</li>\n\t<li>Experience handling multi-entity or group company legal structures is an advantage.</li>\n\t<li>Strong negotiation, analytical, and stakeholder management skills.</li>\n\t<li>Fluent in Bahasa Indonesia and English (written and spoken).</li>\n</ul>",
+          "responseRate": 97.20704310868246,
+          "salaryCurrency": null,
+          "salaryInterval": null,
+          "salaryShown": true,
+          "slug": "legal-counsel-manager",
+          "tenure": "Full time",
+          "visibility": "public",
+          "workExperience": 400
+        }
+      ],
+      "searchText": "developer"
+    },
+    "jobs": [
+      {
+        "activationDate": "2026-05-01T03:51:58.260489+00:00",
+        "applicationEndDate": "2026-06-29T17:00:00+00:00",
+        "applyRedirectUrl": null,
+        "baseSalary": null,
+        "bookmarked": false,
+        "company": {
+          "code": "simbadda-group",
+          "description": "Starting an unincorporated business in 1996, Simbadda Group has been distributing high quality consumer electronics throughout Indonesia. The business unit has started to form a corporate business since 2002.\n\nOne of our leading brands is SIMBADDA, which is known by the Indonesian people as a pioneer of speakers, cases and power supplies. We are also involved in the distribution of premium gadget accessories and PC components. Simbadda Group will continue to expand its distribution business to grow in the consumer electronics industry in Indonesia.\n\nSimbadda Group always upholds the value of honesty, among others: honesty of quality,  honesty of cooperation in business and trying to establish cooperation with all partners  throughout Indonesia. \n\nCurrently, Simbadda Group is expanding towards digital transformation that is looking for  enthusiastic, passionate, ambitious individuals to be part of us. \n",
+          "id": 27179,
+          "industry": "Consumer Goods",
+          "logoSmall": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/G6QKB267HDCMJH4UMJQ7PPD2J66BJN2ZDGT5DKDY-614d672a.png",
+          "name": "Simbadda Group",
+          "verifiedBusiness": true,
+          "visible": true
+        },
+        "companyInfo": {
+          "code": "simbadda-group",
+          "description": "Starting an unincorporated business in 1996, Simbadda Group has been distributing high quality consumer electronics throughout Indonesia. The business unit has started to form a corporate business since 2002.\n\nOne of our leading brands is SIMBADDA, which is known by the Indonesian people as a pioneer of speakers, cases and power supplies. We are also involved in the distribution of premium gadget accessories and PC components. Simbadda Group will continue to expand its distribution business to grow in the consumer electronics industry in Indonesia.\n\nSimbadda Group always upholds the value of honesty, among others: honesty of quality,  honesty of cooperation in business and trying to establish cooperation with all partners  throughout Indonesia. \n\nCurrently, Simbadda Group is expanding towards digital transformation that is looking for  enthusiastic, passionate, ambitious individuals to be part of us. \n",
+          "hidden": false,
+          "industry": "Consumer Goods",
+          "isDemo": false,
+          "logo": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/ZZ7HQ2NZKZHP36EGNVJUXLJ6WH7KCERNKWCWWYQ6-614d672a.png",
+          "logoSmall": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/G6QKB267HDCMJH4UMJQ7PPD2J66BJN2ZDGT5DKDY-614d672a.png",
+          "logo_1200x630": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/4A4UMF9Q4CYHPSYSGSJR8WHGMLQUXKANSUJZ4CQ5-614d672c.jpg",
+          "logo_160x90": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/9GVX7DDSB69P7YU7JL2YDG6RSU6D2G2TUVFHRURD-614d672b.png",
+          "name": "Simbadda Group",
+          "url": "https://simbaddagroup.com"
+        },
+        "companyName": "Simbadda Group",
+        "createdAt": "2026-03-21T14:50:39.231999+00:00",
+        "description": "<p><strong>1. Revenue Ownership</strong></p>\n\n<ul>\n\t<li>Take full ownership of company revenue targets across B2B, B2C, retail, distributor, project, and online channels.</li>\n\t<li>Develop annual, quarterly, and monthly commercial growth strategies to achieve sales and profit targets.</li>\n\t<li>Monitor revenue performance, margin health, and business profitability.</li>\n\t<li>Identify new revenue opportunities, market gaps, and growth acceleration initiatives.</li>\n</ul>\n\n<p><strong>2. Full Funnel Integration</strong></p>\n\n<ul>\n\t<li>Build and manage end-to-end customer journey from awareness, acquisition, conversion, retention, and loyalty.</li>\n\t<li>Ensure seamless coordination between brand marketing, digital marketing, sales operations, CRM, and after-sales support.</li>\n\t<li>Improve customer acquisition cost (CAC), lifetime value (LTV), and overall conversion efficiency.</li>\n\t<li>Establish strong reporting systems for full-funnel performance tracking.</li>\n</ul>\n\n<p><strong>3. Commercial Strategy</strong></p>\n\n<ul>\n\t<li>Lead business development strategy for key accounts, modern trade, distributors, retail channels, and strategic partnerships.</li>\n\t<li>Drive market expansion initiatives including offline channel growth and omnichannel development.</li>\n\t<li>Develop pricing strategy, promotional planning, and channel optimization.</li>\n\t<li>Support product launch strategy and market penetration planning.</li>\n</ul>\n\n<p><strong>4. Marketing Strategy Alignment</strong></p>\n\n<ul>\n\t<li>Ensure brand strategy supports commercial objectives and revenue targets.</li>\n\t<li>Align marketing campaigns with sales priorities, product launches, festive campaigns, and market demand.</li>\n\t<li>Oversee brand marketing, digital marketing, CRM, loyalty programs, retail activation, and campaign effectiveness.</li>\n\t<li>Strengthen brand positioning and customer engagement across all touchpoints.</li>\n</ul>\n\n<p><strong>5. Performance Management</strong></p>\n\n<ul>\n\t<li>Set KPI frameworks for commercial and marketing teams with strong accountability systems.</li>\n\t<li>Lead performance review processes for managers and team leaders.</li>\n\t<li>Ensure data-driven decision making through dashboards, CRM reports, and business analytics.</li>\n\t<li>Improve operational efficiency and execution excellence across departments.</li>\n</ul>\n\n<p><strong>6. Cross-Function Alignment</strong></p>\n\n<ul>\n\t<li>Collaborate closely with Finance, Supply Chain, IT, and People &amp; Culture to ensure smooth business operations.</li>\n\t<li>Support digital transformation initiatives involving CRM, ERP, CDP, AI tools, and omnichannel systems.</li>\n\t<li>Ensure sales execution is supported by inventory planning, financial discipline, and system infrastructure.</li>\n\t<li>Act as strategic partner to Managing Director for business growth decisions.</li>\n</ul>\n\n<p><strong>Leadership Responsibilities</strong></p>\n\n<p>Lead and manage:</p>\n\n<ul>\n\t<li>Brand Marketing Manager</li>\n\t<li>Digital Marketing Manager</li>\n\t<li>Retail Marketing Manager</li>\n\t<li>CRM &amp; Loyalty Manager</li>\n\t<li>Creative Designer Manager</li>\n\t<li>Regional Business Development Manager</li>\n</ul>",
+        "distanceFromUser": null,
+        "educationLevel": 550,
+        "esIsTopBrand": false,
+        "esRecruiterLastSeen": "2026-05-01T04:03:08.121173+00:00",
+        "examVersions": [],
+        "function": "Sales and Marketing",
+        "googleLocation": {
+          "addressComponents": {
+            "addressLine_1": "50, RT07/RW02, Jalan Pantai Indah Kapuk, Kamal Muara Kel., Penjaringan",
+            "city": "North Jakarta",
+            "country": "Indonesia",
+            "region": "DKI Jakarta"
+          }
+        },
+        "id": 265196,
+        "isFeatured": false,
+        "isHybrid": false,
+        "isOpenToFreshGrads": false,
+        "isWorkFromHome": false,
+        "jobSdsSkills": [],
+        "maximumSalary": null,
+        "name": "Head of Commercial Strategy & Marketing",
+        "numberOfOpenings": 1,
+        "perks": {
+          "other": null,
+          "types": []
+        },
+        "photoUrls": [],
+        "priorityScore": 0.5,
+        "qualifications": "<p><u>Education</u></p>\n\n<ul>\n\t<li>Bachelor’s degree in Business, Marketing, Management, or related field</li>\n\t<li>Master’s degree (MBA or equivalent) is preferred</li>\n</ul>\n\n<p><u>Experience</u></p>\n\n<ul>\n\t<li>Minimum 8–12 years of experience in sales, marketing, or commercial roles</li>\n\t<li>At least 3–5 years in a leadership position managing cross-functional teams</li>\n\t<li>Build a high-performance commercial culture focused on accountability, execution speed, and measurable results.</li>\n\t<li>Develop strong succession planning and team capability building.</li>\n\t<li>Proven track record in driving revenue growth and market expansion</li>\n\t<li>Experience in multi-channel business (retail, distributor, and online)</li>\n\t<li>Experience in electronics, FMCG, or consumer goods industry is preferred</li>\n</ul>",
+        "responseRate": 93.72549019607843,
+        "salaryCurrency": null,
+        "salaryInterval": null,
+        "salaryShown": true,
+        "slug": "head-of-commercial-strategy-marketing",
+        "tenure": "Full time",
+        "visibility": "public",
+        "workExperience": 400
+      },
+      {
+        "activationDate": "2026-05-01T03:51:29.154020+00:00",
+        "applicationEndDate": "2026-06-29T17:00:00+00:00",
+        "applyRedirectUrl": null,
+        "baseSalary": null,
+        "bookmarked": false,
+        "company": {
+          "code": "simbadda-group",
+          "description": "Starting an unincorporated business in 1996, Simbadda Group has been distributing high quality consumer electronics throughout Indonesia. The business unit has started to form a corporate business since 2002.\n\nOne of our leading brands is SIMBADDA, which is known by the Indonesian people as a pioneer of speakers, cases and power supplies. We are also involved in the distribution of premium gadget accessories and PC components. Simbadda Group will continue to expand its distribution business to grow in the consumer electronics industry in Indonesia.\n\nSimbadda Group always upholds the value of honesty, among others: honesty of quality,  honesty of cooperation in business and trying to establish cooperation with all partners  throughout Indonesia. \n\nCurrently, Simbadda Group is expanding towards digital transformation that is looking for  enthusiastic, passionate, ambitious individuals to be part of us. \n",
+          "id": 27179,
+          "industry": "Consumer Goods",
+          "logoSmall": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/G6QKB267HDCMJH4UMJQ7PPD2J66BJN2ZDGT5DKDY-614d672a.png",
+          "name": "Simbadda Group",
+          "verifiedBusiness": true,
+          "visible": true
+        },
+        "companyInfo": {
+          "code": "simbadda-group",
+          "description": "Starting an unincorporated business in 1996, Simbadda Group has been distributing high quality consumer electronics throughout Indonesia. The business unit has started to form a corporate business since 2002.\n\nOne of our leading brands is SIMBADDA, which is known by the Indonesian people as a pioneer of speakers, cases and power supplies. We are also involved in the distribution of premium gadget accessories and PC components. Simbadda Group will continue to expand its distribution business to grow in the consumer electronics industry in Indonesia.\n\nSimbadda Group always upholds the value of honesty, among others: honesty of quality,  honesty of cooperation in business and trying to establish cooperation with all partners  throughout Indonesia. \n\nCurrently, Simbadda Group is expanding towards digital transformation that is looking for  enthusiastic, passionate, ambitious individuals to be part of us. \n",
+          "hidden": false,
+          "industry": "Consumer Goods",
+          "isDemo": false,
+          "logo": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/ZZ7HQ2NZKZHP36EGNVJUXLJ6WH7KCERNKWCWWYQ6-614d672a.png",
+          "logoSmall": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/G6QKB267HDCMJH4UMJQ7PPD2J66BJN2ZDGT5DKDY-614d672a.png",
+          "logo_1200x630": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/4A4UMF9Q4CYHPSYSGSJR8WHGMLQUXKANSUJZ4CQ5-614d672c.jpg",
+          "logo_160x90": "https://rec-data.kalibrr.com/www.kalibrr.com/logos/9GVX7DDSB69P7YU7JL2YDG6RSU6D2G2TUVFHRURD-614d672b.png",
+          "name": "Simbadda Group",
+          "url": "https://simbaddagroup.com"
+        },
+        "companyName": "Simbadda Group",
+        "createdAt": "2025-06-21T03:09:26.099001+00:00",
+        "description": "<ul>\n\t<li><strong>Legal Strategy &amp; Compliance:</strong> Develop and implement legal strategies that protect company interests and ensure compliance with corporate, labor, and commercial laws.</li>\n\t<li><strong>Contract Management:</strong> Draft, review, and negotiate contracts and agreements with clients, vendors, and partners to ensure favorable terms and minimize risks.</li>\n\t<li><strong>Corporate Governance:</strong> Maintain corporate documents, licenses, and legal records across entities; ensure all operations comply with local and international regulations.</li>\n\t<li><strong>Risk Management &amp; Advisory:</strong> Identify potential legal risks and provide practical business-oriented solutions to management and stakeholders.</li>\n\t<li><strong>Litigation &amp; Dispute Resolution: </strong>Manage external legal counsel, handle disputes, and oversee litigation or arbitration processes as needed.</li>\n\t<li><strong>Cross-Department Collaboration:</strong> Partner with Finance, HR, Procurement, and Business Development to ensure legal compliance in all company initiatives.</li>\n\t<li><strong>Transformation &amp; Standardization:</strong> Establish standardized legal templates, approval processes, and digital document management systems to modernize legal operations.</li>\n</ul>",
+        "distanceFromUser": null,
+        "educationLevel": 550,
+        "esIsTopBrand": false,
+        "esRecruiterLastSeen": "2026-05-01T04:03:08.121173+00:00",
+        "examVersions": [],
+        "function": "Legal",
+        "googleLocation": {
+          "addressComponents": {
+            "addressLine_1": "50, RT07/RW02, Jalan Pantai Indah Kapuk, Kamal Muara Kel., Penjaringan",
+            "city": "North Jakarta",
+            "country": "Indonesia",
+            "region": "DKI Jakarta"
+          }
+        },
+        "id": 256304,
+        "isFeatured": false,
+        "isHybrid": false,
+        "isOpenToFreshGrads": false,
+        "isWorkFromHome": false,
+        "maximumSalary": null,
+        "name": "Legal Counsel Manager",
+        "numberOfOpenings": 1,
+        "perks": {
+          "other": null,
+          "types": []
+        },
+        "photoUrls": [],
+        "priorityScore": 0.5,
+        "qualifications": "<ul>\n\t<li>Bachelor’s or Master’s degree in Law from a reputable university; licensed advocate Peradi preferred.</li>\n\t<li>8–10 years of progressive legal experience, including at least 3–5 years in a managerial or in-house counsel role within mid-to-large organizations.</li>\n\t<li>Proven expertise in corporate, commercial, contract, and labor law.</li>\n\t<li>Experience handling multi-entity or group company legal structures is an advantage.</li>\n\t<li>Strong negotiation, analytical, and stakeholder management skills.</li>\n\t<li>Fluent in Bahasa Indonesia and English (written and spoken).</li>\n</ul>",
+        "responseRate": 97.20704310868246,
+        "salaryCurrency": null,
+        "salaryInterval": null,
+        "salaryShown": true,
+        "slug": "legal-counsel-manager",
+        "tenure": "Full time",
+        "visibility": "public",
+        "workExperience": 400
+      }
+    ],
+    "query": {
+      "param": [
+        "te",
+        "developer"
+      ],
+      "sort": "Freshness"
+    },
+    "sort": "Freshness"
+  }
+}

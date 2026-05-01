@@ -32,6 +32,21 @@ Scraper observability must make ingestion, normalization, enrichment, sync, and 
 
 Every pipeline log should include `runId`, `stage`, `sourcePlatform` when applicable, `status`, and `durationMs`.
 
+## Logger Implementation
+
+Runtime logging uses `structlog` with JSON rendering. The logger binds context through Python context variables so request handlers, jobs, adapters, normalizers, persistence code, and sync workers can add correlation fields without passing logger metadata through every function call.
+
+Required behavior:
+
+- Configure the logger once during process startup with the service name, environment, and log level.
+- Generate a `requestId` when an internal HTTP request does not provide a trusted one.
+- Generate a `runId` for every scrape pipeline execution.
+- Bind `sourceRunId` for each source-specific sub-run.
+- Emit one JSON object per log line.
+- Redact sensitive keys recursively before rendering the log event.
+
+The redaction processor must treat key names containing credentials, tokens, cookies, sessions, visitors, devices, or database URLs as sensitive. String values must also redact bearer tokens, cookie/session pairs, and PostgreSQL URLs.
+
 ## Structured Log Fields
 
 | Field | Description |
@@ -50,6 +65,20 @@ Every pipeline log should include `runId`, `stage`, `sourcePlatform` when applic
 | `errorCategory` | Safe failure category |
 
 Never log bearer tokens, cookies, session ids, visitor ids, device ids, raw request headers, full raw payload bodies, DB URLs, or unsanitized HTML.
+
+## Error Categories
+
+Pipeline errors use stable stage categories:
+
+| Category | Stage | Retry direction |
+| --- | --- | --- |
+| `FETCH_ERROR` | Source fetch | Retry only for bounded transient failures |
+| `PARSE_ERROR` | Payload parse | Treat as source contract drift unless clearly malformed input |
+| `NORMALIZE_ERROR` | Canonical mapping | Quarantine the record when identity or required fields are invalid |
+| `PERSIST_ERROR` | Local database write | Retry when database failure is transient |
+| `SYNC_ERROR` | Backend handoff | Retry when backend or network failure is transient |
+
+Error logs should include the category, stage, source platform, external job id when available, retryability, and sanitized details.
 
 ## Daily Ingest Metrics
 
@@ -118,4 +147,3 @@ For each incident, collect:
 - [Security](./security.md)
 - [Ingestion Module](../modules/ingestion.md)
 - [Freshness Module](../modules/freshness.md)
-

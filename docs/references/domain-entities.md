@@ -62,6 +62,17 @@ The scraper does not own those user links.
 | `JobSkill` | Job-to-skill relation or source/extracted skill | `jobListingId`, `skillId` or skill text |
 | `IngestionRun` | Operational run state | `sourcePlatform`, `stage`, `status`, timestamps, counts |
 
+## Persistence Mapping
+
+| Domain entity | Local table |
+| --- | --- |
+| `IngestionRun` | `scrape_runs` |
+| `ScrapedJobRaw` | `raw_jobs` |
+| Canonical job candidate | `normalized_jobs` |
+| Sync handoff attempt | `sync_events` |
+
+The local table names are implementation details for the scraper service. API consumers should use documented response contracts and must not depend on table shape.
+
 ## Source Identity
 
 | Source | Entity identity rule |
@@ -83,4 +94,3 @@ The scraper does not own those user links.
 ## Ownership Rule
 
 Scraper-owned entities provide the job catalog. Backend-owned entities provide user-specific state. Any change that mixes those responsibilities needs an explicit design review.
-
