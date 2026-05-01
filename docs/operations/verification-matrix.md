@@ -1,0 +1,73 @@
+---
+title: Scraper Verification Matrix
+description: Module-level verification matrix for scraper happy paths, critical failures, release gates, and evidence.
+owner: data-ingestion-owner
+reviewers:
+  - platform-docs-maintainer
+  - backend-owner
+doc_status: draft
+last_reviewed: 2026-05-01
+---
+
+# Scraper Verification Matrix
+
+This matrix defines the minimum evidence needed before scraper docs, code, or operational changes are considered verified.
+
+## Module Matrix
+
+| Area | Happy-path verification | Critical-failure verification | Evidence |
+| --- | --- | --- | --- |
+| Scheduler | Run starts inside configured window | Duplicate active run is skipped or rejected | Run record with `runId` |
+| Dealls adapter | REST list fixture fetched and stored | Timeout or 5xx produces bounded retry | Source run log and raw row count |
+| Glints adapter | GraphQL list fixture parsed | Missing detail endpoint uses list fallback | Contract test result |
+| JobStreet adapter | GraphQL list fixture parsed without real auth | Auth failure stops source and redacts headers | Safe error log |
+| Kalibrr adapter | Next.js data fixture parsed | Stale `buildId` refresh path is attempted | Source run log |
+| Raw store | Redacted payload metadata stored | Unsafe header cannot be persisted | Redaction test |
+| Normalizer | Canonical job fields produced | Missing identity quarantines row | Mapper test |
+| Deduplicator | Existing job updates by identity | Identity collision is surfaced | Dedup test |
+| Enrichment | Skills and requirements added from clean text | Timeout creates retry/dead letter | Worker test or run log |
+| Persistence | Staging rows and sync batches write successfully | Batch error rolls back or isolates failed rows | DB integration test |
+| Freshness | `lastSeenAt` updates for seen jobs | Partial source run does not expire unseen jobs | Freshness test |
+| Sync | Main DB shape receives upsert-ready rows | Sync failure keeps staging recoverable | Sync dry-run/test |
+| Docs sync | Bundle manifest maps docs deterministically | Path escape or missing metadata rejects bundle | Docs check result |
+
+## Source Coverage Matrix
+
+| Source | List contract | Detail contract | Required special check |
+| --- | --- | --- | --- |
+| Dealls | Required | No separate detail capture | Null salary and REST pagination |
+| Glints | Required | Not captured | List-first fallback |
+| JobStreet | Required | Detail-ready fields/source URL assumptions | Bearer/session redaction |
+| Kalibrr | Required | Included in job object | Dynamic `buildId` handling |
+
+## Release Evidence Matrix
+
+| Gate | Required result |
+| --- | --- |
+| Metadata | All changed docs have required frontmatter |
+| Links | Relative docs links resolve |
+| Secret scan | No bearer, cookie, session, visitor, or raw credential values in docs |
+| Unit tests | Changed mapper/helper behavior passes |
+| Contract tests | All source fixtures remain accepted |
+| Integration tests | Changed DB/sync behavior passes against isolated DB |
+| Smoke tests | Target runtime starts and processes fixture path |
+| Observability | Run logs include `runId`, source, stage, status, counts, and duration |
+| Recovery | Rollback or retry path exists for changed operational behavior |
+
+## Failure Acceptance Rule
+
+A release may tolerate one degraded source only when:
+
+- Other sources complete normally.
+- Freshness docs say the degraded source is partial.
+- Expiration logic is disabled for the failed source run.
+- Backend-facing normalized output does not expose raw payload.
+- Incident notes include `runId`, source, failure category, and next action.
+
+## Related Docs
+
+- [Testing Strategy](./testing.md)
+- [Failure Scenarios](./failure-scenarios.md)
+- [Deployment](./deployment.md)
+- [Documentation Sync](./documentation-sync.md)
+

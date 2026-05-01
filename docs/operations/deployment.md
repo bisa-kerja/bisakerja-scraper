@@ -1,0 +1,115 @@
+---
+title: Scraper Deployment Operations
+description: Runtime topology, deploy flow, rollback, hotfix, post-deploy checks, and recovery rules for scraper service operations.
+owner: data-ingestion-owner
+reviewers:
+  - platform-docs-maintainer
+  - backend-owner
+doc_status: draft
+last_reviewed: 2026-05-01
+---
+
+# Scraper Deployment Operations
+
+This page defines deployment expectations for the scraper service. Exact hosting can evolve, but runtime behavior must keep scraper DB, source credentials, normalized output, and Backend API handoff safe.
+
+## Runtime Topology
+
+| Component | Responsibility |
+| --- | --- |
+| Scraper app | Source adapters, internal endpoints, run orchestration |
+| Scheduler | Daily pipeline trigger |
+| Worker | Batch normalization, enrichment, sync, and retries |
+| Local scraper DB | Raw captures, staging rows, run state, quarantine records |
+| Main backend DB | Final Backend API-consumable job data |
+| Secret store | Source credentials, service credentials, DB URLs |
+| Logs/metrics backend | Structured run and stage evidence |
+
+Baseline daily flow:
+
+```text
+01:00 scrape
+  -> 01:30 normalize
+  -> 02:00 enrich
+  -> 03:00 sync
+  -> 05:00-06:00 notify handoff
+```
+
+## Artifact Assumptions
+
+- Runtime dependencies are pinned once implementation exists.
+- Build/start commands are deterministic.
+- Source credentials are provided by environment or secret manager only.
+- Raw fixture files are sanitized before packaging or publishing.
+- Scheduler and worker version match the scraper app version.
+- Production deploy never points at local or test DB values.
+
+## Normal Deploy Runbook
+
+| Step | Expected result |
+| --- | --- |
+| 1. Validate config | Required env is present and source credentials are not empty |
+| 2. Run tests | Unit, source contract, docs check, and changed integration tests pass |
+| 3. Build artifact | App, scheduler, and worker artifact is reproducible |
+| 4. Pause overlapping runs | No active production run is interrupted silently |
+| 5. Apply DB migration if any | Local scraper DB schema is compatible |
+| 6. Start app and workers | Liveness and worker heartbeat are healthy |
+| 7. Run smoke checks | Fixture-backed pipeline and source health pass |
+| 8. Resume scheduler | Next scheduled run is enabled |
+| 9. Watch first run | Counts, failures, and sync latency are reviewed |
+
+## Rollback Runbook
+
+| Change type | Rollback direction |
+| --- | --- |
+| Code only | Redeploy previous artifact and rerun smoke checks |
+| Config issue | Restore previous environment values and restart |
+| Source adapter change | Disable affected source or redeploy previous adapter |
+| Additive DB migration | Redeploy previous compatible artifact; clean up later |
+| Destructive DB migration | Restore backup or execute documented forward fix |
+| Mapper regression | Stop affected source sync, keep raw rows, deploy mapper fix, replay |
+
+Rollback must not delete raw captures or staging rows needed for replay.
+
+## Hotfix Runbook
+
+Use hotfix only when production freshness or sync is materially degraded.
+
+1. Identify affected source, stage, and `runId`.
+2. Reproduce with sanitized fixture or limited source run.
+3. Patch smallest affected adapter, mapper, sync, or config surface.
+4. Run focused unit/contract test plus redaction check.
+5. Deploy hotfix artifact.
+6. Replay affected stage from raw/staging data when safe.
+7. Record incident note and update docs if behavior changed.
+
+## Post-Deploy Checks
+
+| Check | Expected result |
+| --- | --- |
+| App liveness | Process responds or worker heartbeat exists |
+| Scheduler state | Next run time is visible |
+| Source health | Each source reports safe status without exposing credentials |
+| Fixture pipeline | One sanitized fixture batch normalizes successfully |
+| DB connectivity | Local scraper DB and sync target are reachable |
+| Log redaction | No token/cookie/session strings appear |
+| First production run | Counts are plausible and failures are isolated |
+| Freshness | `lastSeenAt` and stale counts match policy |
+
+## Recovery Rules
+
+- Prefer replay from raw/staging data over re-scraping when source rate limits are a risk.
+- Do not expire unseen jobs for a source after failed or partial source runs.
+- Keep failed records quarantined with safe reason codes.
+- Re-run enrichment separately when scrape and normalization are healthy.
+- Re-run sync from staging when main DB handoff failed.
+- Rotate exposed source credentials if logs or artifacts leaked real values.
+
+## Related Docs
+
+- [Deployment Overview](./deployment-overview.md)
+- [Testing Strategy](./testing.md)
+- [Observability](./observability.md)
+- [Failure Scenarios](./failure-scenarios.md)
+- [Environment Configuration](../environment.md)
+

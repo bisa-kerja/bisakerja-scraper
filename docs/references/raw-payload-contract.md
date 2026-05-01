@@ -1,0 +1,72 @@
+---
+title: Raw Payload Contract
+description: Frozen raw payload evidence, source coverage, required fields, nullability, and redaction requirements for scraper mappers.
+owner: data-ingestion-owner
+reviewers:
+  - platform-docs-maintainer
+  - backend-owner
+doc_status: draft
+last_reviewed: 2026-05-01
+---
+
+# Raw Payload Contract
+
+Raw payload contracts are based on captured source list/detail responses. They define mapper inputs, not public API output.
+
+## Source Payload Roots
+
+| Source | Payload root | List records | Detail records |
+| --- | --- | --- | --- |
+| Dealls | `data.docs[]` | Yes | No separate detail capture |
+| Glints | `data.searchJobsV3.jobsInPage[]` | Yes | Not captured |
+| JobStreet | `data.jobSearchV6.data[]` | Yes | Detail-ready list fields/source URL assumptions |
+| Kalibrr | `pageProps.jobs[]` | Yes | Included in each job object |
+
+## Required Raw Identity
+
+| Source | Required raw identity | Secondary |
+| --- | --- | --- |
+| Dealls | `id` | `slug` |
+| Glints | `id` | none captured as canonical |
+| JobStreet | `id` | source URL path when available |
+| Kalibrr | `id` | `slug` |
+
+Rows without required raw identity must be quarantined.
+
+## Nullability Rules
+
+| Field class | Raw reality | Normalized behavior |
+| --- | --- | --- |
+| Salary | Dealls `salaryRange`, Kalibrr salary fields, and JobStreet `salaryLabel` can be null/empty | Preserve unknown as `null` |
+| Company metadata | Logo, rank, industry, website can be absent | Keep company name fallback; optional metadata nullable |
+| Location | City/province can be partial | Preserve display; normalize best-effort |
+| Description | Glints list may lack full detail; Kalibrr HTML detail exists | Missing detail allowed; HTML sanitized when present |
+| Dates | JobStreet includes timestamp plus relative label; other sources expose source timestamps | Prefer timestamp; labels are display-only |
+| Skills | Present in Dealls/Glints; may be absent elsewhere | Optional; enrichment can fill later |
+
+## Raw-to-Normalized Gate
+
+A mapper must produce:
+
+- Source identity.
+- Title.
+- Company fallback.
+- Source/apply URL or derivable source URL.
+- Last seen timestamp.
+- Safe normalized text for any HTML/text fields.
+
+Mappers should not fail the whole run for optional salary, logo, category, or skill gaps.
+
+## Redaction
+
+Raw captures used in docs, fixtures, logs, or examples must remove:
+
+- `authorization`.
+- `cookie` and `set-cookie`.
+- Session ids and visitor ids.
+- Device ids.
+- Tracking ids.
+- User-specific flags where they imply a real account state.
+
+Use placeholders such as `<redacted>` only when the field name itself is relevant.
+
