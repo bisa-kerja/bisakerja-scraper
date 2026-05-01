@@ -21,10 +21,13 @@ The parsing and normalization module converts source-specific payloads into cano
 | Mapper | Converts source values into canonical job/company/location/salary fields |
 | Sanitizer | Converts HTML description and qualifications into safe content |
 | Validation gate | Blocks or quarantines rows missing required identity/display fields |
+| Provenance | Records source field paths used by each mapper |
 
 ## Canonical Output
 
 The in-process canonical job object is validated before persistence or sync. The schema separates source identity, canonical fields, and display-only presentation metadata.
+
+Mapper output also carries field provenance beside the canonical object. Provenance records the raw path used for important canonical fields such as title, company, salary, description, and requirements. This metadata is for debugging and contract review; it is not part of the canonical job schema sent to downstream consumers.
 
 Required canonical fields:
 
@@ -61,6 +64,7 @@ Presentation-only fields:
 | --- | --- |
 | Salary | Unknown stays `null`; never infer exact number from vague label |
 | HTML | Sanitize before staging, enrichment, display, or model input |
+| Raw HTML | Keep only in raw payload storage; canonical `description` and `requirements` contain clean text |
 | Relative labels | Keep display-only unless timestamp parser is documented |
 | Tags/skills | Keep only mapped canonical tags or skill names |
 | UI/noise | Drop tracking, experiment, source UI state, user-specific flags |

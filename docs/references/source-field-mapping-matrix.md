@@ -21,10 +21,10 @@ This matrix keeps mapper work tied to observed payload fields.
 | `externalJobId` | `id` | `id` | `id` | `id` |
 | `sourceSlug` | `slug` | not captured | URL path when available | `slug` |
 | `title` | `role` | `title` | `title` | `name` |
-| `company.name` | `company.name` | `company.name` | `companyName` | `companyName` or `company.name` |
-| `company.logoUrl` | `company.logoUrl` | `company.logo` | `branding.serpLogoUrl` | `company.logoSmall` |
-| `company.industry` | `company.sector` | `company.industry.name` | `advertiser.description` optional | `company.industry` |
-| `location.display` | `city.name`, `country.name` | `location.formattedName` | `locations[].label` | `googleLocation.addressComponents` |
+| `company.name` | `company.name` | `company.name` | detail `companyProfile.name`, detail `advertiser.name`, or list `companyName` | `companyName` or `company.name` |
+| `company.logoUrl` | `company.logoUrl` | `company.logo` | list `branding.serpLogoUrl`, detail product logo, or company profile logo | `company.logoSmall` |
+| `company.industry` | `company.sector` | `company.industry.name` | detail `companyProfile.overview.industry` when available | `company.industry` |
+| `location.display` | `city.name`, `country.name` | `location.formattedName` | detail `job.location.label` or list `locations[].label` | `googleLocation.addressComponents` |
 | `employmentType` | `employmentTypes[]` | `type` | `workTypes[]` | `tenure` |
 | `workType` | `workplaceType` | `workArrangementOption` | `workArrangements.displayText` | `isHybrid`, `isWorkFromHome` |
 | `salary.min` | `salaryRange.start` | `salaries[].minAmount` | parsed `salaryLabel` only if reliable | `baseSalary` |
@@ -32,8 +32,8 @@ This matrix keeps mapper work tied to observed payload fields.
 | `salary.currency` | infer configured source currency if numeric salary exists | `salaries[].CurrencyCode` | parse label only if reliable | `salaryCurrency` |
 | `salary.period` | configured/monthly when source semantics confirm | `salaries[].salaryMode` | parse label only if reliable | `salaryInterval` |
 | `salary.display` | derived safe label or null | derived safe label or null | `salaryLabel` | derived safe label or null |
-| `description` | list text if present | list detail if present | `teaser` candidate | `description` HTML |
-| `requirements` | candidate preference or detail text if present | skills/category/detail if present | `bulletPoints[]` candidate | `qualifications` HTML |
+| `description` | detail `description` if fetched | not available from captured detail | detail `job.content` clean text or list `teaser` | `description` HTML clean text |
+| `requirements` | detail `requirements` if fetched | not available from captured detail | detail `job.products.bullets` or list `bulletPoints[]` | `qualifications` HTML clean text |
 | `skills` | `skills[].name` | `skills[].skill.name` | enrichment or tags only if mapped | enrichment or detail-derived |
 | `postedAt` | `publishedAt` | `createdAt` | `listingDate.dateTimeUtc` | `activationDate` or `createdAt` |
 | `sourceUpdatedAt` | source update field if present | `updatedAt` | source update field if present | `activationDate` |
@@ -45,6 +45,7 @@ This matrix keeps mapper work tied to observed payload fields.
 - Preserve raw source labels only as safe display metadata.
 - Convert empty string salary to `null`.
 - Strip or sanitize HTML before model/display use.
+- Keep mapper field provenance outside the canonical job object.
 - Ignore UI-only fields unless a product contract explicitly adopts them.
 
 ## Dedup Matrix
@@ -57,4 +58,3 @@ This matrix keeps mapper work tied to observed payload fields.
 | Kalibrr | `kalibrr + id` |
 
 Cross-source duplicate detection is not MVP behavior.
-

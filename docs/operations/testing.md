@@ -125,6 +125,9 @@ The scraper test suite covers:
 - Database uniqueness for source platform plus external job identity.
 - Alembic upgrade and downgrade on an isolated test database.
 - Raw fixture sanitization and secret-pattern scanning.
+- Source adapter contract parsing for Dealls, Glints, JobStreet, and Kalibrr.
+- HTML cleaning for description and requirement fields.
+- Canonical mapper output and field provenance for all supported sources.
 
 ## Release Gate
 
