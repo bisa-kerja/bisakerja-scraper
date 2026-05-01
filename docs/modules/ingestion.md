@@ -47,6 +47,18 @@ The ingestion module fetches source job payloads through per-platform adapters a
 | Payload too large | Reject or truncate only by documented storage policy |
 | Overlapping run | Return conflict or skip according to schedule lock |
 
+## HTTP Client Baseline
+
+All source adapters use a shared async HTTP client contract:
+
+- `httpx.AsyncClient` is used for external requests.
+- Every request uses an explicit timeout.
+- Default source headers include a browser-like user agent and source-specific headers.
+- Retries are bounded and only apply to transport failures, timeouts, `408`, `429`, and transient `5xx` responses.
+- Non-retriable `4xx` responses fail immediately.
+- Response bodies are streamed through a maximum-size guard before JSON decoding.
+- The adapter receives a mockable JSON client interface for fixture-based tests.
+
 ## Observability
 
 Track:
@@ -76,4 +88,3 @@ Never log credentials, cookies, session ids, visitor ids, or raw source payload 
 - [Job Sources](../integrations/job-sources.md)
 - [Raw Payload Contract](../references/raw-payload-contract.md)
 - [Payload Redaction Policy](../standards/payload-redaction-policy.md)
-

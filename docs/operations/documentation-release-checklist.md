@@ -30,7 +30,7 @@ Use this checklist before treating scraper docs as release-ready or before publi
 
 | Check | Expected result | Status |
 | --- | --- | --- |
-| Required target files | Phase target files exist | Pass by local validation |
+| Required target files | Release-scope files exist | Pass by local validation |
 | Metadata | Active or draft pages have required frontmatter | Pass by local validation |
 | Link integrity | Local markdown links resolve | Pass by local validation |
 | Secret safety | No raw bearer, cookie, session, visitor, or device tokens | Pass by local validation |
@@ -44,7 +44,7 @@ Use this checklist before treating scraper docs as release-ready or before publi
 
 | Date | Check | Result |
 | --- | --- | --- |
-| 2026-05-01 | Phase 16-19 target files, required metadata, local links, secret-pattern scan | Pass: 63 docs checked |
+| 2026-05-01 | Release-scope files, required metadata, local links, secret-pattern scan | Pass: 63 docs checked |
 
 ## Root Context Alignment
 
@@ -61,7 +61,7 @@ Use this checklist before treating scraper docs as release-ready or before publi
 
 Release-ready means:
 
-- No missing phase target files.
+- No missing release-scope files.
 - No active or draft doc without required metadata.
 - No broken local docs links.
 - No suspected raw secret in docs.

@@ -24,19 +24,36 @@ The parsing and normalization module converts source-specific payloads into cano
 
 ## Canonical Output
 
-Minimum output:
+The in-process canonical job object is validated before persistence or sync. The schema separates source identity, canonical fields, and display-only presentation metadata.
 
-- `sourcePlatform`.
-- `externalJobId`.
-- `sourceSlug` when available.
-- `sourceUrl` or `externalApplyUrl`.
+Required canonical fields:
+
+- `source.platform`.
+- `source.externalJobId`.
+- `source.sourceUrl`.
+- `source.scrapedAt`.
 - `title`.
 - `company.name`.
-- `location.display` when present.
-- Nullable salary fields.
-- Sanitized description and requirements when present.
-- `postedAt` when timestamp exists.
 - `lastSeenAt`.
+
+Nullable canonical fields:
+
+- `source.sourceSlug`.
+- `source.externalApplyUrl`.
+- `company.logoUrl`.
+- `company.industry`.
+- `location.display`, `location.city`, `location.region`, and `location.country`.
+- `salary.minAmount`, `salary.maxAmount`, `salary.currency`, `salary.period`, and `salary.display`.
+- `description`.
+- `requirements`.
+- `postedAt`.
+
+Presentation-only fields:
+
+- Relative posted labels.
+- Source salary labels when numeric parsing is not reliable.
+- Badges derived from safe source flags.
+- Raw source labels used for debugging mapper behavior.
 
 ## Field Rules
 
@@ -84,4 +101,3 @@ Track:
 - [Source Field Mapping Matrix](../references/source-field-mapping-matrix.md)
 - [Data Flow](../overview/data-flow.md)
 - [Scraper Database Design](../database.md)
-

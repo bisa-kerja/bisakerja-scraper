@@ -40,6 +40,30 @@ x-client-app-version: <version>
 | Primary identity | `id` |
 | Secondary identity | `slug` |
 
+## List Adapter Behavior
+
+The Dealls list adapter fetches one paginated REST page at a time from `/explore-job/job`.
+
+Default query posture:
+
+| Parameter | Value |
+| --- | --- |
+| `sortParam` | `publishedAt` |
+| `sortBy` | `desc` |
+| `status` | `active` |
+| `published` | `true` |
+| `boostTheBoostedJob` | `true` |
+| `externalPlatformApplyUrlSet` | `null` |
+
+The adapter reads pagination from `data.page`, `data.limit`, `data.totalDocs`, and `data.totalPages`. If a sanitized fixture omits `limit`, in-memory parsing uses the observed `docs` count; live source responses should still be expected to include the requested limit.
+
+Each `data.docs[]` item becomes a raw source job with:
+
+- `sourcePlatform = dealls`.
+- `externalId = id`.
+- `sourceUrl = https://dealls.com/jobs/{slug}` when `slug` exists.
+- `rawPayload = original job object`.
+
 ## Field Mapping
 
 | Source field | Normalized field | Rule |
@@ -61,5 +85,5 @@ x-client-app-version: <version>
 - If `salaryRange` is `null`, store salary numeric fields as `null`.
 - If company rank or candidate preference is missing, ignore for normalized MVP.
 - If list request fails, mark Dealls freshness degraded and keep previous rows.
+- If `data.docs[]` is missing or a job has no `id`, classify the payload as a parse failure.
 - Do not expose `saved`, `applied`, or user-specific flags from source captures.
-

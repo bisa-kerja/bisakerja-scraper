@@ -22,12 +22,14 @@ class ScraperError(Exception):
         source_platform: str | None = None,
         external_id: str | None = None,
         details: dict[str, Any] | None = None,
+        retryable: bool | None = None,
     ) -> None:
         super().__init__(message)
         self.message = message
         self.source_platform = source_platform
         self.external_id = external_id
         self.details = details or {}
+        self.retryable = type(self).retryable if retryable is None else retryable
 
     def to_log_fields(self) -> dict[str, Any]:
         return {
