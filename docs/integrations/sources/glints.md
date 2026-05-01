@@ -42,6 +42,19 @@ Cookies are optional operational inputs and must not be published raw.
 | Pagination | `page`, `pageSize`, `hasMore` |
 | Primary identity | job `id` |
 
+## List Adapter Behavior
+
+The Glints list adapter sends a POST JSON GraphQL request to `/api/v2-alc/graphql` with `op=searchJobsV3`. The request body contains:
+
+- `operationName = searchJobsV3`.
+- `variables.data.CountryCode`, `sortBy`, `includeExternalJobs`, `pageSize`, and `page`.
+- `variables.data.SearchTerm` only when a search term is provided.
+- A static query document that asks only for list-visible job, company, location, salary, category, and skill fields.
+
+The request builder must not include cookies, bearer tokens, device ids, trace ids, experiment ids, or raw browser session metadata.
+
+The parser reads jobs from `data.searchJobsV3.jobsInPage` and pagination continuation from `data.searchJobsV3.hasMore`. Any GraphQL `errors` payload is treated as mapper drift unless a future contract documents partial-data handling.
+
 ## Field Mapping
 
 | Source field | Normalized field | Rule |
@@ -65,7 +78,9 @@ Cookies are optional operational inputs and must not be published raw.
 ## Fallback
 
 - Since no detail endpoint is captured, use list data as MVP source.
-- Store public Glints job URL when derivable from id/slug/source data.
+- Store public Glints job URL as `https://glints.com/id/opportunities/jobs/{id}` when no slug is captured.
+- Mark detail coverage as `unavailable`.
+- Record field provenance for list-derived values such as title, company, location, salary, skills, and public URL.
 - Missing description/requirements should not block list visibility if minimum fields exist.
 
 ## Error Behavior
@@ -73,4 +88,3 @@ Cookies are optional operational inputs and must not be published raw.
 - Treat GraphQL shape changes as mapper drift.
 - Quarantine records without `id`, `title`, or company text.
 - Do not persist raw cookies, device ids, or experiment/session metadata into public docs.
-

@@ -70,3 +70,10 @@ Cookies are not part of the public contract and must be redacted if captured.
 - HTML fields must be sanitized before display, enrichment, or model input.
 - Dynamic build id is operational state, not a stable contract.
 
+## Build Id Handling
+
+Kalibrr exposes data through Next.js `_next/data` paths that include the active build id. The scraper resolves this value from the public page data script (`__NEXT_DATA__`) and caches it for the current run.
+
+If a `_next/data` request returns 404, the cached value is treated as stale. The scraper refreshes the public page, extracts the new build id, and retries the data request once with the refreshed path.
+
+The build id must not be hardcoded in configuration. It belongs to source runtime state, not deployment configuration.

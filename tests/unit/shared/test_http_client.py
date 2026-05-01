@@ -44,6 +44,32 @@ async def test_source_http_client_sends_default_headers_and_decodes_json() -> No
 
 
 @pytest.mark.asyncio
+async def test_source_http_client_sends_json_body() -> None:
+    seen_body = b""
+    seen_content_type = ""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal seen_body
+        nonlocal seen_content_type
+        seen_body = await request.aread()
+        seen_content_type = request.headers["content-type"]
+        return httpx.Response(200, json={"ok": True})
+
+    async_client = httpx.AsyncClient(
+        base_url="https://api.example.test",
+        transport=httpx.MockTransport(handler),
+    )
+    client = SourceHttpClient(client_config(), async_client=async_client)
+
+    response = await client.request_json("POST", "/graphql", json_body={"operationName": "jobs"})
+
+    assert response == {"ok": True}
+    assert seen_body.decode("utf-8") == '{"operationName":"jobs"}'
+    assert seen_content_type == "application/json"
+    await async_client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_source_http_client_retries_transient_status() -> None:
     calls = 0
 

@@ -18,10 +18,10 @@ This matrix defines the minimum evidence needed before scraper docs, code, or op
 | Area | Happy-path verification | Critical-failure verification | Evidence |
 | --- | --- | --- | --- |
 | Scheduler | Run starts inside configured window | Duplicate active run is skipped or rejected | Run record with `runId` |
-| Dealls adapter | REST list fixture fetched and stored | Timeout or 5xx produces bounded retry | Source run log and raw row count |
+| Dealls adapter | REST list and detail fixtures fetched and merged | Missing detail keeps list record valid | Contract test result |
 | Glints adapter | GraphQL list fixture parsed | Missing detail endpoint uses list fallback | Contract test result |
-| JobStreet adapter | GraphQL list fixture parsed without real auth | Auth failure stops source and redacts headers | Safe error log |
-| Kalibrr adapter | Next.js data fixture parsed | Stale `buildId` refresh path is attempted | Source run log |
+| JobStreet adapter | GraphQL list and detail fixtures parsed without real auth | Missing bearer token is classified as config error and request bodies omit auth/session captures | Contract test result |
+| Kalibrr adapter | Next.js build id is resolved and cached from page data | Stale `buildId` 404 refreshes and retries data request | Unit test result |
 | Raw store | Redacted payload metadata stored | Unsafe header cannot be persisted | Redaction test |
 | Normalizer | Canonical job fields produced | Missing identity quarantines row | Mapper test |
 | Deduplicator | Existing job updates by identity | Identity collision is surfaced | Dedup test |
@@ -35,9 +35,9 @@ This matrix defines the minimum evidence needed before scraper docs, code, or op
 
 | Source | List contract | Detail contract | Required special check |
 | --- | --- | --- | --- |
-| Dealls | Required | No separate detail capture | Null salary and REST pagination |
+| Dealls | Required | Required for slug endpoint | Null salary, REST pagination, and missing-detail tolerance |
 | Glints | Required | Not captured | List-first fallback |
-| JobStreet | Required | Detail-ready fields/source URL assumptions | Bearer/session redaction |
+| JobStreet | Required | Required for `jobDetails` operation | Bearer/session redaction and HTML preservation |
 | Kalibrr | Required | Included in job object | Dynamic `buildId` handling |
 
 ## Release Evidence Matrix
@@ -70,4 +70,3 @@ A release may tolerate one degraded source only when:
 - [Failure Scenarios](./failure-scenarios.md)
 - [Deployment](./deployment.md)
 - [Documentation Sync](./documentation-sync.md)
-

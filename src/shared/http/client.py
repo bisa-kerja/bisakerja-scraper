@@ -32,6 +32,7 @@ class JsonHttpClient(Protocol):
         *,
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
+        json_body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Return decoded JSON or raise FetchError."""
 
@@ -76,13 +77,47 @@ class SourceHttpClient:
         *,
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
+        json_body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         last_error: FetchError | None = None
         attempts = self.config.max_retries + 1
 
         for attempt in range(1, attempts + 1):
             try:
-                return await self._request_json_once(method, url, params=params, headers=headers)
+                return await self._request_json_once(
+                    method,
+                    url,
+                    params=params,
+                    headers=headers,
+                    json_body=json_body,
+                )
+            except FetchError as error:
+                last_error = error
+                if not error.retryable or attempt == attempts:
+                    raise
+                await asyncio.sleep(self.config.retry_backoff_seconds)
+
+        if last_error is not None:
+            raise last_error
+        raise FetchError(
+            "request failed before execution",
+            source_platform=self.config.source_platform,
+        )
+
+    async def request_text(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> str:
+        last_error: FetchError | None = None
+        attempts = self.config.max_retries + 1
+
+        for attempt in range(1, attempts + 1):
+            try:
+                body = await self._request_bytes_once(method, url, params=None, headers=headers)
+                return body.decode("utf-8")
             except FetchError as error:
                 last_error = error
                 if not error.retryable or attempt == attempts:
@@ -103,13 +138,50 @@ class SourceHttpClient:
         *,
         params: dict[str, Any] | None,
         headers: dict[str, str] | None,
+        json_body: dict[str, Any] | None,
     ) -> dict[str, Any]:
+        body = await self._request_bytes_once(
+            method,
+            url,
+            params=params,
+            headers=headers,
+            json_body=json_body,
+        )
+
+        try:
+            decoded = json.loads(body)
+        except json.JSONDecodeError as exc:
+            raise FetchError(
+                "source response is not valid JSON",
+                source_platform=self.config.source_platform,
+                details={"error": exc.__class__.__name__},
+                retryable=False,
+            ) from exc
+
+        if not isinstance(decoded, dict):
+            raise FetchError(
+                "source response JSON root must be an object",
+                source_platform=self.config.source_platform,
+                retryable=False,
+            )
+        return decoded
+
+    async def _request_bytes_once(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: dict[str, Any] | None,
+        headers: dict[str, str] | None,
+        json_body: dict[str, Any] | None = None,
+    ) -> bytes:
         try:
             async with self._client.stream(
                 method,
                 url,
                 params=params,
                 headers=headers,
+                json=json_body,
                 timeout=httpx.Timeout(self.config.timeout_seconds),
             ) as response:
                 body = await self._read_bounded(response)
@@ -137,24 +209,7 @@ class SourceHttpClient:
                 details={"statusCode": status_code},
                 retryable=retryable,
             )
-
-        try:
-            decoded = json.loads(body)
-        except json.JSONDecodeError as exc:
-            raise FetchError(
-                "source response is not valid JSON",
-                source_platform=self.config.source_platform,
-                details={"error": exc.__class__.__name__},
-                retryable=False,
-            ) from exc
-
-        if not isinstance(decoded, dict):
-            raise FetchError(
-                "source response JSON root must be an object",
-                source_platform=self.config.source_platform,
-                retryable=False,
-            )
-        return decoded
+        return body
 
     async def _read_bounded(self, response: httpx.Response) -> bytes:
         chunks: list[bytes] = []

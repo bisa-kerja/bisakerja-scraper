@@ -35,7 +35,7 @@ x-client-app-version: <version>
 | Capability | Status |
 | --- | --- |
 | List | Available |
-| Detail | No separate detail endpoint captured |
+| Detail | Available by public slug endpoint |
 | Pagination | `page`, `limit`, `totalPages` |
 | Primary identity | `id` |
 | Secondary identity | `slug` |
@@ -64,6 +64,25 @@ Each `data.docs[]` item becomes a raw source job with:
 - `sourceUrl = https://dealls.com/jobs/{slug}` when `slug` exists.
 - `rawPayload = original job object`.
 
+## Detail Adapter Behavior
+
+The Dealls detail adapter fetches one job from `/job-portal/job/slug/{slug}`. It only sends non-identifying public parameters:
+
+| Parameter | Value |
+| --- | --- |
+| `trId` | `view` |
+| `guest` | `true` |
+
+Tracking identifiers such as guest ids must not be stored in source fixtures, docs, or request builders.
+
+The detail response is read from `data.result`. The parser requires `id` and `slug`, then exposes the full result object as detail raw payload. The enrichment helper stores list and detail evidence together:
+
+- `rawPayload.list` contains the original list job object.
+- `rawPayload.detail` contains the detail result object when available.
+- `rawPayload.detailMetadata.coverage` is `available` or `missing`.
+
+If the detail endpoint returns a missing record, the job remains valid with the list payload and a missing-detail marker. Transient fetch failures are still surfaced as source fetch errors.
+
 ## Field Mapping
 
 | Source field | Normalized field | Rule |
@@ -78,6 +97,7 @@ Each `data.docs[]` item becomes a raw source job with:
 | `company.logoUrl` | `company.logoUrl` | Optional |
 | `city.name`, `country.name` | `location` | Preserve partial |
 | `skills[].name` | `skills[]` | Normalize names |
+| `requirements` | `requirements` | Detail text when available |
 | `publishedAt` | `postedAt` | ISO timestamp |
 
 ## Error Behavior
@@ -85,5 +105,6 @@ Each `data.docs[]` item becomes a raw source job with:
 - If `salaryRange` is `null`, store salary numeric fields as `null`.
 - If company rank or candidate preference is missing, ignore for normalized MVP.
 - If list request fails, mark Dealls freshness degraded and keep previous rows.
+- If a detail record is missing, keep the list job and mark detail coverage as missing.
 - If `data.docs[]` is missing or a job has no `id`, classify the payload as a parse failure.
 - Do not expose `saved`, `applied`, or user-specific flags from source captures.

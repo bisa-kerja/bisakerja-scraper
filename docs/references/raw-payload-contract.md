@@ -17,9 +17,9 @@ Raw payload contracts are based on captured source list/detail responses. They d
 
 | Source | Payload root | List records | Detail records |
 | --- | --- | --- | --- |
-| Dealls | `data.docs[]` | Yes | No separate detail capture |
+| Dealls | `data.docs[]`; detail `data.result` | Yes | Yes, by slug |
 | Glints | `data.searchJobsV3.jobsInPage[]` | Yes | Not captured |
-| JobStreet | `data.jobSearchV6.data[]` | Yes | Detail-ready list fields/source URL assumptions |
+| JobStreet | `data.jobSearchV6.data[]`; detail `data.jobDetails.job` | Yes | Yes, by job id |
 | Kalibrr | `pageProps.jobs[]` | Yes | Included in each job object |
 
 ## Required Raw Identity
@@ -40,7 +40,7 @@ Rows without required raw identity must be quarantined.
 | Salary | Dealls `salaryRange`, Kalibrr salary fields, and JobStreet `salaryLabel` can be null/empty | Preserve unknown as `null` |
 | Company metadata | Logo, rank, industry, website can be absent | Keep company name fallback; optional metadata nullable |
 | Location | City/province can be partial | Preserve display; normalize best-effort |
-| Description | Glints list may lack full detail; Kalibrr HTML detail exists | Missing detail allowed; HTML sanitized when present |
+| Description | Glints list may lack full detail; JobStreet and Kalibrr detail can contain HTML | Missing detail allowed; HTML sanitized before display, enrichment, or model input |
 | Dates | JobStreet includes timestamp plus relative label; other sources expose source timestamps | Prefer timestamp; labels are display-only |
 | Skills | Present in Dealls/Glints; may be absent elsewhere | Optional; enrichment can fill later |
 
@@ -54,6 +54,7 @@ A mapper must produce:
 - Source/apply URL or derivable source URL.
 - Last seen timestamp.
 - Safe normalized text for any HTML/text fields.
+- Detail coverage metadata when a source has no captured detail endpoint or a detail fetch misses.
 
 Mappers should not fail the whole run for optional salary, logo, category, or skill gaps.
 
@@ -69,4 +70,3 @@ Raw captures used in docs, fixtures, logs, or examples must remove:
 - User-specific flags where they imply a real account state.
 
 Use placeholders such as `<redacted>` only when the field name itself is relevant.
-

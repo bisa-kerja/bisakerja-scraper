@@ -3,6 +3,7 @@ from typing import Any
 
 
 class ErrorStage(StrEnum):
+    CONFIG = "config"
     FETCH = "fetch"
     PARSE = "parse"
     NORMALIZE = "normalize"
@@ -46,6 +47,11 @@ class FetchError(ScraperError):
     stage = ErrorStage.FETCH
     code = "FETCH_ERROR"
     retryable = True
+
+
+class ConfigError(ScraperError):
+    stage = ErrorStage.CONFIG
+    code = "CONFIG_ERROR"
 
 
 class ParseError(ScraperError):

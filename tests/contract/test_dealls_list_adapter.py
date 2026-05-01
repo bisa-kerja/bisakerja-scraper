@@ -24,6 +24,7 @@ class MockJsonClient:
         *,
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
+        json_body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         self.requests.append(
             {
@@ -31,6 +32,7 @@ class MockJsonClient:
                 "url": url,
                 "params": params,
                 "headers": headers,
+                "json_body": json_body,
             }
         )
         return self.payload
@@ -77,6 +79,7 @@ async def test_dealls_list_adapter_sends_expected_query_params() -> None:
                 "search": "developer",
             },
             "headers": None,
+            "json_body": None,
         }
     ]
 

@@ -17,7 +17,7 @@ The scraper supports four source adapters behind one normalized job contract.
 
 | Source | Transport | Auth/header requirement | List | Detail | Identity |
 | --- | --- | --- | --- | --- | --- |
-| Dealls | REST `GET /v1/explore-job/job` | Browser headers recommended; no auth required | Available | No separate detail endpoint captured; list is rich | `id`, fallback `slug` |
+| Dealls | REST `GET /v1/explore-job/job` and `GET /v1/job-portal/job/slug/{slug}` | Browser headers recommended; no auth required | Available | Available by slug; missing detail does not block list records | `id`, fallback `slug` |
 | Glints | GraphQL `searchJobsV3` | Browser headers and `x-glints-country-code`; cookies optional/redacted | Available | Not captured | job `id` |
 | JobStreet | GraphQL `JobSearchV6` | Bearer auth and session-like headers/cookies from configured secret flow | Available | Detail-ready fields/source URL assumptions | job `id` |
 | Kalibrr | Next.js `_next/data/{buildId}` JSON | `x-nextjs-data: 1`; browser headers recommended | Available | Included in `jobs[]` | numeric `id`, fallback `slug` |
@@ -43,6 +43,7 @@ Every adapter should produce:
 | Case | Rule |
 | --- | --- |
 | Detail endpoint unavailable | Use list payload as source of truth and store public source URL for user/apply navigation |
+| Detail record missing | Keep list payload, mark detail coverage, and avoid failing the source batch |
 | Salary missing or empty | Store `null` numeric salary fields and optional sanitized display label |
 | Relative posted label only | Keep label as display-only; do not compute exact timestamp without capture time and parser rule |
 | HTML description/qualification | Sanitize to safe text/allowed HTML before display or model use |
@@ -64,4 +65,3 @@ Every adapter should produce:
 - [Glints](./sources/glints.md)
 - [JobStreet](./sources/jobstreet.md)
 - [Kalibrr](./sources/kalibrr.md)
-
