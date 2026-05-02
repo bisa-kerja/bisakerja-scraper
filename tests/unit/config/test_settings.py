@@ -27,6 +27,10 @@ def valid_env(**overrides: object) -> dict[str, object]:
         "DEFAULT_RATE_LIMIT_PER_MINUTE": "60",
         "BACKEND_SYNC_TIMEOUT_SECONDS": "20",
         "BACKEND_SYNC_BATCH_SIZE": "100",
+        "AI_ENRICHMENT_ENABLED": "false",
+        "OPENAI_TIMEOUT_SECONDS": "30",
+        "OPENAI_MAX_RETRIES": "2",
+        "OPENAI_BATCH_SIZE": "10",
         "DEALLS_BASE_URL": "https://dealls.com",
         "DEALLS_RATE_LIMIT_PER_MINUTE": "30",
         "GLINTS_GRAPHQL_URL": "https://glints.com/graphql",
@@ -86,6 +90,47 @@ def test_jobstreet_token_required_when_enabled() -> None:
     env = valid_env(JOBSTREET_ENABLED="true")
 
     with pytest.raises(ValidationError, match="JOBSTREET_BEARER_TOKEN"):
+        Settings(**env, _env_file=None)
+
+
+def test_ai_enrichment_disabled_does_not_require_openai_secrets() -> None:
+    settings = Settings(**valid_env(), _env_file=None)
+
+    assert settings.ai_enrichment_enabled is False
+    assert settings.openai_api_key is None
+    assert settings.openai_base_url is None
+    assert settings.openai_model is None
+
+
+def test_ai_enrichment_requires_openai_key_base_url_and_model() -> None:
+    env = valid_env(AI_ENRICHMENT_ENABLED="true")
+
+    with pytest.raises(ValidationError, match="OPENAI_API_KEY"):
+        Settings(**env, _env_file=None)
+
+
+def test_ai_enrichment_accepts_custom_absolute_base_url() -> None:
+    env = valid_env(
+        AI_ENRICHMENT_ENABLED="true",
+        OPENAI_API_KEY="test-openai-key",
+        OPENAI_BASE_URL="https://openai-compatible.example.test/v1",
+        OPENAI_MODEL="gpt-4o-mini",
+    )
+
+    settings = Settings(**env, _env_file=None)
+
+    assert str(settings.openai_base_url) == "https://openai-compatible.example.test/v1"
+
+
+def test_ai_enrichment_rejects_relative_base_url() -> None:
+    env = valid_env(
+        AI_ENRICHMENT_ENABLED="true",
+        OPENAI_API_KEY="test-openai-key",
+        OPENAI_BASE_URL="/v1",
+        OPENAI_MODEL="gpt-4o-mini",
+    )
+
+    with pytest.raises(ValidationError, match="OPENAI_BASE_URL"):
         Settings(**env, _env_file=None)
 
 

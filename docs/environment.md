@@ -22,6 +22,7 @@ Runtime validation lives in `src/config/settings.py` and uses `pydantic-settings
 | Application | Runtime mode, service identity, HTTP port |
 | Database | Local scraper DB and main DB sync target |
 | Queue/scheduler | Worker broker, daily windows, concurrency |
+| AI enrichment | OpenAI-compatible provider config for skills and requirement structuring |
 | Source config | Per-source headers, tokens, build id refresh, rate limits |
 | Security | Internal credentials, CORS if exposed, request limits |
 | Observability | Logs, request id, health timeout |
@@ -79,6 +80,22 @@ Rules:
 | `BACKEND_SYNC_SERVICE_TOKEN` | Yes when sync is enabled | Internal service credential from secret storage |
 | `BACKEND_SYNC_TIMEOUT_SECONDS` | Yes | Positive sync request timeout |
 | `BACKEND_SYNC_BATCH_SIZE` | Yes | Positive batch size |
+
+## AI Enrichment Variables
+
+| Variable | Required | Rule |
+| --- | --- | --- |
+| `AI_ENRICHMENT_ENABLED` | Yes | Explicit `true` or `false` |
+| `OPENAI_API_KEY` | Yes when AI enrichment is enabled | Secret store only |
+| `OPENAI_BASE_URL` | Yes when AI enrichment is enabled | Absolute OpenAI-compatible API base URL |
+| `OPENAI_MODEL` | Yes when AI enrichment is enabled | Model name supported by the configured provider |
+| `OPENAI_TIMEOUT_SECONDS` | Yes | Positive provider request timeout |
+| `OPENAI_MAX_RETRIES` | Yes | Bounded retry count |
+| `OPENAI_BATCH_SIZE` | Yes | Positive batch size; baseline is `10` jobs |
+
+AI enrichment uses an OpenAI-compatible client boundary. The base URL supports the official OpenAI API and compatible providers that expose the same request shape. Logs must not include API keys. If the base URL contains tenant, account, or deployment-specific identifiers, treat it as sensitive operational metadata and redact it from logs.
+
+Only safe normalized job fields may be sent to the provider: title, clean description, clean requirements, company name, and source platform. Raw source payloads, source request headers, bearer tokens, cookies, session ids, visitor ids, device ids, backend service credentials, and database URLs must never be included in AI requests.
 
 Baseline schedule:
 

@@ -25,6 +25,7 @@ The scraper contract is a data handoff contract, not a user-facing API contract.
 | Freshness | `postedAt`, `sourceUpdatedAt`, `lastSeenAt`, `ingestionRunId` |
 | Requirements | sanitized text rows and optional category |
 | Skills | skill names with optional confidence/source |
+| Enrichment | optional AI skills, typed requirements, confidence, warnings |
 
 ## Write Contract
 
@@ -111,6 +112,39 @@ Behavior rules:
 | Parser drift | Quarantine payload and keep source run partial |
 | Enrichment failure | Sync base normalized job when required fields are valid |
 | Duplicate source job | Upsert by source identity |
+
+## AI Enrichment Output Contract
+
+AI enrichment output is an optional supplement to the normalized job contract. It must be derived only from safe normalized job text.
+
+Input fields:
+
+| Field | Rule |
+| --- | --- |
+| `title` | Required normalized job title |
+| `description` | Optional clean text; no raw HTML, headers, tokens, cookies, or raw payloads |
+| `requirements` | Optional clean text |
+| `company` | Required company name |
+| `source` | Required source platform |
+
+Output fields:
+
+| Field | Rule |
+| --- | --- |
+| `skills[].name` | Skill name supported by input text |
+| `skills[].confidence` | Number from `0` to `1` |
+| `requirements[].type` | `SKILL`, `EXPERIENCE`, `EDUCATION`, or `OTHER` |
+| `requirements[].value` | Requirement text supported by input text |
+| `requirements[].confidence` | Number from `0` to `1` |
+| `confidence` | Overall confidence from `0` to `1` |
+| `warnings[]` | Safe notes about ambiguity or missing evidence |
+
+Invalid output handling:
+
+- Unsupported skills or requirements are rejected as invalid enrichment output.
+- Invalid enums, missing required fields, extra fields, or malformed structured output are rejected.
+- Rejected enrichment output must not write unsupported facts into normalized job data.
+- Base normalized job sync may continue when required non-AI fields satisfy the visibility gate.
 
 ## Sync Event State
 

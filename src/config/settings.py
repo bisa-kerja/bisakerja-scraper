@@ -2,7 +2,7 @@ from enum import StrEnum
 from functools import lru_cache
 from typing import Annotated
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import AnyUrl, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 NonEmptyStr = Annotated[str, Field(min_length=1)]
@@ -77,6 +77,17 @@ class Settings(BaseSettings):
         gt=0,
     )
     backend_sync_batch_size: int = Field(validation_alias="BACKEND_SYNC_BATCH_SIZE", ge=1)
+
+    ai_enrichment_enabled: bool = Field(validation_alias="AI_ENRICHMENT_ENABLED")
+    openai_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias="OPENAI_API_KEY",
+    )
+    openai_base_url: AnyUrl | None = Field(default=None, validation_alias="OPENAI_BASE_URL")
+    openai_model: NonEmptyStr | None = Field(default=None, validation_alias="OPENAI_MODEL")
+    openai_timeout_seconds: float = Field(validation_alias="OPENAI_TIMEOUT_SECONDS", gt=0)
+    openai_max_retries: int = Field(validation_alias="OPENAI_MAX_RETRIES", ge=0, le=10)
+    openai_batch_size: int = Field(validation_alias="OPENAI_BATCH_SIZE", ge=1, le=100)
 
     dealls_base_url: NonEmptyStr = Field(validation_alias="DEALLS_BASE_URL")
     dealls_rate_limit_per_minute: int = Field(
@@ -155,6 +166,7 @@ class Settings(BaseSettings):
         "backend_sync_service_token",
         "jobstreet_bearer_token",
         "scraper_internal_service_token",
+        "openai_api_key",
     )
     @classmethod
     def validate_secret(cls, value: SecretStr | None) -> SecretStr | None:
@@ -178,6 +190,14 @@ class Settings(BaseSettings):
 
         if self.jobstreet_enabled and self.jobstreet_bearer_token is None:
             raise ValueError("JOBSTREET_BEARER_TOKEN is required when JobStreet is enabled")
+
+        if self.ai_enrichment_enabled:
+            if self.openai_api_key is None:
+                raise ValueError("OPENAI_API_KEY is required when AI enrichment is enabled")
+            if self.openai_base_url is None:
+                raise ValueError("OPENAI_BASE_URL is required when AI enrichment is enabled")
+            if self.openai_model is None:
+                raise ValueError("OPENAI_MODEL is required when AI enrichment is enabled")
 
         return self
 

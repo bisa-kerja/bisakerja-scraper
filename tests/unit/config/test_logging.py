@@ -60,6 +60,7 @@ def test_redact_sensitive_scrubs_secret_like_strings() -> None:
     data = {
         "message": "Authorization: Bearer abc.def",
         "database_url": "postgresql+asyncpg://user:pass@localhost:5432/db",
+        "openai_base_url": "https://tenant.example.test/v1",
         "safe": ["ok", "sessionid=secret-value"],
     }
 
@@ -67,4 +68,5 @@ def test_redact_sensitive_scrubs_secret_like_strings() -> None:
 
     assert redacted["message"] == f"Authorization: Bearer {REDACTED}"
     assert redacted["database_url"] == REDACTED
+    assert redacted["openai_base_url"] == REDACTED
     assert redacted["safe"] == ["ok", f"sessionid={REDACTED}"]

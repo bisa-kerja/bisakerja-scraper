@@ -30,7 +30,7 @@ source request
 
 ## Pipeline Orchestration
 
-The scraper pipeline executes source work through the ordered stages `scrape -> normalize -> enrich -> sync`.
+The scraper pipeline executes source work through the ordered stages `scrape -> normalize -> enrich -> sync -> notify-handoff`.
 
 Orchestration rules:
 
@@ -41,6 +41,7 @@ Orchestration rules:
 - Persistence writes raw and normalized records idempotently before sync handoff.
 - The sync stage is a hook for backend handoff; if no sync client is configured, the local pipeline still records persisted output.
 - Partial mode allows one source to fail without stopping other sources.
+- Notification handoff is a boundary stage. The scraper prepares normalized job data; user preference filtering and email delivery remain Backend API or notification-worker concerns.
 
 ## Stage Contracts
 
@@ -50,8 +51,9 @@ Orchestration rules:
 | Raw capture | Source response | Redacted raw payload record | Scraper persistence | No tokens/cookies/session ids in published artifacts |
 | Normalize | Raw payload | Canonical job/company/location/salary fields | Normalizer | Identity, title, company, source URL/apply URL |
 | Dedup | Normalized candidate | Unique source-local job row | Deduplicator | `sourcePlatform + externalJobId/slug/id` |
-| Enrich | Safe text fields | Skill/requirement enrichment | Enrichment worker | Batch size, timeout, confidence |
+| Enrich | Safe title, description, requirements text, company, source | Skills, typed requirements, confidence, warnings | Enrichment worker | Batch size, timeout, confidence, schema validity |
 | Sync | Validated staging rows | Main DB records | Sync service | FK integrity, upsert idempotency |
+| Notify handoff | Synced normalized jobs and freshness metadata | Backend-owned recommendation and email work | Backend API or notification worker | User preference filtering, delivery retry, frontend-safe fields |
 | Read | Main DB normalized rows | Backend API product response | Backend API | Response envelope, user auth, frontend-safe fields |
 
 ## Source Detail Reality
@@ -85,3 +87,19 @@ A job can become visible in normal search only after it has:
 - Source/apply URL.
 - `lastSeenAt`.
 - Safe text fields if description or requirements are present.
+
+## AI Enrichment Boundary
+
+AI enrichment receives only safe normalized text:
+
+- Title.
+- Description clean text.
+- Requirements clean text.
+- Company name.
+- Source platform.
+
+It must not receive raw source payloads, source request headers, bearer tokens, cookies, session ids, visitor ids, device ids, or backend service credentials. Invalid structured AI output is treated as enrichment failure and must not block base normalized job sync when the visibility gate is satisfied.
+
+## Flow Readiness Reference
+
+Implementation status and remaining gaps are tracked in [Scraper Flow Gap Matrix](../roadmap/scraper-flow-gap-matrix.md).

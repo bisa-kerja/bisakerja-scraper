@@ -92,6 +92,18 @@ Do not update the normalized contract from one broken payload. Confirm whether t
 
 Scrape and sync should not be marked failed only because enrichment is degraded unless required fields depend on enrichment.
 
+AI provider error classes:
+
+| Error | Meaning | Retry |
+| --- | --- | --- |
+| `OPENAI_AUTH_ERROR` | API key rejected or provider authentication failed | No |
+| `OPENAI_TIMEOUT` | Provider request exceeded timeout | Yes |
+| `OPENAI_RATE_LIMIT` | Provider returned rate limit response | Yes |
+| `OPENAI_PROVIDER_UNAVAILABLE` | Provider connection failed or returned retryable server error | Yes |
+| `OPENAI_INVALID_RESPONSE` | Refusal, malformed structured output, unsupported fact, or non-schema response | No |
+
+Invalid enrichment output must not be written into normalized job data. Re-run only with safe normalized job text, never with raw source payloads or credentials.
+
 ## Scenario 6: Sync To Main DB Fails
 
 | Area | Detail |

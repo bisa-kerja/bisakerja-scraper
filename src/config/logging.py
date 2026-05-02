@@ -17,7 +17,7 @@ REDACTED = "<redacted>"
 
 SECRET_KEY_PATTERN = re.compile(
     r"(authorization|bearer|cookie|csrf|token|secret|credential|password|session|"
-    r"visitor|device|database_url|db_url)",
+    r"visitor|device|database_url|db_url|openai.*base.?url|ai.*base.?url)",
     re.IGNORECASE,
 )
 BEARER_PATTERN = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
