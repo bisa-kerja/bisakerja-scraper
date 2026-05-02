@@ -122,7 +122,9 @@ Error logs should include the category, stage, source platform, external job id 
 
 | Signal | Healthy | Degraded |
 | --- | --- | --- |
-| Scheduler | Expected run started inside window | No run by expected cutoff |
+| Scheduler | Expected stage job is registered and only one stage is active at a time | No run by expected cutoff or overlapping stage attempts are rejected repeatedly |
+| Liveness | `/health/live` returns a success envelope without dependency checks | Process does not respond |
+| Readiness | `/health/ready` returns a success envelope after a lightweight scraper DB query | Scraper DB query fails or times out |
 | Source adapters | Source returns list payload and safe status | Auth failure, 429, 5xx, timeout, or schema drift |
 | Normalizer | Required identity/title/company/source URL present | Quarantine rate rises |
 | Deduplicator | Stable ratio by source | Sudden duplicate spike or identity collisions |
@@ -135,6 +137,7 @@ Error logs should include the category, stage, source platform, external job id 
 Production alerting should start with these conditions:
 
 - Daily run does not start or finish.
+- Readiness fails for the scraper database.
 - Any source has repeated fetch failures.
 - Parse failure rate spikes for one source.
 - Dedup ratio changes sharply from baseline.

@@ -87,7 +87,8 @@ Use hotfix only when production freshness or sync is materially degraded.
 
 | Check | Expected result |
 | --- | --- |
-| App liveness | Process responds or worker heartbeat exists |
+| App liveness | `/health/live` responds without requiring database connectivity |
+| App readiness | `/health/ready` confirms the scraper database accepts a lightweight query |
 | Scheduler state | Next run time is visible |
 | Source health | Each source reports safe status without exposing credentials |
 | Fixture pipeline | One sanitized fixture batch normalizes successfully |
@@ -105,6 +106,10 @@ Use hotfix only when production freshness or sync is materially degraded.
 - Re-run sync from staging when main DB handoff failed.
 - Rotate exposed source credentials if logs or artifacts leaked real values.
 
+## Scheduler Runtime
+
+The scraper registers separate daily jobs for scrape, normalize, enrich, and sync. Each job uses the configured cron value, a stable scheduler id, coalescing for missed executions, and a single concurrent instance. Manual triggers share the same guard so operators cannot start a second stage while another stage is still active.
+
 ## Related Docs
 
 - [Deployment Overview](./deployment-overview.md)
@@ -112,4 +117,3 @@ Use hotfix only when production freshness or sync is materially degraded.
 - [Observability](./observability.md)
 - [Failure Scenarios](./failure-scenarios.md)
 - [Environment Configuration](../environment.md)
-

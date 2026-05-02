@@ -41,8 +41,8 @@ Rules:
 
 | Method | Path | Auth class | Purpose | Status |
 | --- | --- | --- | --- | --- |
-| `GET` | `/health/live` | Infrastructure/public | Process liveness | Planned |
-| `GET` | `/health/ready` | Infrastructure-restricted | DB/config readiness | Planned |
+| `GET` | `/health/live` | Infrastructure/public | Process liveness | Available |
+| `GET` | `/health/ready` | Infrastructure-restricted | DB/config readiness | Available |
 | `POST` | `/api/v1/runs` | Internal service credential | Trigger an ingestion run | Planned |
 | `GET` | `/api/v1/runs` | Internal service credential | List ingestion runs | Planned |
 | `GET` | `/api/v1/runs/:runId` | Internal service credential | Inspect one run | Planned |
@@ -50,6 +50,57 @@ Rules:
 | `GET` | `/api/v1/jobs/staging` | Internal service credential | Debug normalized staging records | Optional |
 
 The stable product job search API remains owned by Backend API.
+
+## Health Contract
+
+`GET /health/live` confirms the process can serve HTTP traffic. It does not open a database connection or call external job sources.
+
+Successful response:
+
+```json
+{
+  "success": true,
+  "message": "Service is live",
+  "data": {
+    "status": "live"
+  },
+  "meta": null
+}
+```
+
+`GET /health/ready` confirms required runtime dependencies are usable before traffic or scheduled work is considered safe. The readiness check performs a lightweight scraper database query.
+
+Successful response:
+
+```json
+{
+  "success": true,
+  "message": "Service is ready",
+  "data": {
+    "status": "ready"
+  },
+  "meta": null
+}
+```
+
+Unavailable dependency response:
+
+```json
+{
+  "success": false,
+  "message": "Service dependency is unavailable",
+  "data": null,
+  "error": {
+    "code": "SERVICE_UNAVAILABLE",
+    "details": {
+      "dependency": "scraper-db"
+    },
+    "requestId": "req_123"
+  }
+}
+```
+
+Every health response includes the configured request id header. Callers may provide the request id; otherwise the app generates one.
 
 ## Trigger Run Contract
 
@@ -122,4 +173,3 @@ Generated files must be labeled as generated and regenerated after route/schema 
 - [Scraper API Contract](./integrations/scraper-api-contract.md)
 - [Raw Payload Contract](./references/raw-payload-contract.md)
 - [Authentication and Trust Boundaries](./overview/authentication-and-trust-boundaries.md)
-
