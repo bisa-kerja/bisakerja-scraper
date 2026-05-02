@@ -24,6 +24,9 @@ uv tree
 uv run ruff format --check .
 uv run ruff check .
 uv run pytest
+uv run pytest tests/integration
+uv run pytest tests/smoke
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
 ```
 
 ## Database Migrations
@@ -34,6 +37,15 @@ uv run alembic downgrade base
 ```
 
 Migrations use `SCRAPER_DATABASE_URL` unless an explicit Alembic URL override is provided.
+
+## Container Runtime
+
+```bash
+docker build -t bisakerja-scraper:local .
+docker run --rm --env-file .env -p 8000:8000 bisakerja-scraper:local
+```
+
+The image runs Uvicorn as a non-root user and checks `/health/live` for container health.
 
 ## Raw Fixture Sanitization
 

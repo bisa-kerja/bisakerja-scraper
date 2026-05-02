@@ -117,6 +117,25 @@ uv run pytest tests/contract
 uv run pytest
 ```
 
+Integration tests use isolated test databases. The default local integration baseline creates temporary SQLite databases, applies Alembic migrations, and then exercises repository writes and API reads against that migrated schema. This keeps routine verification safe when no PostgreSQL test instance is available.
+
+```bash
+uv run pytest tests/integration
+```
+
+Database-backed tests must not use development, staging, or production database URLs. When PostgreSQL-specific behavior is added, use a dedicated database whose name clearly identifies it as test-only, set `APP_ENV=test`, and keep `RUN_DATABASE_TESTS=true` explicit in the shell or env file used for that run.
+
+Smoke checks are available through the scraper CLI and do not require external network access:
+
+```bash
+PYTHONPATH=src uv run python -m cli.smoke config
+PYTHONPATH=src uv run python -m cli.smoke health
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
+uv run pytest tests/smoke
+```
+
+The dry-run command reads the sanitized Dealls fixture, parses the list payload, maps one job into the canonical schema, and prints a compact JSON result.
+
 For dependency visibility:
 
 ```bash
@@ -140,6 +159,11 @@ The scraper test suite covers:
 - Source HTTP retry classifier, per-source rate limiter isolation, capped backoff, and circuit breaker behavior.
 - HTML cleaning for description and requirement fields.
 - Canonical mapper output and field provenance for all supported sources.
+- Alembic migration upgrade against isolated test databases before repository/API integration checks.
+- Repository raw and normalized job upsert behavior against a migrated schema.
+- Internal jobs API reads against a migrated isolated database.
+- Backend sync client request contract using in-memory HTTP transport.
+- CLI smoke checks for config, health, and fixture-backed dry-run behavior.
 
 ## Release Gate
 

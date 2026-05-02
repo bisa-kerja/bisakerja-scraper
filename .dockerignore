@@ -1,0 +1,13 @@
+.git
+.ruff_cache
+.pytest_cache
+.venv
+__pycache__
+*.pyc
+.env
+.env.*
+!.env.example
+raw-response-*.txt
+tasks
+docs-references
+backend-references

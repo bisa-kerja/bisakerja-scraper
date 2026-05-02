@@ -44,6 +44,38 @@ Baseline daily flow:
 - Scheduler and worker version match the scraper app version.
 - Production deploy never points at local or test DB values.
 
+## Container Runtime
+
+The service image is built from the repository `Dockerfile`. The runtime image uses the official Python slim base, installs locked dependencies with `uv`, runs as a non-root `scraper` user, exposes the configured HTTP port, and defines a Docker healthcheck against `/health/live`.
+
+Build the image:
+
+```bash
+docker build -t bisakerja-scraper:local .
+```
+
+Run the API with an explicit env file:
+
+```bash
+docker run --rm --env-file .env -p 8000:8000 bisakerja-scraper:local
+```
+
+Run smoke checks before deploying an image:
+
+```bash
+PYTHONPATH=src uv run python -m cli.smoke config
+PYTHONPATH=src uv run python -m cli.smoke health
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
+```
+
+Container rules:
+
+- Provide all secrets through environment variables or a secret manager, never through image build arguments.
+- Keep `.env`, raw capture files, local caches, and reference-only directories out of the image build context.
+- Do not run the runtime process as root.
+- Use `/health/live` for process health and `/health/ready` for database readiness.
+- Run migrations before starting a deployment that depends on schema changes.
+
 ## Normal Deploy Runbook
 
 | Step | Expected result |
