@@ -63,8 +63,8 @@ docker run --rm --env-file .env -p 8000:8000 bisakerja-scraper:local
 Run smoke checks before deploying an image:
 
 ```bash
-PYTHONPATH=src uv run python -m cli.smoke config
-PYTHONPATH=src uv run python -m cli.smoke health
+PYTHONPATH=src uv run python -m cli.smoke config --env-file .env.example
+PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
 ```
 

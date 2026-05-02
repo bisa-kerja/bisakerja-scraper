@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-01
+last_reviewed: 2026-05-02
 ---
 
 # Scraper Security Operations
@@ -105,6 +105,8 @@ Raw captures used in docs, fixtures, examples, or debugging bundles must remove:
 
 Use `<redacted>` only when the field name itself is useful.
 
+Automated release readiness checks scan documentation, raw fixtures, raw captures, and the example environment file for common secret patterns. The scan allows header names and placeholder values, but rejects likely bearer credentials, cookie values, session identifiers, visitor identifiers, device identifiers, and database URLs with non-placeholder passwords.
+
 ## Dependency Hardening
 
 - Pin runtime dependencies.
@@ -130,6 +132,6 @@ Use `<redacted>` only when the field name itself is useful.
 
 - [Authentication and Trust Boundaries](../overview/authentication-and-trust-boundaries.md)
 - [Payload Redaction Policy](../standards/payload-redaction-policy.md)
+- [CI Quality Gates](./ci-quality-gates.md)
 - [API Response Standard](../api-response-standard.md)
 - [Environment Configuration](../environment.md)
-

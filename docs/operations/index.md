@@ -5,8 +5,8 @@ owner: data-ingestion-owner
 reviewers:
   - platform-docs-maintainer
   - backend-owner
-doc_status: draft
-last_reviewed: 2026-05-01
+doc_status: active
+last_reviewed: 2026-05-02
 ---
 
 # Operations
@@ -20,11 +20,13 @@ Operational docs for this repository should cover scraper runtime behavior only.
 - [Observability](./observability.md)
 - [Failure Scenarios](./failure-scenarios.md)
 - [Testing Strategy](./testing.md)
+- [CI Quality Gates](./ci-quality-gates.md)
 - [Verification Matrix](./verification-matrix.md)
 - [Deployment Overview](./deployment-overview.md)
 - [Deployment Operations](./deployment.md)
 - [Documentation Sync](./documentation-sync.md)
 - [Documentation Release Checklist](./documentation-release-checklist.md)
+- [Release Readiness](./release-readiness.md)
 
 ## Baseline Run Order
 
@@ -47,4 +49,4 @@ Operational docs for this repository should cover scraper runtime behavior only.
 - Enrichment timeout or invalid AI output.
 - Sync latency or main DB write failure.
 - Documentation sync metadata, link, or secret-scan failure.
-- Documentation release readiness failure.
+- CI or release readiness failure.

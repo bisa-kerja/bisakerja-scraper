@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-01
+last_reviewed: 2026-05-02
 ---
 
 # Scraper Testing Strategy
@@ -114,7 +114,10 @@ uv run ruff format --check .
 uv run ruff check .
 uv run pytest tests/unit
 uv run pytest tests/contract
+uv run pytest tests/integration
+uv run pytest tests/smoke
 uv run pytest
+uv run python scripts/check_release_readiness.py
 ```
 
 Integration tests use isolated test databases. The default local integration baseline creates temporary SQLite databases, applies Alembic migrations, and then exercises repository writes and API reads against that migrated schema. This keeps routine verification safe when no PostgreSQL test instance is available.
@@ -128,13 +131,19 @@ Database-backed tests must not use development, staging, or production database 
 Smoke checks are available through the scraper CLI and do not require external network access:
 
 ```bash
-PYTHONPATH=src uv run python -m cli.smoke config
-PYTHONPATH=src uv run python -m cli.smoke health
+PYTHONPATH=src uv run python -m cli.smoke config --env-file .env.example
+PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
 uv run pytest tests/smoke
 ```
 
 The dry-run command reads the sanitized Dealls fixture, parses the list payload, maps one job into the canonical schema, and prints a compact JSON result.
+
+## CI Verification
+
+The automated quality gate runs on push, pull request, and manual dispatch. It installs dependencies from `uv.lock`, checks formatting and linting, runs unit, contract, integration, and smoke suites, exercises the smoke CLI, and validates docs and artifact safety.
+
+The CI workflow must not require source credentials, production database credentials, or live source network access. Optional external integration checks should stay separate until dedicated non-production credentials and isolated services exist.
 
 For dependency visibility:
 
@@ -164,6 +173,7 @@ The scraper test suite covers:
 - Internal jobs API reads against a migrated isolated database.
 - Backend sync client request contract using in-memory HTTP transport.
 - CLI smoke checks for config, health, and fixture-backed dry-run behavior.
+- Release readiness checks for documentation metadata, local links, and secret-safe docs/fixtures/raw captures.
 
 ## Release Gate
 
@@ -176,10 +186,13 @@ A scraper release is not ready until:
 - Smoke tests pass in target environment or staging.
 - Redaction checks pass for docs, logs, fixtures, and generated artifacts.
 - Documentation metadata and links are valid.
+- CI quality gates pass from a clean checkout.
 
 ## Related Docs
 
 - [Verification Matrix](./verification-matrix.md)
+- [CI Quality Gates](./ci-quality-gates.md)
+- [Release Readiness](./release-readiness.md)
 - [Observability](./observability.md)
 - [Raw Payload Contract](../references/raw-payload-contract.md)
 - [Source Field Mapping Matrix](../references/source-field-mapping-matrix.md)
