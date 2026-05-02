@@ -4,6 +4,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+from sqlalchemy.engine import make_url
 
 from config.settings import Settings
 from modules.persistence import Base
@@ -23,9 +24,19 @@ def get_database_url() -> str:
     return Settings().scraper_database_url
 
 
+def to_sync_migration_url(database_url: str) -> str:
+    url = make_url(database_url)
+    if url.get_backend_name() != "postgresql":
+        return database_url
+    if url.drivername in {"postgresql", "postgresql+asyncpg", "postgresql+psycopg_async"}:
+        return str(url.set(drivername="postgresql+psycopg"))
+    return database_url
+
+
 def run_migrations_offline() -> None:
+    database_url = to_sync_migration_url(get_database_url())
     context.configure(
-        url=get_database_url(),
+        url=database_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -37,7 +48,7 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     section = config.get_section(config.config_ini_section, {})
-    section["sqlalchemy.url"] = get_database_url()
+    section["sqlalchemy.url"] = to_sync_migration_url(get_database_url())
     connectable = engine_from_config(
         section,
         prefix="sqlalchemy.",

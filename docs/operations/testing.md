@@ -105,6 +105,7 @@ Minimum smoke checks:
 | Source health | Adapter health reports safe status without credentials |
 | Sync dry-run | Sync validates shape without mutating production DB |
 | Redaction | Logs and artifacts contain no token/cookie/session strings |
+| Uvicorn local boot | ASGI app boots successfully from `src` module path |
 
 ## Local Verification Commands
 
@@ -120,6 +121,7 @@ uv run pytest tests/integration
 uv run pytest tests/smoke
 uv run pytest
 uv run python scripts/check_release_readiness.py
+RUNTIME_ENV_FILE=.env.production.example docker compose --env-file .env.production.example config --no-env-resolution
 ```
 
 Integration tests use isolated test databases. The default local integration baseline creates temporary SQLite databases, applies Alembic migrations, and then exercises repository writes and API reads against that migrated schema. This keeps routine verification safe when no PostgreSQL test instance is available.
@@ -137,6 +139,18 @@ PYTHONPATH=src uv run python -m cli.smoke config --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
 uv run pytest tests/smoke
+```
+
+Uvicorn local boot verification:
+
+```bash
+PYTHONPATH=src uv run uvicorn api.app:create_app --factory --host 127.0.0.1 --port 8000
+```
+
+The automated smoke suite includes a runtime boot regression check:
+
+```bash
+uv run pytest tests/smoke/test_runtime_boot.py
 ```
 
 The dry-run command reads the sanitized Dealls fixture, parses the list payload, maps one job into the canonical schema, and prints a compact JSON result.

@@ -4,14 +4,15 @@ set -euo pipefail
 
 APP_DIR="${1:?APP_DIR is required}"
 DEPLOY_BRANCH="${2:?DEPLOY_BRANCH is required}"
-IMAGE_NAME="${3:?IMAGE_NAME is required}"
-IMAGE_TAG="${4:?IMAGE_TAG is required}"
-DEFAULT_APP_PORT="${5:-8000}"
-COMPOSE_FILE="${6:-docker-compose.yml}"
-RUNTIME_ENV_FILE="${7:-.env.production}"
-DEPLOY_TARGET="${8:-deploy}"
-EXPECTED_APP_ENV="${9:-}"
-COMPOSE_PROJECT_NAME_VALUE="${10:-bisakerja-scraper}"
+SOURCE_SHA="${3:?SOURCE_SHA is required}"
+IMAGE_NAME="${4:?IMAGE_NAME is required}"
+IMAGE_TAG="${5:?IMAGE_TAG is required}"
+DEFAULT_APP_PORT="${6:-8000}"
+COMPOSE_FILE="${7:-docker-compose.yml}"
+RUNTIME_ENV_FILE="${8:-.env.production}"
+DEPLOY_TARGET="${9:-deploy}"
+EXPECTED_APP_ENV="${10:-}"
+COMPOSE_PROJECT_NAME_VALUE="${11:-bisakerja-scraper}"
 
 log() {
   printf '[deploy] %s\n' "$1"
@@ -87,19 +88,28 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   exit 1
 fi
 
+if ! git merge-base --is-ancestor "$SOURCE_SHA" "origin/$DEPLOY_BRANCH"; then
+  printf \
+    'Source SHA %s is not contained in origin/%s; refusing deploy.\n' \
+    "$SOURCE_SHA" \
+    "$DEPLOY_BRANCH" >&2
+  exit 1
+fi
+
 current_branch="$(git rev-parse --abbrev-ref HEAD)"
 if [ "$current_branch" != "$DEPLOY_BRANCH" ]; then
   git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
 fi
 
-git reset --hard "origin/$DEPLOY_BRANCH"
+git reset --hard "$SOURCE_SHA"
 
 export APP_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
 export PORT="${declared_port:-$DEFAULT_APP_PORT}"
 export APP_PORT="${declared_app_port:-$PORT}"
+export RUNTIME_ENV_FILE
 export COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME_VALUE"
 
-log "Pulling latest application image $APP_IMAGE"
+log "Pulling immutable application image $APP_IMAGE"
 docker compose -f "$COMPOSE_FILE" --env-file "$RUNTIME_ENV_FILE" pull app
 
 log "Applying Alembic migrations"

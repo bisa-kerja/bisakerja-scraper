@@ -63,7 +63,15 @@ docker run --rm --env-file .env -p 8000:8000 bisakerja-scraper:local
 Run the published image through Compose:
 
 ```bash
-APP_IMAGE=ghcr.io/bisa-kerja/bisakerja-scraper:develop docker compose --env-file .env.production up -d
+APP_IMAGE=ghcr.io/bisa-kerja/bisakerja-scraper:develop \
+RUNTIME_ENV_FILE=.env.production \
+docker compose --env-file .env.production up -d
+```
+
+Render deployment config from the example env file without resolving service env files:
+
+```bash
+RUNTIME_ENV_FILE=.env.production.example docker compose --env-file .env.production.example config --no-env-resolution
 ```
 
 Run smoke checks before deploying an image:
@@ -94,8 +102,8 @@ Workflow behavior:
 | Publish image | GHCR receives branch tag and immutable SHA tag |
 | Validate secrets | Deployment stops before SSH if required secrets are missing |
 | Write env file | VPS receives `.env.production` from GitHub environment secret |
-| Sync checkout | Remote repository is reset to the deploy branch only when clean |
-| Pull image | Compose pulls the selected GHCR image |
+| Sync checkout | Remote repository is reset to the exact build commit SHA only when clean |
+| Pull image | Compose pulls the immutable GHCR SHA tag from the same build run |
 | Migrate | `alembic upgrade head` runs before app startup |
 | Start app | Compose starts the `app` service and waits for health |
 | Verify | `/health/live` and `/health/ready` pass on localhost |

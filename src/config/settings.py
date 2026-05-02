@@ -159,8 +159,17 @@ class Settings(BaseSettings):
     def validate_database_url(cls, value: str | None) -> str | None:
         if value is None:
             return value
-        if not value.startswith(("postgresql://", "postgresql+asyncpg://")):
-            raise ValueError("database URL must use postgresql or postgresql+asyncpg")
+        if not value.startswith(
+            (
+                "postgresql://",
+                "postgresql+asyncpg://",
+                "postgresql+psycopg://",
+                "postgresql+psycopg_async://",
+            )
+        ):
+            raise ValueError(
+                "database URL must use postgresql, postgresql+asyncpg, or postgresql+psycopg"
+            )
         return value
 
     @field_validator("cors_origins")

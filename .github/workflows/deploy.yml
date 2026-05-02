@@ -38,6 +38,8 @@ jobs:
       deploy_branch: ${{ steps.meta.outputs.deploy_branch }}
       image_name: ${{ steps.meta.outputs.image_name }}
       image_tag: ${{ steps.meta.outputs.image_tag }}
+      image_branch_tag: ${{ steps.meta.outputs.image_branch_tag }}
+      image_sha_tag: ${{ steps.meta.outputs.image_sha_tag }}
       image_ref: ${{ steps.meta.outputs.image_ref }}
       source_sha: ${{ steps.meta.outputs.source_sha }}
 
@@ -64,13 +66,17 @@ jobs:
           esac
 
           image_name="ghcr.io/${GITHUB_REPOSITORY,,}"
-          image_tag="$deploy_branch"
+          image_branch_tag="$deploy_branch"
           source_sha="$(git rev-parse HEAD)"
+          image_sha_tag="sha-$source_sha"
+          image_tag="$image_sha_tag"
 
           {
             echo "deploy_branch=$deploy_branch"
             echo "image_name=$image_name"
             echo "image_tag=$image_tag"
+            echo "image_branch_tag=$image_branch_tag"
+            echo "image_sha_tag=$image_sha_tag"
             echo "image_ref=$image_name:$image_tag"
             echo "source_sha=$source_sha"
           } >> "$GITHUB_OUTPUT"
@@ -92,8 +98,8 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ${{ steps.meta.outputs.image_name }}:${{ steps.meta.outputs.image_tag }}
-            ${{ steps.meta.outputs.image_name }}:sha-${{ steps.meta.outputs.source_sha }}
+            ${{ steps.meta.outputs.image_name }}:${{ steps.meta.outputs.image_branch_tag }}
+            ${{ steps.meta.outputs.image_name }}:${{ steps.meta.outputs.image_sha_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -176,6 +182,7 @@ jobs:
             bash scripts/deploy/remote-deploy.sh \
               "$REMOTE_PATH" \
               "${{ needs.build-and-push.outputs.deploy_branch }}" \
+              "${{ needs.build-and-push.outputs.source_sha }}" \
               "${{ needs.build-and-push.outputs.image_name }}" \
               "${{ needs.build-and-push.outputs.image_tag }}" \
               "${{ env.DEFAULT_APP_PORT }}" \

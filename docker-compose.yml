@@ -5,7 +5,7 @@ services:
     image: ${APP_IMAGE:-ghcr.io/bisa-kerja/bisakerja-scraper:develop}
     restart: unless-stopped
     env_file:
-      - path: .env.production
+      - path: ${RUNTIME_ENV_FILE:-.env.production}
         required: false
     ports:
       - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8000}:${PORT:-8000}"

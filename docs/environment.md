@@ -53,6 +53,8 @@ Rules:
 - Use separate local/test/staging/production databases.
 - Never use production DB for tests.
 - Do not fallback from scraper DB to backend DB.
+- PostgreSQL URLs may use `postgresql://`, `postgresql+asyncpg://`, or `postgresql+psycopg://`.
+- Alembic online migration uses a sync PostgreSQL driver path and normalizes async PostgreSQL URLs to a sync `psycopg` dialect for migration execution.
 
 ## Queue And Schedule Variables
 

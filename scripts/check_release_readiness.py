@@ -99,6 +99,51 @@ def check_secret_patterns(path: Path) -> list[Finding]:
     return findings
 
 
+def check_deploy_determinism(root: Path) -> list[Finding]:
+    findings: list[Finding] = []
+    deploy_workflow = root / ".github/workflows/deploy.yml"
+    remote_script = root / "scripts/deploy/remote-deploy.sh"
+
+    has_deploy_workflow = deploy_workflow.is_file()
+    has_remote_script = remote_script.is_file()
+
+    if not has_deploy_workflow and not has_remote_script:
+        return []
+    if not has_deploy_workflow:
+        return [Finding(deploy_workflow, "missing deploy workflow")]
+    if not has_remote_script:
+        return [Finding(remote_script, "missing remote deploy script")]
+
+    workflow_text = deploy_workflow.read_text(encoding="utf-8")
+    script_text = remote_script.read_text(encoding="utf-8")
+
+    required_workflow_markers = (
+        'image_sha_tag="sha-$source_sha"',
+        "${{ needs.build-and-push.outputs.source_sha }}",
+        "${{ needs.build-and-push.outputs.image_tag }}",
+    )
+    for marker in required_workflow_markers:
+        if marker not in workflow_text:
+            findings.append(
+                Finding(deploy_workflow, f"deploy workflow missing deterministic marker: {marker}")
+            )
+
+    required_script_markers = (
+        'SOURCE_SHA="${3:?SOURCE_SHA is required}"',
+        'git merge-base --is-ancestor "$SOURCE_SHA" "origin/$DEPLOY_BRANCH"',
+        'git reset --hard "$SOURCE_SHA"',
+    )
+    for marker in required_script_markers:
+        if marker not in script_text:
+            findings.append(
+                Finding(
+                    remote_script,
+                    f"remote deploy script missing deterministic marker: {marker}",
+                )
+            )
+    return findings
+
+
 def run_checks(root: Path) -> list[Finding]:
     doc_files = iter_files(root, ["docs/**/*.md"])
     secret_scan_files = iter_files(
@@ -117,6 +162,7 @@ def run_checks(root: Path) -> list[Finding]:
         findings.extend(check_markdown_links(path, root))
     for path in secret_scan_files:
         findings.extend(check_secret_patterns(path))
+    findings.extend(check_deploy_determinism(root))
     return findings
 
 

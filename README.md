@@ -116,7 +116,7 @@ PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
 Start the API:
 
 ```bash
-uv run uvicorn api.app:create_app --factory --host 0.0.0.0 --port 8000
+PYTHONPATH=src uv run uvicorn api.app:create_app --factory --host 0.0.0.0 --port 8000
 ```
 
 Default local API:
@@ -184,6 +184,12 @@ uv run python scripts/check_release_readiness.py
 
 Database-backed tests must use isolated local or CI database targets. Never point tests at staging or production databases.
 
+For local runtime boot checks without Docker:
+
+```bash
+PYTHONPATH=src uv run uvicorn api.app:create_app --factory --host 127.0.0.1 --port 8000
+```
+
 ## Container Runtime
 
 Build the image:
@@ -201,10 +207,18 @@ docker run --rm --env-file .env -p 8000:8000 bisakerja-scraper:local
 Run Compose with a published image:
 
 ```bash
-APP_IMAGE=ghcr.io/bisa-kerja/bisakerja-scraper:develop docker compose --env-file .env.production up -d
+APP_IMAGE=ghcr.io/bisa-kerja/bisakerja-scraper:develop \
+RUNTIME_ENV_FILE=.env.production \
+docker compose --env-file .env.production up -d
 ```
 
 The image runs Uvicorn as a non-root user and checks `/health/live`.
+
+Render Compose config safely from example env:
+
+```bash
+RUNTIME_ENV_FILE=.env.production.example docker compose --env-file .env.production.example config --no-env-resolution
+```
 
 ## Deployment
 
@@ -219,8 +233,8 @@ The workflow:
 - Builds the Docker image from committed source and `uv.lock`.
 - Pushes branch and SHA tags to GHCR.
 - Writes the configured deployment env file on the VPS.
-- Syncs the remote checkout to the deploy branch.
-- Pulls the selected image.
+- Syncs the remote checkout to the exact build commit SHA.
+- Pulls the immutable SHA-tagged image from the same build run.
 - Runs `alembic upgrade head`.
 - Starts the app through Docker Compose.
 - Checks `/health/live` and `/health/ready`.
