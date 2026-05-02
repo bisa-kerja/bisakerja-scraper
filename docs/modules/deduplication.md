@@ -18,6 +18,7 @@ The deduplication module prevents duplicate normalized jobs inside one source wh
 | Area | Rule |
 | --- | --- |
 | Identity key | Use source platform plus external job id |
+| Fallback identity | Use a deterministic fingerprint only when source external id is missing |
 | Duplicate handling | Upsert same-source records |
 | Freshness | Update `lastSeenAt` on each observed listing |
 | Scope control | Do not merge cross-source jobs in MVP |
@@ -37,11 +38,20 @@ Canonical unique key:
 (sourcePlatformId, externalJobId)
 ```
 
+Fallback fingerprint input:
+
+```text
+sourcePlatform + sourceSlug + title + companyName + sourceUrl
+```
+
+Fallback identity is only a recovery path for records that lack a source external id. It must not replace the primary source identity when `externalJobId` is available.
+
 ## Input And Output
 
 | Input | Output |
 | --- | --- |
 | Valid normalized candidate | Existing row update, new staging row, or quarantine reason |
+| Identity decision | `insert`, `update`, or `quarantine` with a stable dedup reason |
 
 ## Failure Modes
 
@@ -50,6 +60,7 @@ Canonical unique key:
 | Missing identity | Quarantine |
 | Same identity with changed title/company | Update mutable fields and keep audit signal |
 | Conflicting secondary slug | Preserve primary id and flag drift |
+| Same identity with changed slug and changed title/company | Preserve primary id and flag identity collision |
 | Cross-source duplicate suspected | Keep separate records; future merge scope |
 
 ## Observability
@@ -60,6 +71,7 @@ Track:
 - Updated rows.
 - Duplicate ratio.
 - Identity drift count.
+- Identity collision count.
 - Quarantine count.
 
 ## Tests
@@ -76,4 +88,3 @@ Track:
 - [Database Design](../database.md)
 - [Domain Entities](../references/domain-entities.md)
 - [Freshness Module](./freshness.md)
-

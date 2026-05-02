@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from core.errors import NormalizeError
+from modules.jobs.dates import parse_absolute_datetime
+from modules.jobs.dates import utc_now as _utc_now
+from modules.jobs.salary import normalize_salary
 from modules.jobs.schemas import (
     CanonicalJobSchema,
     CanonicalJobStatus,
     EmploymentType,
     SalaryPeriod,
-    SalarySchema,
     WorkType,
 )
 from shared.text import clean_text
@@ -44,17 +46,12 @@ def validate_mapped_job(
     return SourceMapperResult(job=job, field_provenance=field_provenance)
 
 
-def utc_now() -> datetime:
-    return datetime.now(UTC)
-
-
 def parse_datetime(value: Any) -> datetime | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
+    return parse_absolute_datetime(value)
+
+
+def utc_now() -> datetime:
+    return _utc_now()
 
 
 def optional_str(value: Any) -> str | None:
@@ -147,21 +144,14 @@ def salary_or_none(
     period: Any = None,
     display: Any = None,
 ) -> dict[str, Any] | None:
-    min_value = optional_int(min_amount)
-    max_value = optional_int(max_amount)
-    currency_value = optional_str(currency)
-    period_value = map_salary_period(period)
-    display_value = optional_str(display)
-    if not any([min_value is not None, max_value is not None, currency_value, display_value]):
-        return None
-    salary = SalarySchema(
-        min_amount=min_value,
-        max_amount=max_value,
-        currency=currency_value,
-        period=period_value,
-        display=display_value,
+    normalized = normalize_salary(
+        min_amount=min_amount,
+        max_amount=max_amount,
+        currency=currency,
+        period=period,
+        label=display,
     )
-    return salary.model_dump()
+    return normalized.salary.model_dump() if normalized.salary else None
 
 
 def map_salary_period(value: Any) -> SalaryPeriod | None:

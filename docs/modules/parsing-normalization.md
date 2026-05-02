@@ -62,12 +62,39 @@ Presentation-only fields:
 
 | Field | Rule |
 | --- | --- |
-| Salary | Unknown stays `null`; never infer exact number from vague label |
+| Salary | Unknown stays `null`; structured ranges and reliable labels normalize into min, max, currency, period, and display label |
 | HTML | Sanitize before staging, enrichment, display, or model input |
 | Raw HTML | Keep only in raw payload storage; canonical `description` and `requirements` contain clean text |
-| Relative labels | Keep display-only unless timestamp parser is documented |
+| Dates | Absolute timestamps normalize to timezone-aware UTC datetimes |
+| Relative labels | Keep display-only; do not convert labels such as `3 hari yang lalu` into fake timestamps |
 | Tags/skills | Keep only mapped canonical tags or skill names |
 | UI/noise | Drop tracking, experiment, source UI state, user-specific flags |
+
+## Salary Normalization
+
+Salary normalization accepts source-provided numeric fields first, then parses reliable source labels when structured fields are absent.
+
+| Input | Output rule |
+| --- | --- |
+| `null`, empty, or absent salary | Keep canonical salary as `null` |
+| Numeric min/max fields | Preserve values and normalize currency/period labels |
+| Indonesian range labels such as `Rp 5 - 8 juta per bulan` | Parse min/max, currency, period, and preserve original label |
+| Vague labels such as `Competitive salary` | Preserve label only; do not invent numbers |
+| Reversed range | Store lower number as min and higher number as max |
+
+Currency normalization keeps ISO-style three-letter codes such as `IDR`, `USD`, and `SGD`. Period normalization uses canonical values for hourly, daily, monthly, yearly, or unknown.
+
+## Posted Date Normalization
+
+Posted date normalization separates canonical time from presentation text.
+
+| Input | Output rule |
+| --- | --- |
+| ISO datetime with `Z` or offset | Convert to timezone-aware UTC |
+| Date-only value | Store UTC midnight for that date |
+| Relative label | Preserve as presentation label only |
+| Invalid date text | Leave canonical `postedAt` empty |
+| Run timestamp | Store as reference metadata for relative-label interpretation, not as `postedAt` |
 
 ## Failure Modes
 
