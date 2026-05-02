@@ -1,7 +1,16 @@
 """Persistence module."""
 
 from modules.persistence.base import Base
-from modules.persistence.models import NormalizedJob, RawJob, ScrapeRun, SyncEvent
+from modules.persistence.models import (
+    AIRequestLog,
+    JobRequirementStaging,
+    JobSkillStaging,
+    NormalizedJob,
+    RawJob,
+    ScrapeRun,
+    StageJob,
+    SyncEvent,
+)
 from modules.persistence.repositories import (
     JobListFilters,
     JobPersistenceRepository,
@@ -14,9 +23,13 @@ from modules.persistence.repositories import (
 
 __all__ = [
     "Base",
+    "AIRequestLog",
+    "JobRequirementStaging",
+    "JobSkillStaging",
     "NormalizedJob",
     "RawJob",
     "ScrapeRun",
+    "StageJob",
     "SyncEvent",
     "JobListFilters",
     "JobPersistenceRepository",

@@ -87,7 +87,7 @@ Do not update the normalized contract from one broken payload. Confirm whether t
 | Indicators | Enrichment failure rate rises; AI batch timeout; invalid model response |
 | Impact | Jobs may sync without enriched skills/requirements if policy allows |
 | First checks | Batch size, queue depth, model timeout, invalid output category |
-| Isolation | Re-run one sanitized normalized job through enrichment worker |
+| Isolation | Re-run one sanitized normalized job through enrichment worker and inspect the matching AI request log |
 | Owner | Data ingestion owner; model owner if model dependency fails |
 
 Scrape and sync should not be marked failed only because enrichment is degraded unless required fields depend on enrichment.
@@ -104,7 +104,26 @@ AI provider error classes:
 
 Invalid enrichment output must not be written into normalized job data. Re-run only with safe normalized job text, never with raw source payloads or credentials.
 
-## Scenario 6: Sync To Main DB Fails
+AI request audit rows store provider/model metadata, safe base host alias, latency, status, retry count, request hash, and response summary. They must not store API keys, raw prompts, raw source payloads, request headers, cookies, bearer tokens, or full provider responses.
+
+## Scenario 6: Stage Queue Job Dead-Letters
+
+| Area | Detail |
+| --- | --- |
+| Indicators | `stage_jobs.status = dead-letter`, queue depth grows, downstream stage counts stop increasing |
+| Impact | One stage chain may stop while other source or stage work continues |
+| First checks | `job_type`, `correlation_id`, `attempt_count`, `max_attempts`, `error_category`, related run id |
+| Isolation | Replay only the failed job type with the same safe payload after the underlying issue is fixed |
+| Owner | Data ingestion owner |
+
+Queue recovery rules:
+
+- Do not mutate raw payloads or credentials to replay a job.
+- Confirm the handler is idempotent before manual replay.
+- Preserve the original correlation id when enqueueing replacement work.
+- Dead-letter rows require operator review before replay.
+
+## Scenario 7: Sync To Main DB Fails
 
 | Area | Detail |
 | --- | --- |
@@ -122,7 +141,7 @@ Sync triage rules:
 - `dead-letter` rows require operator review before replay.
 - Response summaries must not contain service tokens, cookies, raw headers, or raw source payloads.
 
-## Scenario 7: Jobs Become Stale After Partial Run
+## Scenario 8: Jobs Become Stale After Partial Run
 
 | Area | Detail |
 | --- | --- |
@@ -134,7 +153,7 @@ Sync triage rules:
 
 Never expire all jobs from a source after a failed or partial source run.
 
-## Scenario 8: Raw Artifact Safety Failure
+## Scenario 9: Raw Artifact Safety Failure
 
 | Area | Detail |
 | --- | --- |

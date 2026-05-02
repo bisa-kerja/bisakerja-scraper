@@ -7,6 +7,7 @@ from uuid import uuid4
 from sqlalchemy import (
     JSON,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -56,6 +57,8 @@ class ScrapeRun(Base):
 
     raw_jobs: Mapped[list[RawJob]] = relationship(back_populates="scrape_run")
     sync_events: Mapped[list[SyncEvent]] = relationship(back_populates="scrape_run")
+    ai_request_logs: Mapped[list[AIRequestLog]] = relationship(back_populates="scrape_run")
+    stage_jobs: Mapped[list[StageJob]] = relationship(back_populates="scrape_run")
 
     __table_args__ = (
         Index(
@@ -125,6 +128,12 @@ class NormalizedJob(Base):
 
     raw_job: Mapped[RawJob | None] = relationship(back_populates="normalized_jobs")
     sync_events: Mapped[list[SyncEvent]] = relationship(back_populates="normalized_job")
+    ai_request_logs: Mapped[list[AIRequestLog]] = relationship(back_populates="normalized_job")
+    skills_staging: Mapped[list[JobSkillStaging]] = relationship(back_populates="normalized_job")
+    requirements_staging: Mapped[list[JobRequirementStaging]] = relationship(
+        back_populates="normalized_job"
+    )
+    stage_jobs: Mapped[list[StageJob]] = relationship(back_populates="normalized_job")
 
     __table_args__ = (
         UniqueConstraint(
@@ -172,4 +181,150 @@ class SyncEvent(Base):
             "payload_hash",
             name="sync_events_target_job_payload_unique",
         ),
+    )
+
+
+class AIRequestLog(Base):
+    __tablename__ = "ai_request_logs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    scrape_run_id: Mapped[str | None] = mapped_column(ForeignKey("scrape_runs.id"))
+    normalized_job_id: Mapped[str | None] = mapped_column(ForeignKey("normalized_jobs.id"))
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    base_url_alias: Mapped[str | None] = mapped_column(String(255))
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    request_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    response_summary: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    error_category: Mapped[str | None] = mapped_column(String(128))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    scrape_run: Mapped[ScrapeRun | None] = relationship(back_populates="ai_request_logs")
+    normalized_job: Mapped[NormalizedJob | None] = relationship(back_populates="ai_request_logs")
+    skills_staging: Mapped[list[JobSkillStaging]] = relationship(back_populates="ai_request_log")
+    requirements_staging: Mapped[list[JobRequirementStaging]] = relationship(
+        back_populates="ai_request_log"
+    )
+
+    __table_args__ = (
+        Index("ai_request_logs_job_created_at_idx", "normalized_job_id", "created_at"),
+        Index("ai_request_logs_status_created_at_idx", "status", "created_at"),
+    )
+
+
+class JobSkillStaging(Base):
+    __tablename__ = "job_skills_staging"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    normalized_job_id: Mapped[str] = mapped_column(ForeignKey("normalized_jobs.id"), nullable=False)
+    ai_request_log_id: Mapped[str | None] = mapped_column(ForeignKey("ai_request_logs.id"))
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    normalized_value: Mapped[str] = mapped_column(String(255), nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    normalized_job: Mapped[NormalizedJob] = relationship(back_populates="skills_staging")
+    ai_request_log: Mapped[AIRequestLog | None] = relationship(back_populates="skills_staging")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "normalized_job_id",
+            "normalized_value",
+            name="job_skills_staging_job_value_unique",
+        ),
+        Index("job_skills_staging_job_idx", "normalized_job_id"),
+    )
+
+
+class JobRequirementStaging(Base):
+    __tablename__ = "job_requirements_staging"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    normalized_job_id: Mapped[str] = mapped_column(ForeignKey("normalized_jobs.id"), nullable=False)
+    ai_request_log_id: Mapped[str | None] = mapped_column(ForeignKey("ai_request_logs.id"))
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    requirement_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    normalized_value: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    normalized_job: Mapped[NormalizedJob] = relationship(back_populates="requirements_staging")
+    ai_request_log: Mapped[AIRequestLog | None] = relationship(
+        back_populates="requirements_staging"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "normalized_job_id",
+            "requirement_type",
+            "normalized_value",
+            name="job_requirements_staging_job_type_value_unique",
+        ),
+        Index("job_requirements_staging_job_idx", "normalized_job_id"),
+    )
+
+
+class StageJob(Base):
+    __tablename__ = "stage_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    scrape_run_id: Mapped[str | None] = mapped_column(ForeignKey("scrape_runs.id"))
+    normalized_job_id: Mapped[str | None] = mapped_column(ForeignKey("normalized_jobs.id"))
+    job_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    correlation_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_category: Mapped[str | None] = mapped_column(String(128))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    scrape_run: Mapped[ScrapeRun | None] = relationship(back_populates="stage_jobs")
+    normalized_job: Mapped[NormalizedJob | None] = relationship(back_populates="stage_jobs")
+
+    __table_args__ = (
+        Index("stage_jobs_status_available_at_idx", "status", "available_at"),
+        Index("stage_jobs_correlation_id_idx", "correlation_id"),
+        Index("stage_jobs_scrape_run_id_idx", "scrape_run_id"),
     )

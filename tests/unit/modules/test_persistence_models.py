@@ -11,7 +11,16 @@ from modules.persistence import Base, RawJob, ScrapeRun
 def test_persistence_metadata_contains_required_tables_and_constraints() -> None:
     tables = Base.metadata.tables
 
-    assert {"scrape_runs", "raw_jobs", "normalized_jobs", "sync_events"} <= set(tables)
+    assert {
+        "scrape_runs",
+        "raw_jobs",
+        "normalized_jobs",
+        "sync_events",
+        "ai_request_logs",
+        "job_skills_staging",
+        "job_requirements_staging",
+        "stage_jobs",
+    } <= set(tables)
     assert any(
         constraint.name == "raw_jobs_source_external_id_unique"
         for constraint in tables["raw_jobs"].constraints
@@ -67,3 +76,6 @@ def test_sqlite_schema_creation_has_expected_indexes() -> None:
 
     assert "sync_events_status_attempted_at_idx" in indexes
     assert "sync_events_source_external_id_idx" in indexes
+
+    queue_indexes = {index["name"] for index in inspect(engine).get_indexes("stage_jobs")}
+    assert "stage_jobs_status_available_at_idx" in queue_indexes

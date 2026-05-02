@@ -28,6 +28,7 @@ Scraper observability must make ingestion, normalization, enrichment, sync, and 
 | `runId` | One scrape pipeline execution | Required for scheduler, source adapter, normalization, enrichment, sync, and freshness logs |
 | `sourceRunId` | One source inside one run | Required for per-source counts and partial failure isolation |
 | `requestId` | Internal HTTP request | Accept trusted incoming value or generate one |
+| `correlationId` | Cross-stage queue chain | Required when stage jobs enqueue follow-up work |
 | `jobIdentity` | One normalized job | Log only `sourcePlatform` plus `externalJobId`; do not log full raw payload |
 
 Every pipeline log should include `runId`, `stage`, `sourcePlatform` when applicable, `status`, and `durationMs`.
@@ -116,6 +117,9 @@ Error logs should include the category, stage, source platform, external job id 
 | `normalized_records_written` | Source | Confirm mapper output volume |
 | `quarantined_records` | Source, reason | Track invalid identity or unsafe fields |
 | `enrichment_failure_rate` | Batch, model/task | Detect AI enrichment degradation |
+| `ai_request_latency_ms` | Provider, model, status | Detect model/provider latency regressions |
+| `stage_queue_depth` | Job type, status | Detect blocked stage workers |
+| `dead_letter_count` | Job type, error category | Detect recovery backlog requiring operator action |
 | `retry_count` | Source, stage | Detect throttling or unstable dependency |
 
 ## Health Signals
@@ -129,6 +133,7 @@ Error logs should include the category, stage, source platform, external job id 
 | Normalizer | Required identity/title/company/source URL present | Quarantine rate rises |
 | Deduplicator | Stable ratio by source | Sudden duplicate spike or identity collisions |
 | Enrichment | Batches complete within expected latency | AI timeout, invalid response, or dead letter growth |
+| Stage queue | Pending jobs drain and failed jobs retry within policy | Queue depth grows, jobs remain running too long, or dead-letter count rises |
 | Sync writer | Upserts complete and counts match staging | Sync latency rises or DB write fails |
 | Freshness | `lastSeenAt` within documented threshold | Stale count exceeds threshold |
 
@@ -142,6 +147,7 @@ Production alerting should start with these conditions:
 - Parse failure rate spikes for one source.
 - Dedup ratio changes sharply from baseline.
 - Sync latency or sync failure blocks backend handoff.
+- Stage queue dead-letter count rises.
 - Stale jobs exceed freshness threshold.
 - Source auth failure appears for JobStreet.
 - Kalibrr `buildId` refresh repeatedly fails.
@@ -161,6 +167,7 @@ For each incident, collect:
 - Stage where failure started.
 - Source status code class or dependency result.
 - Counts before and after failure.
+- Queue job id and correlation id when a stage job is involved.
 - First safe error category.
 - Last successful run time.
 - Recent deploy or config change.

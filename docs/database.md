@@ -46,6 +46,10 @@ The scraper keeps a minimal local operational schema for replay, normalization, 
 | `scrape_runs` | One scrape, normalization, enrichment, or sync execution summary | `source_platform`, `stage`, `status`, counts, timestamps, sanitized error fields |
 | `raw_jobs` | One captured source job payload after request metadata has been sanitized | `scrape_run_id`, `source_platform`, `external_id`, `raw_payload`, `scraped_at` |
 | `normalized_jobs` | Canonical job candidate ready for sync | `source_platform`, `external_id`, `title`, `company_name`, `source_url`, `status`, `last_seen_at` |
+| `ai_request_logs` | Sanitized AI provider audit trail for enrichment attempts | `provider`, `model`, `base_url_alias`, `latency_ms`, `status`, `retry_count`, `request_hash`, `response_summary` |
+| `job_skills_staging` | Enriched or source-provided job skills before Backend API sync | `normalized_job_id`, `source`, `normalized_value`, `confidence`, `ai_request_log_id` |
+| `job_requirements_staging` | Structured requirement rows before Backend API sync | `normalized_job_id`, `source`, `requirement_type`, `normalized_value`, `confidence`, `ai_request_log_id` |
+| `stage_jobs` | Local DB-backed queue for decoupled pipeline stages | `job_type`, `status`, `payload_json`, `correlation_id`, `attempt_count`, `max_attempts`, timestamps |
 | `sync_events` | Backend handoff attempt and result metadata | `scrape_run_id`, `normalized_job_id`, `source_platform`, `external_id`, `status`, `target`, `payload_hash`, `attempt_count`, `response_summary`, timestamps |
 
 Identity constraints:
@@ -54,6 +58,9 @@ Identity constraints:
 - `normalized_jobs(source_platform, external_id)` is unique.
 - `sync_events(target, normalized_job_id, payload_hash)` is unique for idempotent retry.
 - `sync_events` keeps source identity indexed for retry and audit lookup.
+- `job_skills_staging(normalized_job_id, normalized_value)` is unique.
+- `job_requirements_staging(normalized_job_id, requirement_type, normalized_value)` is unique.
+- `stage_jobs(status, available_at)` is indexed for worker claim order.
 
 Schema changes are managed with Alembic migrations. Migrations must support upgrade and downgrade in isolated test databases before release.
 
@@ -109,6 +116,57 @@ Audit fields:
 | `error_message` | Short safe message without secrets, raw headers, or raw payload bodies |
 
 Cross-source duplicate merge is future scope.
+
+## AI Enrichment Audit Model
+
+AI request logs are operational audit records, not prompt archives.
+
+| Field | Rule |
+| --- | --- |
+| `provider` | Stable provider label such as `openai-compatible` |
+| `model` | Model name used for the request |
+| `base_url_alias` | Safe host only; never store full URL with path, query, or credentials |
+| `latency_ms` | End-to-end request latency for the enrichment attempt |
+| `status` | `success` or `failed` |
+| `retry_count` | Number of worker-level retries before final result |
+| `request_hash` | Stable hash of the safe normalized enrichment input |
+| `response_summary` | Counts, confidence, status code, or stable error category only |
+| `error_message` | Short sanitized message without prompt, raw payload, headers, or secrets |
+
+The scraper must not store API keys, raw prompts, raw source payloads, request headers, cookies, bearer tokens, or full AI provider responses in this table.
+
+## Enrichment Staging
+
+Skill and requirement staging rows keep enrichment output separate from the larger normalized job payload.
+
+| Table | Idempotency key | Valid values |
+| --- | --- | --- |
+| `job_skills_staging` | `normalized_job_id + normalized_value` | Non-empty normalized skill text |
+| `job_requirements_staging` | `normalized_job_id + requirement_type + normalized_value` | `SKILL`, `EXPERIENCE`, `EDUCATION`, `OTHER` |
+
+Each row stores its source and optional `ai_request_log_id` so operators can trace which enrichment attempt produced or last updated the value. Re-running enrichment updates the existing row instead of creating duplicates.
+
+## Local Stage Queue
+
+The first queue backend is the local scraper database. This keeps recovery deterministic and avoids a required Redis dependency for routine local and CI verification.
+
+| Status | Meaning |
+| --- | --- |
+| `pending` | Ready when `available_at` is reached |
+| `running` | Claimed by a worker |
+| `completed` | Handler finished successfully |
+| `failed` | Attempt failed but retries remain |
+| `dead-letter` | Retry budget is exhausted and operator review is required |
+
+Supported job types:
+
+- `scrape-source`
+- `normalize-raw`
+- `enrich-batch`
+- `sync-batch`
+- `notify-handoff`
+
+Every queued job carries a `correlation_id`. Stage handlers must preserve it when enqueueing downstream work.
 
 ## Retention
 

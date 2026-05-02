@@ -62,6 +62,7 @@ Rules:
 | Persistence | Write staging rows and sync batches | DB constraint error, partial batch rollback |
 | Freshness | Mark seen jobs active and old jobs stale | Partial run must not expire source records |
 | Enrichment | Add skills/requirements from clean text | Model timeout or invalid output does not leak payload |
+| Stage queue | Claim and complete eligible stage jobs | Failed jobs retry then dead-letter with correlation id retained |
 | Documentation sync | Build deterministic bundle manifest | Missing metadata, bad link, path escape, secret pattern |
 
 ## Contract Tests
@@ -172,6 +173,10 @@ The scraper test suite covers:
 - Repository raw and normalized job upsert behavior against a migrated schema.
 - Internal jobs API reads against a migrated isolated database.
 - Backend sync client request contract using in-memory HTTP transport.
+- OpenAI-compatible client boundary, custom base URL usage, structured output parsing, and classified provider errors.
+- AI request audit logging stores request hashes and safe summaries without prompts, raw payloads, or secrets.
+- Enrichment staging upsert behavior for skills and requirements.
+- DB-backed stage queue retry, completion, and dead-letter behavior.
 - CLI smoke checks for config, health, and fixture-backed dry-run behavior.
 - Release readiness checks for documentation metadata, local links, and secret-safe docs/fixtures/raw captures.
 

@@ -36,6 +36,7 @@ External Job Platforms
 | `db/repositories` | Local raw/staging persistence | Raw payloads, staging rows | Durable local records | Duplicate records, transaction failure |
 | `services/normalizer` | Raw-to-canonical mapping | Source payload | Normalized job/company/requirement shape | Missing identity, malformed fields |
 | `services/enrichment` | Skill extraction and requirement structuring | Safe job text | Skill/requirement enrichment | Provider timeout, rate limit, low-confidence output |
+| `services/queue` | Local stage job dispatch and retry tracking | Stage payload and correlation id | Completed, failed, or dead-letter stage job | Worker unavailable, retry exhaustion |
 | `services/sync` | Main DB upsert preparation | Staging rows | Upserted normalized records | Partial chunk failure, FK mismatch |
 | `services/pipeline` | Orchestration | Run config | Ingestion run state | Stage dependency failure |
 | `workers` | Scheduled/background execution | Cron/Celery task | Batch execution | Worker unavailable, overlapping run |
@@ -95,6 +96,6 @@ Cross-source merge is future scope.
 | Raw capture | Payload too large or contains sensitive headers | Store sanitized body/metadata; redact captured headers |
 | Normalize | Missing title/company/identity, HTML unsafe, unexpected field shape | Quarantine row, keep raw capture, update mapper |
 | Enrich | Provider timeout/rate limit | Batch retry; allow normalized job sync without enrichment if safe |
+| Queue | Stage job retry limit exhausted | Move to dead-letter with correlation id and safe error metadata |
 | Sync | FK/constraint conflict | Resolve source platform/company first; retry chunk |
 | Notify | Preference/job match failure | Keep notification recovery outside scraper core |
-

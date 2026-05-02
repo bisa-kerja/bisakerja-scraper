@@ -30,6 +30,8 @@ This matrix defines the minimum evidence needed before scraper docs, code, or op
 | Persistence | Staging rows and sync batches write successfully | Batch error rolls back or isolates failed rows | DB integration test |
 | Freshness | `lastSeenAt` updates for seen jobs | Partial source run does not expire unseen jobs | Freshness test |
 | Sync | Main DB shape receives upsert-ready rows | Sync failure keeps staging recoverable | Sync dry-run/test |
+| AI audit | Sanitized request metadata and summaries are stored | API key, raw prompt, raw payload, headers, and tokens are not persisted | Unit test result |
+| Stage queue | Eligible jobs are claimed and completed | Failed jobs retry then dead-letter after max attempts | Queue unit test result |
 | Docs sync | Bundle manifest maps docs deterministically | Path escape or missing metadata rejects bundle | Docs check result |
 
 ## Source Coverage Matrix
