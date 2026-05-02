@@ -32,6 +32,29 @@ Scraper observability must make ingestion, normalization, enrichment, sync, and 
 
 Every pipeline log should include `runId`, `stage`, `sourcePlatform` when applicable, `status`, and `durationMs`.
 
+## Run State Tracking
+
+Each pipeline execution creates one run record with status `started`, then finishes as `completed`, `partial`, or `failed`.
+
+Run records store:
+
+- `startedAt` and `finishedAt`.
+- Source platform scope, usually `all` for a full pipeline run.
+- Stage scope, usually `pipeline` for full orchestration.
+- Counts for `fetched`, `parsed`, `normalized`, `persisted`, and `skipped`.
+- Per-source count summaries.
+- Sanitized error summaries with source platform, category, message, external id when available, and retryability.
+
+Status rules:
+
+| Status | Rule |
+| --- | --- |
+| `completed` | All enabled sources finish without recorded errors |
+| `partial` | At least one source fails while another source can still complete |
+| `failed` | The run cannot continue or partial mode is disabled |
+
+Partial failures must not be reported as full success. Count totals must match source-level summaries so operators can isolate source drift, persistence failures, or sync failures from one run id.
+
 ## Logger Implementation
 
 Runtime logging uses `structlog` with JSON rendering. The logger binds context through Python context variables so request handlers, jobs, adapters, normalizers, persistence code, and sync workers can add correlation fields without passing logger metadata through every function call.

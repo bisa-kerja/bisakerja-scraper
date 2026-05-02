@@ -31,6 +31,20 @@ The persistence module stores raw, staging, and sync-ready records in scraper-ow
 | Main job tables | Sync service | Upsert source platform, company, job, requirements, skills |
 | Backend user tables | None | Scraper must not write |
 
+## Repository Behavior
+
+Persistence writes use the source-local identity pair `sourcePlatform + externalId` as the idempotency key for both raw and normalized records.
+
+Required behavior:
+
+- Re-running the same fixture or source page updates the existing raw row instead of inserting a duplicate.
+- Normalized job rows update title, company, URLs, status, payload snapshot, `postedAt`, and `lastSeenAt` on repeat writes.
+- Raw and normalized writes for one job share a transaction boundary.
+- If the normalized write fails after raw storage starts, the raw insert is rolled back with the same transaction.
+- Payload hashes are deterministic JSON SHA-256 values so replay checks can detect source payload changes.
+
+The writer accepts canonical job models only after mapper validation. Source-specific payloads remain in raw storage and are not exposed through normalized output fields.
+
 ## Failure Modes
 
 | Failure | Handling |
@@ -67,4 +81,3 @@ Track:
 - [Database Design](../database.md)
 - [Scraper API Contract](../integrations/scraper-api-contract.md)
 - [API Response Standard](../api-response-standard.md)
-

@@ -28,6 +28,20 @@ source request
   -> Backend API read
 ```
 
+## Pipeline Orchestration
+
+The scraper pipeline executes source work through the ordered stages `scrape -> normalize -> enrich -> sync`.
+
+Orchestration rules:
+
+- Each run gets one `runId` and one correlation id.
+- Source adapters are invoked through an injected source interface so tests can run without external network calls.
+- Fetch runs per source, then raw records are normalized through the source mapper.
+- Per-source normalization and enrichment use bounded concurrency.
+- Persistence writes raw and normalized records idempotently before sync handoff.
+- The sync stage is a hook for backend handoff; if no sync client is configured, the local pipeline still records persisted output.
+- Partial mode allows one source to fail without stopping other sources.
+
 ## Stage Contracts
 
 | Stage | Input | Output | Owner | Required checks |
@@ -71,4 +85,3 @@ A job can become visible in normal search only after it has:
 - Source/apply URL.
 - `lastSeenAt`.
 - Safe text fields if description or requirements are present.
-
