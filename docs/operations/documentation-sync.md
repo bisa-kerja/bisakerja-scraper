@@ -5,8 +5,8 @@ owner: data-ingestion-owner
 reviewers:
   - platform-docs-maintainer
   - backend-owner
-doc_status: draft
-last_reviewed: 2026-05-01
+doc_status: active
+last_reviewed: 2026-05-02
 ---
 
 # Scraper Documentation Sync
@@ -33,6 +33,29 @@ Central landing pages are central-owned and must not be overwritten by scraper s
 | Merge sync | Merge to scraper default branch | `synced/**` | Keep latest scraper docs fresh |
 | Release sync | Scraper release tag or release event | `versioned/<release>/**` | Preserve release-specific docs |
 | Scheduled reconciliation | Central docs scheduled job | Report or refresh `synced/**` | Detect drift and retry failed sync |
+
+## Active Automation
+
+The active service-side sync job lives in `.github/workflows/ci.yml` as `sync-docs`. It runs after the quality job on push to `develop` or `main`.
+
+Automation steps:
+
+| Step | Output |
+| --- | --- |
+| Quality gates | Formatting, lint, tests, smoke checks, and release readiness pass |
+| Bundle preparation | `.tmp/docs-sync` is created from `docs/**` |
+| Format conversion | Markdown files are converted from `.md` to `.mdx` |
+| Link normalization | Local `.md` links are rewritten to `.mdx` |
+| Manifest creation | `manifest.json` records service, source ref, SHA, mode, and doc count |
+| Publish | Bundle is pushed to `docs/services/scraper-api/synced` in central docs |
+
+Required GitHub secret:
+
+| Secret | Purpose |
+| --- | --- |
+| `DOCS_REPO_TOKEN` | Token allowed to push to `bisa-kerja/bisakerja-docs` |
+
+The deploy workflow is separate from docs publication. Deploy success is not required for docs sync, but docs sync only runs after CI validation succeeds.
 
 ## Path Mapping
 
@@ -62,8 +85,11 @@ Expected bundle:
 ```text
 sync-bundle/
   manifest.json
-  docs/
-  assets/
+  *.mdx
+  operations/
+  modules/
+  integrations/
+  overview/
 ```
 
 Minimum `manifest.json`:
@@ -138,4 +164,3 @@ Documentation sync must behave like controlled publish:
 - [Deployment Overview](./deployment-overview.md)
 - [Verification Matrix](./verification-matrix.md)
 - [Metadata Standard](../standards/metadata-standard.md)
-

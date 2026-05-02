@@ -15,7 +15,7 @@ Continuous integration protects the scraper from regressions before code is merg
 
 ## Workflow
 
-The workflow lives at `.github/workflows/ci.yml` and runs on push, pull request, and manual dispatch.
+The workflow lives at `.github/workflows/ci.yml` and runs on push, pull request, and manual dispatch for `develop` and `main`.
 
 The workflow uses:
 
@@ -24,6 +24,17 @@ The workflow uses:
 - A read-only GitHub token permission scope.
 - Cached `uv` dependencies.
 - No source credentials or production database credentials.
+
+## Auto Docs Sync
+
+The `sync-docs` job runs after quality gates pass on push to `develop` or `main`.
+
+| Step | Command or action | Purpose |
+| --- | --- | --- |
+| Prepare bundle | `python scripts/prepare_docs_sync_bundle.py` | Copy `docs/**`, convert `.md` to `.mdx`, rewrite local links, and write manifest |
+| Publish bundle | `cpina/github-action-push-to-another-repository` | Push service docs into central docs |
+
+The job requires `DOCS_REPO_TOKEN`. It publishes to `docs/services/scraper-api/synced` and must not overwrite central service landing pages.
 
 ## Required Gates
 

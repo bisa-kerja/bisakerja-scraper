@@ -5,8 +5,8 @@ owner: data-ingestion-owner
 reviewers:
   - platform-docs-maintainer
   - backend-owner
-doc_status: draft
-last_reviewed: 2026-05-01
+doc_status: active
+last_reviewed: 2026-05-02
 ---
 
 # Scraper Deployment Operations
@@ -60,6 +60,12 @@ Run the API with an explicit env file:
 docker run --rm --env-file .env -p 8000:8000 bisakerja-scraper:local
 ```
 
+Run the published image through Compose:
+
+```bash
+APP_IMAGE=ghcr.io/bisa-kerja/bisakerja-scraper:develop docker compose --env-file .env.production up -d
+```
+
 Run smoke checks before deploying an image:
 
 ```bash
@@ -75,6 +81,46 @@ Container rules:
 - Do not run the runtime process as root.
 - Use `/health/live` for process health and `/health/ready` for database readiness.
 - Run migrations before starting a deployment that depends on schema changes.
+
+## GitHub Deployment Workflow
+
+The active deployment workflow lives at `.github/workflows/deploy.yml`. It deploys `develop` automatically to the staging environment and supports manual dispatch for `develop` or `main`.
+
+Workflow behavior:
+
+| Stage | Expected result |
+| --- | --- |
+| Build image | Docker image is built from committed source and `uv.lock` |
+| Publish image | GHCR receives branch tag and immutable SHA tag |
+| Validate secrets | Deployment stops before SSH if required secrets are missing |
+| Write env file | VPS receives `.env.production` from GitHub environment secret |
+| Sync checkout | Remote repository is reset to the deploy branch only when clean |
+| Pull image | Compose pulls the selected GHCR image |
+| Migrate | `alembic upgrade head` runs before app startup |
+| Start app | Compose starts the `app` service and waits for health |
+| Verify | `/health/live` and `/health/ready` pass on localhost |
+| Diagnose failure | Compose status and recent app logs are collected |
+
+Required GitHub environment secrets:
+
+| Secret | Purpose |
+| --- | --- |
+| `DEPLOY_VPS_HOST` | VPS host |
+| `DEPLOY_VPS_PORT` | SSH port |
+| `DEPLOY_VPS_USERNAME` | SSH user |
+| `DEPLOY_VPS_KEY` | Private SSH key |
+| `DEPLOY_REMOTE_PATH` | Existing remote repository path |
+| `DEPLOY_ENV_FILE` | Full runtime env payload written to `.env.production` |
+| `GHCR_READ_PACKAGES_TOKEN` | Token used by the VPS to pull GHCR image |
+| `GH_USERNAME` | GHCR username for remote login |
+
+Remote prerequisites:
+
+- `DEPLOY_REMOTE_PATH` is a clean git checkout of this repository.
+- The deploy user can run `docker compose`.
+- `git`, `docker`, Docker Compose, and `curl` are installed.
+- Runtime `APP_ENV` matches the workflow target, currently `staging`.
+- Runtime `PORT` is the container port and optional `APP_PORT` is the host port.
 
 ## Normal Deploy Runbook
 

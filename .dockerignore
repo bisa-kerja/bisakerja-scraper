@@ -2,11 +2,13 @@
 .ruff_cache
 .pytest_cache
 .venv
+.tmp
 __pycache__
 *.pyc
 .env
 .env.*
 !.env.example
+!.env.production.example
 raw-response-*.txt
 tasks
 docs-references

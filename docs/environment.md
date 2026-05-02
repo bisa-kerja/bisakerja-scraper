@@ -15,6 +15,8 @@ Scraper configuration must fail fast. Required variables must be explicit in eve
 
 Runtime validation lives in `src/config/settings.py` and uses `pydantic-settings`. Environment variables are read directly from the process environment and from optional `.env` files during local development.
 
+The repository includes `.env.example` for local development and `.env.production.example` for Compose-based deployment. The deployment workflow writes the GitHub `DEPLOY_ENV_FILE` secret to `.env.production` on the target VPS.
+
 ## Groups
 
 | Group | Purpose |
@@ -34,6 +36,7 @@ Runtime validation lives in `src/config/settings.py` and uses `pydantic-settings
 | `APP_NAME` | Yes | `bisakerja-scraper` | Service name in logs/health |
 | `APP_ENV` | Yes | `local` | `local`, `test`, `staging`, `production` |
 | `PORT` | If HTTP exposed | `8000` | Internal API port |
+| `APP_PORT` | If Compose exposes HTTP | `8000` | Host port used by Docker Compose and deploy health checks |
 | `API_PREFIX` | If HTTP exposed | `/api/v1` | Versioned internal API prefix |
 
 ## Database Variables
@@ -158,6 +161,14 @@ Logs must redact source credentials and raw payload bodies.
 - Never include real bearer tokens, cookies, source sessions, or DB credentials.
 - Keep examples aligned with runtime validation.
 - Keep optional secret values absent unless the related feature is enabled, or use safe non-empty placeholders.
+
+## Production Env File Rules
+
+- Keep `.env.production` outside git.
+- Use `.env.production.example` only as a shape reference.
+- Set `APP_ENV` to the deployment target expected by the workflow.
+- Set `PORT` to the container port and `APP_PORT` to the host port when they differ.
+- Store the full runtime payload in the GitHub `DEPLOY_ENV_FILE` environment secret for VPS deployment.
 
 ## Related Docs
 

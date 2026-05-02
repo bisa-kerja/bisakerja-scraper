@@ -1,8 +1,10 @@
 .env
 .env.*
 !.env.example
+!.env.production.example
 
 .venv/
+.tmp/
 .pytest_cache/
 .ruff_cache/
 __pycache__/

@@ -3,8 +3,12 @@ name: CI
 on:
   push:
     branches:
+      - develop
       - main
   pull_request:
+    branches:
+      - develop
+      - main
   workflow_dispatch:
 
 permissions:
@@ -67,3 +71,41 @@ jobs:
 
       - name: Release readiness checks
         run: uv run python scripts/check_release_readiness.py
+
+  sync-docs:
+    name: Sync Service Docs To Central Repo
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - quality
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Prepare docs sync bundle (.md -> .mdx)
+        run: |
+          python scripts/prepare_docs_sync_bundle.py \
+            --source-ref "${{ github.ref_name }}" \
+            --source-sha "${{ github.sha }}"
+
+      - name: Push docs to bisakerja-docs develop
+        uses: cpina/github-action-push-to-another-repository@main
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.DOCS_REPO_TOKEN }}
+        with:
+          source-directory: .tmp/docs-sync
+          destination-github-username: bisa-kerja
+          destination-repository-name: bisakerja-docs
+          user-email: github-actions[bot]@users.noreply.github.com
+          user-name: github-actions[bot]
+          commit-message: >-
+            sync: scraper-api docs from ${{ github.ref_name }} (${{ github.sha }})
+          target-directory: docs/services/scraper-api/synced
+          target-branch: develop

@@ -27,6 +27,8 @@ The scraper is release-ready when its automated gates pass, documentation matche
 | Documentation | Metadata and local links are valid | `uv run python scripts/check_release_readiness.py` |
 | Artifact safety | Docs, fixtures, raw captures, and example env contain no detected secrets | `uv run python scripts/check_release_readiness.py` |
 | Container runtime | Image builds and liveness healthcheck works before deploy | Docker build and healthcheck |
+| Deploy workflow | Image publish, remote branch sync, migration, startup, and health checks are defined | `.github/workflows/deploy.yml` and `scripts/deploy/remote-deploy.sh` |
+| Docs sync | Service docs bundle converts Markdown to MDX and publishes only scraper docs | `uv run python scripts/prepare_docs_sync_bundle.py` |
 
 ## Current Validation Evidence
 
@@ -57,7 +59,7 @@ The scraper is release-ready when its automated gates pass, documentation matche
 | PostgreSQL-specific integration job | SQLite covers repository flow but not every PostgreSQL-specific behavior | `data-ingestion-owner` |
 | Dependency vulnerability audit | CI currently validates lockfile install and tests; advisory review should be added when release policy is finalized | `data-ingestion-owner` |
 | Generated OpenAPI artifact | Consumers need machine-readable route/schema output after route inventory stabilizes | `backend-owner` |
-| Generated docs sync readiness report | Platform docs sync can consume a machine-readable readiness artifact later | `platform-docs-maintainer` |
+| Generated docs sync readiness report | Platform docs sync can consume a richer machine-readable readiness artifact later | `platform-docs-maintainer` |
 | Source drift replay dataset | Larger replay fixtures can catch source schema drift beyond compact CI fixtures | `data-ingestion-owner` |
 | Scheduled freshness report | Operators need automated freshness evidence after daily runs | `data-ingestion-owner` |
 

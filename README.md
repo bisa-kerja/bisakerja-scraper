@@ -1,72 +1,315 @@
 # Bisakerja Scraper
 
-Scraper service for job ingestion, normalization, enrichment, and sync to Bisakerja backend-owned consumers.
+Scraper service for Bisakerja job ingestion, normalization, enrichment, freshness tracking, and sync to backend-owned consumers.
 
-## Runtime
+The service collects external job data from supported sources, stores raw and staging records, normalizes jobs into a stable shape, enriches safe job fields, and prepares sync output for the Bisakerja Backend API boundary.
 
-- Python `>=3.12`
-- Package manager: `uv`
-- Lockfile: `uv.lock`
+## Table of Contents
 
-## Setup
+- [Overview](#overview)
+- [Service Boundary](#service-boundary)
+- [Pipeline](#pipeline)
+- [Tech Stack](#tech-stack)
+- [Getting Started](#getting-started)
+- [Environment Configuration](#environment-configuration)
+- [Available Commands](#available-commands)
+- [Testing And Verification](#testing-and-verification)
+- [Container Runtime](#container-runtime)
+- [Deployment](#deployment)
+- [Documentation Sync](#documentation-sync)
+- [Project Structure](#project-structure)
+- [Contribution Guide](#contribution-guide)
+
+## Overview
+
+Bisakerja Scraper is the data ingestion service for external job platforms. It focuses on reliable collection, replayable raw data, deterministic parsing, deduplication, freshness control, and safe handoff to backend consumers.
+
+This repository owns:
+
+- Source adapters for Dealls, Glints, JobStreet, and Kalibrr.
+- Raw fixture sanitization and source contract tests.
+- Parsing, normalization, deduplication, persistence, enrichment, and sync logic.
+- Scraper API health and internal job access endpoints.
+- Scraper-owned operational docs and docs sync bundle generation.
+- Docker and GitHub Actions deployment support.
+
+This repository does not own:
+
+- Frontend product rendering.
+- User authentication, preferences, bookmarks, or application tracking.
+- Backend public REST contracts consumed by the frontend.
+- Model training or low-level inference internals.
+- Central platform docs landing pages.
+
+## Service Boundary
+
+| Service     | Responsibility                                                                  |
+| ----------- | ------------------------------------------------------------------------------- |
+| Frontend UI | User-facing discovery and application workflows                                 |
+| Backend API | Auth, user workflows, product REST contracts, backend-owned DB access           |
+| Scraper API | Source ingestion, raw/staging data, normalization, enrichment, sync preparation |
+| Model API   | Fit scoring, explanations, and CV analysis                                      |
+| PostgreSQL  | Durable storage for scraper and backend-owned records                           |
+
+Frontend clients must not call Scraper API directly. Backend API is the product-facing API boundary.
+
+## Pipeline
+
+Baseline daily flow:
+
+```text
+01:00 scrape
+  -> 01:30 normalize
+  -> 02:00 enrich
+  -> 03:00 sync
+  -> 05:00-06:00 notify handoff
+```
+
+Pipeline stages must keep raw/staging data replayable. Failed source runs must not expire unseen jobs.
+
+## Tech Stack
+
+| Area                   | Choice                   |
+| ---------------------- | ------------------------ |
+| Runtime                | Python `>=3.12`          |
+| Package manager        | `uv`                     |
+| HTTP framework         | FastAPI                  |
+| Database               | PostgreSQL               |
+| Migrations             | Alembic                  |
+| ORM                    | SQLAlchemy               |
+| Scheduling             | APScheduler              |
+| HTTP client            | HTTPX                    |
+| Parsing                | Selectolax               |
+| AI client              | OpenAI-compatible client |
+| Testing                | Pytest                   |
+| Formatting and linting | Ruff                     |
+| Container              | Docker                   |
+
+## Getting Started
+
+Install dependencies:
 
 ```bash
 uv sync --locked
+```
+
+Create local env:
+
+```bash
 cp .env.example .env
+```
+
+Run tests:
+
+```bash
 uv run pytest
 ```
 
-## Verification
+Run smoke checks:
+
+```bash
+PYTHONPATH=src uv run python -m cli.smoke config --env-file .env.example
+PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
+```
+
+Start the API:
+
+```bash
+uv run uvicorn api.app:create_app --factory --host 0.0.0.0 --port 8000
+```
+
+Default local API:
+
+```text
+http://localhost:8000
+```
+
+## Environment Configuration
+
+Configuration is loaded with `pydantic-settings` and fails fast when required values are missing or invalid.
+
+Important files:
+
+| File                      | Purpose                                              |
+| ------------------------- | ---------------------------------------------------- |
+| `.env.example`            | Local development baseline                           |
+| `.env.production.example` | Deployment-oriented baseline for Compose/VPS runtime |
+
+Important groups:
+
+- Application: `APP_NAME`, `APP_ENV`, `PORT`, `API_PREFIX`
+- Database: `SCRAPER_DATABASE_URL`, `BACKEND_DATABASE_URL`, `BACKEND_SYNC_ENABLED`
+- Schedule: scrape, normalize, enrich, sync, and notify handoff cron values
+- Sources: Dealls, Glints, JobStreet, and Kalibrr settings
+- Backend sync: base URL, service token, timeout, batch size, freshness thresholds
+- AI enrichment: OpenAI-compatible API key, base URL, model, batch settings
+- Security: internal token, CORS, body limit, rate limits
+- Observability: log level, request id header, health timeout
+
+Do not commit real secrets, cookies, bearer tokens, source sessions, or database credentials.
+
+## Available Commands
+
+| Command                                             | Purpose                                    |
+| --------------------------------------------------- | ------------------------------------------ |
+| `uv sync --locked`                                  | Install dependencies from lockfile         |
+| `uv run ruff format --check .`                      | Check formatting                           |
+| `uv run ruff check .`                               | Run lint checks                            |
+| `uv run pytest tests/unit`                          | Run unit tests                             |
+| `uv run pytest tests/contract`                      | Run source contract tests                  |
+| `uv run pytest tests/integration`                   | Run integration tests                      |
+| `uv run pytest tests/smoke`                         | Run smoke tests                            |
+| `uv run pytest`                                     | Run full test suite                        |
+| `uv run alembic upgrade head`                       | Apply migrations                           |
+| `uv run alembic downgrade base`                     | Roll back migrations                       |
+| `uv run python scripts/sanitize_raw_fixtures.py`    | Sanitize raw fixtures                      |
+| `uv run python scripts/check_release_readiness.py`  | Validate docs, links, and unsafe artifacts |
+| `uv run python scripts/prepare_docs_sync_bundle.py` | Build central-docs sync bundle             |
+
+## Testing And Verification
+
+Fast local verification:
 
 ```bash
 uv sync --locked
-uv run python --version
-uv tree
 uv run ruff format --check .
 uv run ruff check .
 uv run pytest tests/unit
 uv run pytest tests/contract
 uv run pytest tests/integration
 uv run pytest tests/smoke
-uv run pytest
-PYTHONPATH=src uv run python -m cli.smoke config --env-file .env.example
-PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example
-PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
 uv run python scripts/check_release_readiness.py
 ```
 
-The release readiness check validates docs metadata, local docs links, fixtures, raw captures, and example env placeholders for common secret patterns.
-
-## Database Migrations
-
-```bash
-uv run alembic upgrade head
-uv run alembic downgrade base
-```
-
-Migrations use `SCRAPER_DATABASE_URL` unless an explicit Alembic URL override is provided.
+Database-backed tests must use isolated local or CI database targets. Never point tests at staging or production databases.
 
 ## Container Runtime
 
+Build the image:
+
 ```bash
 docker build -t bisakerja-scraper:local .
+```
+
+Run with an env file:
+
+```bash
 docker run --rm --env-file .env -p 8000:8000 bisakerja-scraper:local
 ```
 
-The image runs Uvicorn as a non-root user and checks `/health/live` for container health.
-
-## Raw Fixture Sanitization
+Run Compose with a published image:
 
 ```bash
-uv run python scripts/sanitize_raw_fixtures.py
+APP_IMAGE=ghcr.io/bisa-kerja/bisakerja-scraper:develop docker compose --env-file .env.production up -d
 ```
 
-Sanitized fixtures are written to `tests/fixtures/raw/<source>/` and are checked by tests for common token, cookie, session, visitor, and device leaks.
+The image runs Uvicorn as a non-root user and checks `/health/live`.
 
-## Continuous Integration
+## Deployment
 
-GitHub Actions runs locked dependency sync, Ruff format and lint gates, unit tests, contract tests, isolated integration tests, smoke tests, smoke CLI checks, and release readiness checks.
+Deployment workflow lives at:
 
-## Configuration
+```text
+.github/workflows/deploy.yml
+```
 
-Configuration is loaded by `pydantic-settings` from environment variables and optional `.env` files. Required values must be explicit and non-empty. Missing required values fail during settings creation before runtime work starts.
+The workflow:
+
+- Builds the Docker image from committed source and `uv.lock`.
+- Pushes branch and SHA tags to GHCR.
+- Writes the configured deployment env file on the VPS.
+- Syncs the remote checkout to the deploy branch.
+- Pulls the selected image.
+- Runs `alembic upgrade head`.
+- Starts the app through Docker Compose.
+- Checks `/health/live` and `/health/ready`.
+- Collects Compose logs on failure.
+
+Required GitHub environment secrets:
+
+| Secret                     | Purpose                         |
+| -------------------------- | ------------------------------- |
+| `DEPLOY_VPS_HOST`          | VPS host                        |
+| `DEPLOY_VPS_PORT`          | SSH port                        |
+| `DEPLOY_VPS_USERNAME`      | SSH user                        |
+| `DEPLOY_VPS_KEY`           | Private SSH key                 |
+| `DEPLOY_REMOTE_PATH`       | Existing remote repository path |
+| `DEPLOY_ENV_FILE`          | Full `.env.production` payload  |
+| `GHCR_READ_PACKAGES_TOKEN` | GHCR pull token for the VPS     |
+| `GH_USERNAME`              | GHCR username                   |
+
+Remote prerequisites:
+
+- `git`, `docker`, Docker Compose, and `curl` are installed.
+- Deploy user can run Docker and write inside `DEPLOY_REMOTE_PATH`.
+- `DEPLOY_REMOTE_PATH` is a clean checkout of this repository.
+- Runtime env uses `APP_ENV=staging` for the active staging workflow.
+
+## Documentation Sync
+
+CI auto-syncs scraper docs to the central docs repository after quality gates pass on `develop` or `main`.
+
+Sync workflow:
+
+1. Validate code, tests, smoke checks, and release readiness.
+2. Generate `.tmp/docs-sync`.
+3. Convert `docs/**/*.md` to `.mdx`.
+4. Rewrite local `.md` links to `.mdx`.
+5. Add `manifest.json`.
+6. Publish to `docs/services/scraper-api/synced` in `bisa-kerja/bisakerja-docs`.
+
+Required secret:
+
+| Secret            | Purpose                                              |
+| ----------------- | ---------------------------------------------------- |
+| `DOCS_REPO_TOKEN` | Token allowed to push to the central docs repository |
+
+Central service landing pages remain central-owned and are not overwritten by scraper sync.
+
+## Project Structure
+
+```text
+.
+|-- .github/workflows/
+|-- docs/
+|-- migrations/
+|-- scripts/
+|   |-- deploy/
+|   |-- check_release_readiness.py
+|   |-- prepare_docs_sync_bundle.py
+|   `-- sanitize_raw_fixtures.py
+|-- src/
+|   |-- api/
+|   |-- cli/
+|   |-- config/
+|   |-- core/
+|   `-- modules/
+|-- tests/
+|   |-- contract/
+|   |-- integration/
+|   |-- smoke/
+|   `-- unit/
+|-- docker-compose.yml
+|-- Dockerfile
+|-- pyproject.toml
+`-- uv.lock
+```
+
+## Contribution Guide
+
+Before changing behavior:
+
+- Read the relevant docs in `docs/**`.
+- Keep scraper boundaries focused on ingestion, normalization, enrichment, freshness, and sync.
+- Add focused tests for changed behavior.
+- Update related docs and env examples in the same change.
+- Run release readiness before handoff.
+
+Before deployment:
+
+- Confirm required env values are present and non-empty.
+- Confirm source credentials are in secret storage only.
+- Run tests, smoke checks, and release readiness.
+- Build the container image.
+- Apply migrations before serving traffic.
