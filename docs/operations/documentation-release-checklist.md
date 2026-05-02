@@ -47,6 +47,7 @@ Use this checklist before treating scraper docs as release-ready or before publi
 | 2026-05-01 | Release-scope files, required metadata, local links, secret-pattern scan | Pass: 63 docs checked |
 | 2026-05-02 | Release readiness checker for docs, fixtures, raw captures, and env example | Pass: automated local validation |
 | 2026-05-02 | Scraper validation suite | Pass: format, lint, unit, contract, integration, smoke, full tests, and smoke CLI |
+| 2026-05-02 | Full fixture pipeline | Pass: offline raw fixture flow through normalize, enrich staging, sync chunking, and notification handoff |
 
 ## Root Context Alignment
 
@@ -69,6 +70,7 @@ Release-ready means:
 - No suspected raw secret in docs.
 - No unresolved scope conflict with Backend API or central docs.
 - No generated reference presented as hand-authored truth.
+- Sync chunking, resume, and notification handoff have passing offline verification.
 - Any known gap has owner and next action.
 
 ## Gap And Backlog

@@ -19,6 +19,7 @@ Operational docs for this repository should cover scraper runtime behavior only.
 - [Security](./security.md)
 - [Observability](./observability.md)
 - [Failure Scenarios](./failure-scenarios.md)
+- [Daily Pipeline Runbook](./daily-pipeline-runbook.md)
 - [Stage Queue Operations](./queue.md)
 - [Testing Strategy](./testing.md)
 - [CI Quality Gates](./ci-quality-gates.md)

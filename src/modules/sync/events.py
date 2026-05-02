@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from modules.persistence import NormalizedJob, SyncEvent, stable_payload_hash
 
@@ -34,6 +34,44 @@ class SyncEventRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    def list_resume_candidates(
+        self,
+        *,
+        eligible_statuses: set[str],
+        limit: int,
+        max_attempts: int,
+        target: str = "backend",
+    ) -> list[NormalizedJob]:
+        jobs = list(
+            self.session.scalars(
+                select(NormalizedJob)
+                .options(
+                    selectinload(NormalizedJob.skills_staging),
+                    selectinload(NormalizedJob.requirements_staging),
+                )
+                .where(NormalizedJob.status.in_(eligible_statuses))
+                .order_by(NormalizedJob.last_seen_at.desc(), NormalizedJob.id.asc())
+            ).all()
+        )
+        candidates: list[NormalizedJob] = []
+        for job in jobs:
+            event = self.find_event(job, target=target)
+            if event is None or is_retryable_event(event, max_attempts=max_attempts):
+                candidates.append(job)
+            if len(candidates) >= limit:
+                break
+        return candidates
+
+    def find_event(self, job: NormalizedJob, *, target: str = "backend") -> SyncEvent | None:
+        payload_hash = stable_payload_hash(job.normalized_payload)
+        return self.session.scalar(
+            select(SyncEvent).where(
+                SyncEvent.target == target,
+                SyncEvent.normalized_job_id == job.id,
+                SyncEvent.payload_hash == payload_hash,
+            )
+        )
+
     def prepare_event(
         self,
         job: NormalizedJob,
@@ -42,13 +80,7 @@ class SyncEventRepository:
         target: str = "backend",
     ) -> SyncEvent:
         payload_hash = stable_payload_hash(job.normalized_payload)
-        existing = self.session.scalar(
-            select(SyncEvent).where(
-                SyncEvent.target == target,
-                SyncEvent.normalized_job_id == job.id,
-                SyncEvent.payload_hash == payload_hash,
-            )
-        )
+        existing = self.find_event(job, target=target)
         if existing is not None:
             existing.scrape_run_id = scrape_run_id
             existing.attempted_at = utc_now()
@@ -67,6 +99,23 @@ class SyncEventRepository:
             attempted_at=utc_now(),
         )
         self.session.add(event)
+        self.session.flush()
+        return event
+
+    def attach_chunk_metadata(
+        self,
+        event: SyncEvent,
+        *,
+        chunk_id: str,
+        chunk_payload_hash: str,
+        chunk_size: int,
+    ) -> SyncEvent:
+        event.metadata_json = {
+            **(event.metadata_json or {}),
+            "chunkId": chunk_id,
+            "chunkPayloadHash": chunk_payload_hash,
+            "chunkSize": chunk_size,
+        }
         self.session.flush()
         return event
 
@@ -106,3 +155,9 @@ class SyncEventRepository:
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def is_retryable_event(event: SyncEvent, *, max_attempts: int) -> bool:
+    if event.status == SyncEventStatus.PENDING.value:
+        return True
+    return event.status == SyncEventStatus.FAILED.value and event.attempt_count < max_attempts

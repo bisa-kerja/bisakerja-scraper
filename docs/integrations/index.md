@@ -17,6 +17,7 @@ This section documents scraper-owned integration contracts.
 
 - [Job Sources](./job-sources.md)
 - [Scraper API Contract](./scraper-api-contract.md)
+- [Recommendation Email Handoff](./recommendation-email-handoff.md)
 - [Dealls](./sources/dealls.md)
 - [Glints](./sources/glints.md)
 - [JobStreet](./sources/jobstreet.md)
@@ -25,4 +26,3 @@ This section documents scraper-owned integration contracts.
 ## Rule
 
 External source contracts are adapter inputs. Backend API consumers receive normalized job records only.
-

@@ -7,6 +7,10 @@ from integrations.backend.client import (
     BackendSyncResult,
     BackendSyncServerError,
 )
+from integrations.backend.notifications import (
+    BackendNotificationHandoffClient,
+    BackendNotificationHandoffError,
+)
 from integrations.backend.payloads import (
     BackendJobPayload,
     build_backend_job_payload,
@@ -19,6 +23,8 @@ __all__ = [
     "BackendSyncError",
     "BackendSyncResult",
     "BackendSyncServerError",
+    "BackendNotificationHandoffClient",
+    "BackendNotificationHandoffError",
     "BackendJobPayload",
     "build_backend_job_payload",
     "build_backend_jobs_body",

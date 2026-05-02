@@ -137,11 +137,30 @@ Sync triage rules:
 
 - `4xx` responses usually indicate payload or credential problems and should not be retried blindly.
 - `429` and `5xx` responses may be retried within the configured limit.
+- Sync runs are chunked; a failed chunk should not mark later chunks failed.
 - Repeating the same payload should reuse the same sync event.
+- Resume should process only pending events and retryable failed events.
 - `dead-letter` rows require operator review before replay.
 - Response summaries must not contain service tokens, cookies, raw headers, or raw source payloads.
 
-## Scenario 8: Jobs Become Stale After Partial Run
+## Scenario 8: Notification Handoff Fails
+
+| Area | Detail |
+| --- | --- |
+| Indicators | Handoff events stay `failed` or `dead-letter`; recommendation candidate count is lower than sent sync count |
+| Impact | Backend-owned recommendation email flow has fewer or no new candidates |
+| First checks | Sent sync event count, backend notification endpoint health, response summary, handoff attempt count |
+| Isolation | Retry a small set of failed handoff events after Backend API confirms the notification endpoint is healthy |
+| Owner | Data ingestion owner with backend owner review |
+
+Handoff triage rules:
+
+- Handoff only starts from `sent` sync events.
+- Scraper must not read backend user preference tables to compensate for a backend failure.
+- Repeating the same run/source/job target should reuse the same handoff event.
+- Dead-letter handoff rows require operator review before replay.
+
+## Scenario 9: Jobs Become Stale After Partial Run
 
 | Area | Detail |
 | --- | --- |
@@ -153,7 +172,7 @@ Sync triage rules:
 
 Never expire all jobs from a source after a failed or partial source run.
 
-## Scenario 9: Raw Artifact Safety Failure
+## Scenario 10: Raw Artifact Safety Failure
 
 | Area | Detail |
 | --- | --- |
@@ -169,3 +188,4 @@ Never expire all jobs from a source after a failed or partial source run.
 - [Payload Redaction Policy](../standards/payload-redaction-policy.md)
 - [Raw Payload Contract](../references/raw-payload-contract.md)
 - [Freshness Module](../modules/freshness.md)
+- [Daily Pipeline Runbook](./daily-pipeline-runbook.md)

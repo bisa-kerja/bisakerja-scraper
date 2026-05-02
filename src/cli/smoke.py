@@ -44,6 +44,11 @@ def build_parser() -> argparse.ArgumentParser:
     dry_run_parser = subparsers.add_parser("dry-run")
     dry_run_parser.add_argument("--source", choices=["dealls"], default="dealls")
     dry_run_parser.add_argument(
+        "--stage",
+        choices=["scrape", "normalize", "enrich", "sync", "notify-handoff"],
+        default=None,
+    )
+    dry_run_parser.add_argument(
         "--fixture",
         default="tests/fixtures/raw/dealls/sample.json",
     )
@@ -86,13 +91,20 @@ def run_dry_run(args: argparse.Namespace) -> dict[str, Any]:
     if args.source == "dealls":
         result = parse_dealls_list_payload(payload)
         mapped = [map_dealls_job(raw_job).job for raw_job in result.raw_jobs[:1]]
-        return {
+        base_result = {
             "check": "dry-run",
             "status": "ok",
             "source": "dealls",
             "inputJobs": len(result.raw_jobs),
             "mappedJobs": len(mapped),
             "firstExternalJobId": mapped[0].source.external_job_id if mapped else None,
+        }
+        if args.stage is None:
+            return base_result
+        return {
+            **base_result,
+            "stage": args.stage,
+            "network": "disabled",
         }
     raise ValueError(f"unsupported source: {args.source}")
 

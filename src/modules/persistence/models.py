@@ -58,6 +58,9 @@ class ScrapeRun(Base):
 
     raw_jobs: Mapped[list[RawJob]] = relationship(back_populates="scrape_run")
     sync_events: Mapped[list[SyncEvent]] = relationship(back_populates="scrape_run")
+    notification_handoff_events: Mapped[list[NotificationHandoffEvent]] = relationship(
+        back_populates="scrape_run"
+    )
     ai_request_logs: Mapped[list[AIRequestLog]] = relationship(back_populates="scrape_run")
     stage_jobs: Mapped[list[StageJob]] = relationship(back_populates="scrape_run")
     quarantine_records: Mapped[list[NormalizationQuarantine]] = relationship(
@@ -135,6 +138,9 @@ class NormalizedJob(Base):
 
     raw_job: Mapped[RawJob | None] = relationship(back_populates="normalized_jobs")
     sync_events: Mapped[list[SyncEvent]] = relationship(back_populates="normalized_job")
+    notification_handoff_events: Mapped[list[NotificationHandoffEvent]] = relationship(
+        back_populates="normalized_job"
+    )
     ai_request_logs: Mapped[list[AIRequestLog]] = relationship(back_populates="normalized_job")
     skills_staging: Mapped[list[JobSkillStaging]] = relationship(back_populates="normalized_job")
     requirements_staging: Mapped[list[JobRequirementStaging]] = relationship(
@@ -188,6 +194,53 @@ class SyncEvent(Base):
             "payload_hash",
             name="sync_events_target_job_payload_unique",
         ),
+    )
+
+
+class NotificationHandoffEvent(Base):
+    __tablename__ = "notification_handoff_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    scrape_run_id: Mapped[str] = mapped_column(ForeignKey("scrape_runs.id"), nullable=False)
+    normalized_job_id: Mapped[str] = mapped_column(ForeignKey("normalized_jobs.id"), nullable=False)
+    sync_event_id: Mapped[str] = mapped_column(ForeignKey("sync_events.id"), nullable=False)
+    source_platform: Mapped[str] = mapped_column(String(64), nullable=False)
+    external_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    target: Mapped[str] = mapped_column(String(64), nullable=False, default="backend-notifications")
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    attempted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_category: Mapped[str | None] = mapped_column(String(128))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    response_summary: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    scrape_run: Mapped[ScrapeRun] = relationship(back_populates="notification_handoff_events")
+    normalized_job: Mapped[NormalizedJob] = relationship(
+        back_populates="notification_handoff_events"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "scrape_run_id",
+            "source_platform",
+            "external_id",
+            "target",
+            name="notification_handoff_run_source_external_target_unique",
+        ),
+        Index("notification_handoff_status_attempted_at_idx", "status", "attempted_at"),
+        Index("notification_handoff_sync_event_id_idx", "sync_event_id"),
     )
 
 

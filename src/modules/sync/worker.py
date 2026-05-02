@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from integrations.backend import BackendSyncClient, BackendSyncClientError, BackendSyncServerError
 from modules.jobs.schemas import CanonicalJobStatus
-from modules.persistence import NormalizedJob
+from modules.persistence import NormalizedJob, stable_payload_hash
 from modules.sync.events import SyncEventRepository, SyncFailure, SyncSuccess
 
 SYNC_ELIGIBLE_STATUSES = {
@@ -22,6 +22,8 @@ class BackendSyncWorkerResult:
     attempted: int
     sent: int
     failed: int
+    chunks_attempted: int = 0
+    chunks_failed: int = 0
 
 
 class BackendSyncWorker:
@@ -43,26 +45,66 @@ class BackendSyncWorker:
         *,
         scrape_run_id: str | None,
         limit: int,
+        batch_size: int | None = None,
     ) -> BackendSyncWorkerResult:
-        jobs = list(
-            self.session.scalars(
-                select(NormalizedJob)
-                .options(
-                    selectinload(NormalizedJob.skills_staging),
-                    selectinload(NormalizedJob.requirements_staging),
-                )
-                .where(NormalizedJob.status.in_(SYNC_ELIGIBLE_STATUSES))
-                .order_by(NormalizedJob.last_seen_at.desc(), NormalizedJob.id.asc())
-                .limit(limit)
-            ).all()
+        jobs = self.events.list_resume_candidates(
+            eligible_statuses=SYNC_ELIGIBLE_STATUSES,
+            limit=limit,
+            max_attempts=self.max_attempts,
         )
+        chunk_size = batch_size or limit
         sent = 0
         failed = 0
+        chunks_attempted = 0
+        chunks_failed = 0
+        for chunk_index, chunk_jobs in enumerate(chunks(jobs, chunk_size), start=1):
+            chunks_attempted += 1
+            chunk_sent, chunk_failed = await self._sync_chunk(
+                chunk_jobs,
+                scrape_run_id=scrape_run_id,
+                chunk_id=f"{scrape_run_id or 'manual'}:{chunk_index}",
+            )
+            sent += chunk_sent
+            failed += chunk_failed
+            if chunk_failed:
+                chunks_failed += 1
+        self.session.flush()
+        return BackendSyncWorkerResult(
+            attempted=len(jobs),
+            sent=sent,
+            failed=failed,
+            chunks_attempted=chunks_attempted,
+            chunks_failed=chunks_failed,
+        )
+
+    async def _sync_chunk(
+        self,
+        jobs: list[NormalizedJob],
+        *,
+        scrape_run_id: str | None,
+        chunk_id: str,
+    ) -> tuple[int, int]:
+        if not jobs:
+            return 0, 0
+
+        chunk_payload_hash = stable_payload_hash({"jobs": [job.normalized_payload for job in jobs]})
+        events = []
         for job in jobs:
             event = self.events.prepare_event(job, scrape_run_id=scrape_run_id)
-            try:
-                result = await self.client.sync_normalized_jobs([job])
-            except BackendSyncClientError as exc:
+            self.events.attach_chunk_metadata(
+                event,
+                chunk_id=chunk_id,
+                chunk_payload_hash=chunk_payload_hash,
+                chunk_size=len(jobs),
+            )
+            events.append(event)
+
+        sent = 0
+        failed = 0
+        try:
+            result = await self.client.sync_normalized_jobs(jobs)
+        except BackendSyncClientError as exc:
+            for event in events:
                 self.events.record_failure(
                     event,
                     SyncFailure(
@@ -73,9 +115,10 @@ class BackendSyncWorker:
                     max_attempts=1,
                 )
                 failed += 1
-                continue
-            except BackendSyncServerError as exc:
-                status_class = f"{exc.status_code // 100}xx" if exc.status_code else "transport"
+            return sent, failed
+        except BackendSyncServerError as exc:
+            status_class = f"{exc.status_code // 100}xx" if exc.status_code else "transport"
+            for event in events:
                 self.events.record_failure(
                     event,
                     SyncFailure(
@@ -89,10 +132,16 @@ class BackendSyncWorker:
                     max_attempts=self.max_attempts,
                 )
                 failed += 1
-                continue
+            return sent, failed
 
+        for event in events:
             self.events.record_success(event, SyncSuccess(result.response_summary))
             sent += 1
+        return sent, failed
 
-        self.session.flush()
-        return BackendSyncWorkerResult(attempted=len(jobs), sent=sent, failed=failed)
+
+def chunks(values: list[NormalizedJob], size: int) -> Iterable[list[NormalizedJob]]:
+    if size <= 0:
+        raise ValueError("chunk size must be greater than zero")
+    for index in range(0, len(values), size):
+        yield values[index : index + size]
