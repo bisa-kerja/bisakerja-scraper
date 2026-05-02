@@ -25,6 +25,7 @@ This matrix defines the minimum evidence needed before scraper docs, code, or op
 | Kalibrr adapter | Next.js build id is resolved and cached from page data | Stale `buildId` 404 refreshes and retries data request | Unit test result |
 | Raw store | Redacted payload metadata stored | Unsafe header cannot be persisted | Redaction test |
 | Normalizer | Canonical job fields, salary ranges, and UTC posted dates produced | Relative date labels do not become fake timestamps | Mapper and unit test result |
+| Quarantine | Malformed raw records are held with safe error metadata | Quarantined records are excluded from sync | Unit or contract test result |
 | Deduplicator | Existing job updates by source identity | Missing identity quarantines and identity collision is surfaced | Dedup test |
 | Enrichment | Skills and requirements added from clean text | Timeout creates retry/dead letter | Worker test or run log |
 | Persistence | Staging rows and sync batches write successfully | Batch error rolls back or isolates failed rows | DB integration test |

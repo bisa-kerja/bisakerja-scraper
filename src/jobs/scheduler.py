@@ -18,6 +18,7 @@ class ScheduledStage(StrEnum):
     NORMALIZE = "normalize"
     ENRICH = "enrich"
     SYNC = "sync"
+    NOTIFY_HANDOFF = "notify-handoff"
 
 
 class StageRunner(Protocol):
@@ -41,6 +42,7 @@ class SchedulerConfig:
     normalize_cron: str
     enrich_cron: str
     sync_cron: str
+    notify_handoff_cron: str
     timezone: str = "Asia/Jakarta"
 
     @classmethod
@@ -50,6 +52,7 @@ class SchedulerConfig:
             normalize_cron=settings.normalize_schedule_cron,
             enrich_cron=settings.enrich_schedule_cron,
             sync_cron=settings.sync_schedule_cron,
+            notify_handoff_cron=settings.notify_handoff_schedule_cron,
         )
 
     def cron_by_stage(self) -> Mapping[ScheduledStage, str]:
@@ -58,6 +61,7 @@ class SchedulerConfig:
             ScheduledStage.NORMALIZE: self.normalize_cron,
             ScheduledStage.ENRICH: self.enrich_cron,
             ScheduledStage.SYNC: self.sync_cron,
+            ScheduledStage.NOTIFY_HANDOFF: self.notify_handoff_cron,
         }
 
 

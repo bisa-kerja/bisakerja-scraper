@@ -38,6 +38,8 @@ validated staging rows
   -> update freshness/status
 ```
 
+Entity resolution order is significant. Source platform identity is resolved first, company identity second, and job listing identity third. Requirements and skills are written only after the job listing has a valid downstream identity.
+
 ## Consumer Contract
 
 Backend API may rely on:
@@ -99,6 +101,7 @@ Behavior rules:
 - `2xx` responses mark the sync event as sent.
 - `4xx` responses are treated as rejected payloads and are not retried automatically.
 - `429` and `5xx` responses may be retried up to the configured limit.
+- Foreign-key, missing source platform, and company resolution mismatches are recorded as sync failures with safe response summaries.
 - Service tokens, raw payloads, cookies, and request headers are never stored in sync event summaries.
 - Response summaries store only safe status class, status code, message, and stable error code.
 

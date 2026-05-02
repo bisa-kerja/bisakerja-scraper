@@ -60,6 +60,7 @@ Rules:
 | `NORMALIZE_SCHEDULE_CRON` | Yes | Daily normalize schedule |
 | `ENRICH_SCHEDULE_CRON` | Yes | Daily enrichment schedule |
 | `SYNC_SCHEDULE_CRON` | Yes | Daily sync schedule |
+| `NOTIFY_HANDOFF_SCHEDULE_CRON` | Yes | Daily notification handoff schedule |
 | `WORKER_CONCURRENCY` | Yes | Positive bounded integer |
 | `SCRAPER_RUN_LOCK_TTL_SECONDS` | Yes | Prevent overlapping runs |
 
@@ -80,6 +81,8 @@ Rules:
 | `BACKEND_SYNC_SERVICE_TOKEN` | Yes when sync is enabled | Internal service credential from secret storage |
 | `BACKEND_SYNC_TIMEOUT_SECONDS` | Yes | Positive sync request timeout |
 | `BACKEND_SYNC_BATCH_SIZE` | Yes | Positive batch size |
+| `FRESHNESS_STALE_AFTER_HOURS` | Yes | Positive threshold for stale listings |
+| `FRESHNESS_EXPIRED_AFTER_HOURS` | Yes | Positive threshold greater than stale threshold |
 
 ## AI Enrichment Variables
 

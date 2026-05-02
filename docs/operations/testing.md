@@ -61,6 +61,7 @@ Rules:
 | Deduplication | Upsert by `sourcePlatform + externalJobId` | Identity collision, repeated page overlap |
 | Persistence | Write staging rows and sync batches | DB constraint error, partial batch rollback |
 | Freshness | Mark seen jobs active and old jobs stale | Partial run must not expire source records |
+| Quarantine | Store malformed raw records with safe errors | Quarantined records must not sync |
 | Enrichment | Add skills/requirements from clean text | Model timeout or invalid output does not leak payload |
 | Stage queue | Claim and complete eligible stage jobs | Failed jobs retry then dead-letter with correlation id retained |
 | Documentation sync | Build deterministic bundle manifest | Missing metadata, bad link, path escape, secret pattern |
@@ -187,6 +188,7 @@ A scraper release is not ready until:
 - Unit tests pass for changed modules.
 - Source contract fixture tests pass for all four sources.
 - Normalized contract tests pass against Backend API expectations.
+- Quarantine and freshness tests pass when mapper or freshness behavior changes.
 - Persistence and sync tests pass against an isolated test DB when DB behavior changes.
 - Smoke tests pass in target environment or staging.
 - Redaction checks pass for docs, logs, fixtures, and generated artifacts.

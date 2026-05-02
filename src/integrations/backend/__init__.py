@@ -7,6 +7,11 @@ from integrations.backend.client import (
     BackendSyncResult,
     BackendSyncServerError,
 )
+from integrations.backend.payloads import (
+    BackendJobPayload,
+    build_backend_job_payload,
+    build_backend_jobs_body,
+)
 
 __all__ = [
     "BackendSyncClient",
@@ -14,4 +19,7 @@ __all__ = [
     "BackendSyncError",
     "BackendSyncResult",
     "BackendSyncServerError",
+    "BackendJobPayload",
+    "build_backend_job_payload",
+    "build_backend_jobs_body",
 ]

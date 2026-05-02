@@ -37,8 +37,10 @@ Orchestration rules:
 - Each run gets one `runId` and one correlation id.
 - Source adapters are invoked through an injected source interface so tests can run without external network calls.
 - Fetch runs per source, then raw records are normalized through the source mapper.
+- Scrape, normalize, enrich, sync, and notify handoff can run independently when operators need to resume from durable state.
 - Per-source normalization and enrichment use bounded concurrency.
 - Persistence writes raw and normalized records idempotently before sync handoff.
+- Normalization failures create quarantine records and keep the run partial instead of pretending the payload was completed.
 - Enrichment batch work reads normalized jobs without skill staging rows, processes up to the configured batch size, writes sanitized AI audit metadata, and stores skills/requirements in staging tables.
 - Stage queue jobs can decouple scrape, normalize, enrich, sync, and notify handoff work while preserving retry state and correlation id.
 - The sync stage is a hook for backend handoff; if no sync client is configured, the local pipeline still records persisted output.
@@ -52,6 +54,7 @@ Orchestration rules:
 | Fetch | Source config, headers, query params | HTTP response body and safe metadata | Source adapter | Status, pagination, auth/header behavior |
 | Raw capture | Source response | Redacted raw payload record | Scraper persistence | No tokens/cookies/session ids in published artifacts |
 | Normalize | Raw payload | Canonical job/company/location/salary fields | Normalizer | Identity, title, company, source URL/apply URL |
+| Quarantine | Malformed raw record and mapper error | Held record with safe error category and field path | Normalizer | No sync eligibility until normalized successfully |
 | Dedup | Normalized candidate | Unique source-local job row | Deduplicator | `sourcePlatform + externalJobId/slug/id` |
 | Enrich | Safe title, description, requirements text, company, source | Skills, typed requirements, confidence, warnings | Enrichment worker | Batch size, timeout, confidence, schema validity |
 | Enrichment audit | Safe normalized enrichment input | Request hash, provider/model metadata, latency, status, response summary | Enrichment worker | No API key, raw prompt, raw payload, headers, or tokens stored |
@@ -115,6 +118,17 @@ Queue handlers must be idempotent:
 - Enrich handlers upsert skill and requirement staging rows by normalized value/type.
 - Sync handlers reuse payload hashes and sync events.
 - Notify handoff handlers use run/source/job identity for duplicate prevention.
+
+## Backend Sync Boundary
+
+Backend sync resolves or upserts downstream entities in this order:
+
+1. Source platform by stable source slug.
+2. Company by source identity or normalized name fallback.
+3. Job listing by source platform and external job id.
+4. Job skills and requirements from staging rows.
+
+Canonical scraper enum values are converted to backend enum labels before handoff. Client-side `4xx` responses are recorded as rejected payloads and are not retried automatically; `429` and transient `5xx` responses may retry within the configured limit.
 
 ## Flow Readiness Reference
 

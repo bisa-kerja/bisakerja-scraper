@@ -15,6 +15,7 @@ def test_scheduler_registers_daily_stage_jobs() -> None:
             normalize_cron="30 1 * * *",
             enrich_cron="0 2 * * *",
             sync_cron="0 3 * * *",
+            notify_handoff_cron="0 5 * * *",
         ),
         runner=runner,
     )
@@ -27,6 +28,7 @@ def test_scheduler_registers_daily_stage_jobs() -> None:
         "normalize-daily",
         "enrich-daily",
         "sync-daily",
+        "notify-handoff-daily",
     }
     assert jobs["scrape-daily"].max_instances == 1
     assert jobs["scrape-daily"].coalesce is True
@@ -41,6 +43,7 @@ async def test_scheduler_rejects_overlapping_manual_trigger() -> None:
             normalize_cron="30 1 * * *",
             enrich_cron="0 2 * * *",
             sync_cron="0 3 * * *",
+            notify_handoff_cron="0 5 * * *",
         ),
         runner=runner,
     )

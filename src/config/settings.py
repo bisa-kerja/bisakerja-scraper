@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     normalize_schedule_cron: NonEmptyStr = Field(validation_alias="NORMALIZE_SCHEDULE_CRON")
     enrich_schedule_cron: NonEmptyStr = Field(validation_alias="ENRICH_SCHEDULE_CRON")
     sync_schedule_cron: NonEmptyStr = Field(validation_alias="SYNC_SCHEDULE_CRON")
+    notify_handoff_schedule_cron: NonEmptyStr = Field(
+        validation_alias="NOTIFY_HANDOFF_SCHEDULE_CRON"
+    )
     worker_concurrency: int = Field(validation_alias="WORKER_CONCURRENCY", ge=1, le=32)
     scraper_run_lock_ttl_seconds: int = Field(
         validation_alias="SCRAPER_RUN_LOCK_TTL_SECONDS",
@@ -77,6 +80,14 @@ class Settings(BaseSettings):
         gt=0,
     )
     backend_sync_batch_size: int = Field(validation_alias="BACKEND_SYNC_BATCH_SIZE", ge=1)
+    freshness_stale_after_hours: int = Field(
+        validation_alias="FRESHNESS_STALE_AFTER_HOURS",
+        ge=1,
+    )
+    freshness_expired_after_hours: int = Field(
+        validation_alias="FRESHNESS_EXPIRED_AFTER_HOURS",
+        ge=1,
+    )
 
     ai_enrichment_enabled: bool = Field(validation_alias="AI_ENRICHMENT_ENABLED")
     openai_api_key: SecretStr | None = Field(
@@ -198,6 +209,9 @@ class Settings(BaseSettings):
                 raise ValueError("OPENAI_BASE_URL is required when AI enrichment is enabled")
             if self.openai_model is None:
                 raise ValueError("OPENAI_MODEL is required when AI enrichment is enabled")
+
+        if self.freshness_expired_after_hours <= self.freshness_stale_after_hours:
+            raise ValueError("FRESHNESS_EXPIRED_AFTER_HOURS must be greater than stale threshold")
 
         return self
 

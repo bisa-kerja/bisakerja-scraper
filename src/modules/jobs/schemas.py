@@ -18,6 +18,7 @@ class SourcePlatform(StrEnum):
 
 class CanonicalJobStatus(StrEnum):
     ACTIVE = "active"
+    STALE = "stale"
     INACTIVE = "inactive"
     EXPIRED = "expired"
     UNKNOWN = "unknown"

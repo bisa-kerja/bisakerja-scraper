@@ -129,6 +129,8 @@ def map_status(value: Any) -> CanonicalJobStatus:
     normalized = text.lower()
     if normalized in {"active", "open"}:
         return CanonicalJobStatus.ACTIVE
+    if normalized in {"stale"}:
+        return CanonicalJobStatus.STALE
     if normalized in {"inactive", "closed"}:
         return CanonicalJobStatus.INACTIVE
     if normalized in {"expired"}:

@@ -22,6 +22,7 @@ class RunStage(StrEnum):
     NORMALIZE = "normalize"
     ENRICH = "enrich"
     SYNC = "sync"
+    NOTIFY_HANDOFF = "notify-handoff"
     PIPELINE = "pipeline"
 
 

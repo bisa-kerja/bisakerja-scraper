@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -59,6 +60,9 @@ class ScrapeRun(Base):
     sync_events: Mapped[list[SyncEvent]] = relationship(back_populates="scrape_run")
     ai_request_logs: Mapped[list[AIRequestLog]] = relationship(back_populates="scrape_run")
     stage_jobs: Mapped[list[StageJob]] = relationship(back_populates="scrape_run")
+    quarantine_records: Mapped[list[NormalizationQuarantine]] = relationship(
+        back_populates="scrape_run"
+    )
 
     __table_args__ = (
         Index(
@@ -90,6 +94,9 @@ class RawJob(Base):
 
     scrape_run: Mapped[ScrapeRun] = relationship(back_populates="raw_jobs")
     normalized_jobs: Mapped[list[NormalizedJob]] = relationship(back_populates="raw_job")
+    quarantine_records: Mapped[list[NormalizationQuarantine]] = relationship(
+        back_populates="raw_job"
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -327,4 +334,34 @@ class StageJob(Base):
         Index("stage_jobs_status_available_at_idx", "status", "available_at"),
         Index("stage_jobs_correlation_id_idx", "correlation_id"),
         Index("stage_jobs_scrape_run_id_idx", "scrape_run_id"),
+    )
+
+
+class NormalizationQuarantine(Base):
+    __tablename__ = "normalization_quarantine"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    scrape_run_id: Mapped[str | None] = mapped_column(ForeignKey("scrape_runs.id"))
+    raw_job_id: Mapped[str | None] = mapped_column(ForeignKey("raw_jobs.id"))
+    source_platform: Mapped[str] = mapped_column(String(64), nullable=False)
+    external_id: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
+    payload_hash: Mapped[str | None] = mapped_column(String(128))
+    error_category: Mapped[str] = mapped_column(String(128), nullable=False)
+    error_message: Mapped[str] = mapped_column(Text, nullable=False)
+    source_field_path: Mapped[str | None] = mapped_column(String(255))
+    retryable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    scrape_run: Mapped[ScrapeRun | None] = relationship(back_populates="quarantine_records")
+    raw_job: Mapped[RawJob | None] = relationship(back_populates="quarantine_records")
+
+    __table_args__ = (
+        Index("normalization_quarantine_status_source_idx", "status", "source_platform"),
+        Index("normalization_quarantine_raw_job_id_idx", "raw_job_id"),
     )

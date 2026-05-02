@@ -5,6 +5,9 @@ from typing import Any
 
 import httpx
 
+from integrations.backend.payloads import build_backend_jobs_body
+from modules.persistence import NormalizedJob
+
 DEFAULT_BACKEND_SYNC_PATH = "/api/v1/internal/scraper/jobs"
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
@@ -49,6 +52,12 @@ class BackendSyncClient:
 
     async def sync_jobs(self, jobs: list[dict[str, Any]]) -> BackendSyncResult:
         payload = {"jobs": jobs}
+        return await self.sync_payload(payload)
+
+    async def sync_normalized_jobs(self, jobs: list[NormalizedJob]) -> BackendSyncResult:
+        return await self.sync_payload(build_backend_jobs_body(jobs))
+
+    async def sync_payload(self, payload: dict[str, Any]) -> BackendSyncResult:
         last_error: BackendSyncError | None = None
         for attempt in range(self.max_retries + 1):
             try:

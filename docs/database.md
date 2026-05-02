@@ -51,6 +51,7 @@ The scraper keeps a minimal local operational schema for replay, normalization, 
 | `job_requirements_staging` | Structured requirement rows before Backend API sync | `normalized_job_id`, `source`, `requirement_type`, `normalized_value`, `confidence`, `ai_request_log_id` |
 | `stage_jobs` | Local DB-backed queue for decoupled pipeline stages | `job_type`, `status`, `payload_json`, `correlation_id`, `attempt_count`, `max_attempts`, timestamps |
 | `sync_events` | Backend handoff attempt and result metadata | `scrape_run_id`, `normalized_job_id`, `source_platform`, `external_id`, `status`, `target`, `payload_hash`, `attempt_count`, `response_summary`, timestamps |
+| `normalization_quarantine` | Mapper or canonical validation failures held from sync | `raw_job_id`, `source_platform`, `external_id`, `error_category`, `source_field_path`, `retryable`, timestamps |
 
 Identity constraints:
 
@@ -61,6 +62,7 @@ Identity constraints:
 - `job_skills_staging(normalized_job_id, normalized_value)` is unique.
 - `job_requirements_staging(normalized_job_id, requirement_type, normalized_value)` is unique.
 - `stage_jobs(status, available_at)` is indexed for worker claim order.
+- `normalization_quarantine(status, source_platform)` is indexed for operator inspection.
 
 Schema changes are managed with Alembic migrations. Migrations must support upgrade and downgrade in isolated test databases before release.
 
@@ -145,6 +147,20 @@ Skill and requirement staging rows keep enrichment output separate from the larg
 | `job_requirements_staging` | `normalized_job_id + requirement_type + normalized_value` | `SKILL`, `EXPERIENCE`, `EDUCATION`, `OTHER` |
 
 Each row stores its source and optional `ai_request_log_id` so operators can trace which enrichment attempt produced or last updated the value. Re-running enrichment updates the existing row instead of creating duplicates.
+
+## Normalization Quarantine
+
+Malformed raw records are quarantined when a source mapper cannot produce a valid canonical job. Quarantine rows store the source, raw job link when available, external identity when known, error category, safe message, source field path, retryability, and payload hash.
+
+Quarantined records are not eligible for Backend API sync. A later successful normalization of the same raw job resolves open quarantine rows for that raw job, while historical rows remain available for audit.
+
+Common quarantine categories:
+
+| Category | Meaning |
+| --- | --- |
+| `NORMALIZE_ERROR` | Mapper output failed canonical validation or required fields were missing |
+| `PARSE_ERROR` | Source payload shape could not be parsed |
+| `VALIDATION_ERROR` | Canonical field type or enum did not satisfy the internal schema |
 
 ## Local Stage Queue
 

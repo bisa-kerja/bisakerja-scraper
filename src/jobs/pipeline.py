@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import uuid4
 
+from sqlalchemy import select
+
 from core.errors import ScraperError
 from integrations.sources.mapper_utils import SourceMapperResult
-from modules.persistence import JobPersistenceRepository, RawJobInput
+from modules.persistence import JobPersistenceRepository, RawJob, RawJobInput
+from modules.quarantine import QuarantineRepository
 from modules.runs import RunCounts, RunErrorSummary, RunStage, RunStateTracker
 from modules.runs.tracker import RunSummary
 
@@ -25,6 +28,7 @@ class PipelineSource(Protocol):
 
 
 SyncHook = Callable[[list[SourceMapperResult], str, str], Awaitable[None]]
+StageHook = Callable[[str, str], Awaitable[RunCounts | None]]
 
 
 @dataclass(frozen=True)
@@ -64,6 +68,8 @@ class PipelineOrchestrator:
         run_tracker: RunStateTracker,
         config: PipelineConfig | None = None,
         sync_hook: SyncHook | None = None,
+        quarantine: QuarantineRepository | None = None,
+        stage_hooks: Mapping[str, StageHook] | None = None,
         correlation_id_factory: Callable[[], str] | None = None,
     ) -> None:
         self.sources = list(sources)
@@ -71,6 +77,8 @@ class PipelineOrchestrator:
         self.run_tracker = run_tracker
         self.config = config or PipelineConfig()
         self.sync_hook = sync_hook
+        self.quarantine = quarantine
+        self.stage_hooks = dict(stage_hooks or {})
         self.correlation_id_factory = correlation_id_factory or (lambda: str(uuid4()))
 
     async def run(self, *, run_id: str | None = None) -> PipelineResult:
@@ -119,6 +127,72 @@ class PipelineOrchestrator:
             stage_events=stage_events,
         )
 
+    async def run_stage(
+        self,
+        stage: str | RunStage,
+        *,
+        run_id: str | None = None,
+    ) -> PipelineResult:
+        stage_value = stage.value if isinstance(stage, RunStage) else stage
+        if stage_value == RunStage.SCRAPE.value:
+            return await self.run_scrape(run_id=run_id)
+        if stage_value == RunStage.NORMALIZE.value:
+            return await self.run_normalize(run_id=run_id)
+        if stage_value == RunStage.ENRICH.value:
+            return await self.run_enrich(run_id=run_id)
+        if stage_value == RunStage.SYNC.value:
+            return await self.run_sync(run_id=run_id)
+        if stage_value == RunStage.NOTIFY_HANDOFF.value:
+            return await self.run_notify_handoff(run_id=run_id)
+        raise ValueError(f"unsupported pipeline stage: {stage_value}")
+
+    async def run_scrape(self, *, run_id: str | None = None) -> PipelineResult:
+        correlation_id = self.correlation_id_factory()
+        run = self.run_tracker.start_run(
+            source_platform="all",
+            stage=RunStage.SCRAPE,
+            run_id=run_id,
+            metadata={"correlationId": correlation_id},
+        )
+        stage_events: list[str] = []
+        source_results = await asyncio.gather(
+            *[self._scrape_source(source, run.id, stage_events) for source in self.sources]
+        )
+        return self._finish_stage_run(
+            run=run,
+            correlation_id=correlation_id,
+            source_results=source_results,
+            stage_events=stage_events,
+        )
+
+    async def run_normalize(self, *, run_id: str | None = None) -> PipelineResult:
+        correlation_id = self.correlation_id_factory()
+        run = self.run_tracker.start_run(
+            source_platform="all",
+            stage=RunStage.NORMALIZE,
+            run_id=run_id,
+            metadata={"correlationId": correlation_id},
+        )
+        stage_events: list[str] = []
+        source_results: list[SourcePipelineResult] = []
+        for source in self.sources:
+            source_results.append(await self._normalize_source(source, run.id, stage_events))
+        return self._finish_stage_run(
+            run=run,
+            correlation_id=correlation_id,
+            source_results=source_results,
+            stage_events=stage_events,
+        )
+
+    async def run_enrich(self, *, run_id: str | None = None) -> PipelineResult:
+        return await self._run_hook_stage(RunStage.ENRICH, run_id=run_id)
+
+    async def run_sync(self, *, run_id: str | None = None) -> PipelineResult:
+        return await self._run_hook_stage(RunStage.SYNC, run_id=run_id)
+
+    async def run_notify_handoff(self, *, run_id: str | None = None) -> PipelineResult:
+        return await self._run_hook_stage(RunStage.NOTIFY_HANDOFF, run_id=run_id)
+
     async def _run_source(
         self,
         source: PipelineSource,
@@ -164,6 +238,73 @@ class PipelineOrchestrator:
                 raise
             return result
 
+    async def _scrape_source(
+        self,
+        source: PipelineSource,
+        run_id: str,
+        stage_events: list[str],
+    ) -> SourcePipelineResult:
+        result = SourcePipelineResult(source_platform=source.source_platform, status="started")
+        try:
+            stage_events.append(f"{source.source_platform}:scrape")
+            fetched = list(await source.fetch_raw_jobs())
+            result.counts.fetched = len(fetched)
+            for raw_job in fetched:
+                self.persistence.upsert_raw_job(raw_input_from(raw_job, run_id=run_id))
+                result.counts.persisted += 1
+            self.persistence.session.commit()
+            result.status = "completed"
+            return result
+        except Exception as exc:
+            self.persistence.session.rollback()
+            result.errors.append(error_summary(source.source_platform, exc))
+            result.counts.skipped = max(result.counts.fetched - result.counts.persisted, 0)
+            result.status = "failed"
+            if not self.config.allow_partial:
+                raise
+            return result
+
+    async def _normalize_source(
+        self,
+        source: PipelineSource,
+        run_id: str,
+        stage_events: list[str],
+    ) -> SourcePipelineResult:
+        result = SourcePipelineResult(source_platform=source.source_platform, status="started")
+        raw_jobs = list(
+            self.persistence.session.scalars(
+                select(RawJob)
+                .where(RawJob.source_platform == source.source_platform)
+                .order_by(RawJob.scraped_at.asc(), RawJob.id.asc())
+            ).all()
+        )
+        result.counts.fetched = len(raw_jobs)
+        stage_events.append(f"{source.source_platform}:normalize")
+        semaphore = asyncio.Semaphore(self.config.max_concurrency_per_source)
+        for raw_job in raw_jobs:
+            try:
+                mapped = await self._map_stored_raw_job(source, raw_job, semaphore)
+                self.persistence.upsert_normalized_job(mapped.job, raw_job_id=raw_job.id)
+                if self.quarantine is not None:
+                    self.quarantine.resolve_for_raw_job(raw_job.id)
+                result.counts.normalized += 1
+                result.counts.persisted += 1
+            except Exception as exc:
+                result.errors.append(error_summary(source.source_platform, exc))
+                result.counts.skipped += 1
+                if self.quarantine is not None:
+                    self.quarantine.record_raw_job_failure(
+                        raw_job,
+                        error_category=error_summary(source.source_platform, exc).category,
+                        error_message=error_summary(source.source_platform, exc).message,
+                        source_field_path=source_field_path_from(exc),
+                        retryable=retryable_from(exc),
+                    )
+        self.persistence.session.commit()
+        result.counts.parsed = result.counts.normalized
+        result.status = "failed" if result.errors else "completed"
+        return result
+
     async def _map_one(
         self,
         source: PipelineSource,
@@ -172,6 +313,83 @@ class PipelineOrchestrator:
     ) -> SourceMapperResult:
         async with semaphore:
             return source.map_raw_job(raw_job, scraped_at=utc_now())
+
+    async def _map_stored_raw_job(
+        self,
+        source: PipelineSource,
+        raw_job: RawJob,
+        semaphore: asyncio.Semaphore,
+    ) -> SourceMapperResult:
+        async with semaphore:
+            return source.map_raw_job(raw_job_stub_from(raw_job), scraped_at=raw_job.scraped_at)
+
+    async def _run_hook_stage(
+        self,
+        stage: RunStage,
+        *,
+        run_id: str | None = None,
+    ) -> PipelineResult:
+        correlation_id = self.correlation_id_factory()
+        run = self.run_tracker.start_run(
+            source_platform="all",
+            stage=stage,
+            run_id=run_id,
+            metadata={"correlationId": correlation_id},
+        )
+        hook = self.stage_hooks.get(stage.value)
+        summary = RunSummary()
+        stage_events = [stage.value]
+        try:
+            if hook is not None:
+                hook_counts = await hook(run.id, correlation_id)
+                if hook_counts is not None:
+                    summary.counts = hook_counts
+            self.run_tracker.complete_run(run, summary)
+            status = "completed"
+        except Exception as exc:
+            error = error_summary("all", exc)
+            summary.errors.append(error)
+            self.run_tracker.fail_run(
+                run,
+                summary,
+                error_category=error.category,
+                error_message=error.message,
+            )
+            status = "failed"
+            if not self.config.allow_partial:
+                raise
+        return PipelineResult(
+            run_id=run.id,
+            correlation_id=correlation_id,
+            status=status,
+            counts=summary.counts,
+            source_results=[],
+            stage_events=stage_events,
+        )
+
+    def _finish_stage_run(
+        self,
+        *,
+        run,
+        correlation_id: str,
+        source_results: list[SourcePipelineResult],
+        stage_events: list[str],
+    ) -> PipelineResult:
+        summary = merge_source_results(source_results)
+        if summary.errors:
+            self.run_tracker.partial_run(run, summary)
+            status = "partial"
+        else:
+            self.run_tracker.complete_run(run, summary)
+            status = "completed"
+        return PipelineResult(
+            run_id=run.id,
+            correlation_id=correlation_id,
+            status=status,
+            counts=summary.counts,
+            source_results=source_results,
+            stage_events=stage_events,
+        )
 
 
 async def maybe_enrich_mapped_jobs(
@@ -193,6 +411,21 @@ def raw_input_from(raw_job: Any, *, run_id: str) -> RawJobInput:
         raw_payload=raw_job.raw_payload,
         scraped_at=utc_now(),
     )
+
+
+def raw_job_stub_from(raw_job: RawJob) -> RawJob:
+    return raw_job
+
+
+def source_field_path_from(exc: Exception) -> str | None:
+    if isinstance(exc, ScraperError):
+        value = exc.details.get("source_field_path") or exc.details.get("field")
+        return value if isinstance(value, str) else None
+    return None
+
+
+def retryable_from(exc: Exception) -> bool:
+    return exc.retryable if isinstance(exc, ScraperError) else False
 
 
 def merge_source_results(results: Sequence[SourcePipelineResult]) -> RunSummary:
