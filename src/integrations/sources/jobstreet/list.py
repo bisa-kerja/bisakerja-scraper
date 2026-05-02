@@ -152,6 +152,7 @@ def build_jobstreet_http_client(
     timeout_seconds: float,
     max_retries: int,
     max_response_bytes: int,
+    rate_limit_per_minute: int | None = None,
 ) -> SourceHttpClient:
     return SourceHttpClient(
         HttpClientConfig(
@@ -161,6 +162,7 @@ def build_jobstreet_http_client(
             max_retries=max_retries,
             max_response_bytes=max_response_bytes,
             default_headers=build_jobstreet_default_headers(bearer_token),
+            rate_limit_per_minute=rate_limit_per_minute,
         )
     )
 

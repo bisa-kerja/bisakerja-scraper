@@ -56,6 +56,9 @@ All source adapters use a shared async HTTP client contract:
 - Default source headers include a browser-like user agent and source-specific headers.
 - Retries are bounded and only apply to transport failures, timeouts, `408`, `429`, and transient `5xx` responses.
 - Non-retriable `4xx` responses fail immediately.
+- Source rate limits are isolated by platform so one blocked source does not pause unrelated sources.
+- Retryable failures use capped exponential backoff.
+- Repeated retryable failures open a run-local circuit breaker for the affected source.
 - Response bodies are streamed through a maximum-size guard before JSON decoding.
 - The adapter receives a mockable JSON client interface for fixture-based tests.
 

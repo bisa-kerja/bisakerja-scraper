@@ -84,6 +84,14 @@ Normalized contract tests must verify:
 - Missing optional logo, salary, category, and skills do not fail the whole run.
 - Raw source payload bodies do not leak into synced records.
 
+Fixture coverage tests must also report, for every supported source:
+
+- list fixture coverage.
+- detail fixture coverage or documented list fallback.
+- canonical mapper coverage.
+- malformed payload coverage.
+- fixture sanitization coverage.
+
 ## Smoke Tests
 
 Minimum smoke checks:
@@ -104,6 +112,8 @@ Use the locked environment for routine validation:
 uv sync --locked
 uv run ruff format --check .
 uv run ruff check .
+uv run pytest tests/unit
+uv run pytest tests/contract
 uv run pytest
 ```
 
@@ -126,6 +136,8 @@ The scraper test suite covers:
 - Alembic upgrade and downgrade on an isolated test database.
 - Raw fixture sanitization and secret-pattern scanning.
 - Source adapter contract parsing for Dealls, Glints, JobStreet, and Kalibrr.
+- Source fixture coverage reporting across list, detail or fallback, mapper, malformed, and sanitization paths.
+- Source HTTP retry classifier, per-source rate limiter isolation, capped backoff, and circuit breaker behavior.
 - HTML cleaning for description and requirement fields.
 - Canonical mapper output and field provenance for all supported sources.
 

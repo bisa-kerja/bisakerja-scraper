@@ -50,6 +50,14 @@ Source-specific notes:
 | JobStreet | Bearer/session validity and GraphQL response errors |
 | Kalibrr | Current Next.js `buildId` and `_next/data` path |
 
+Rate-limit and backoff notes:
+
+- `429`, timeout, `408`, and transient `5xx` responses may retry with capped exponential backoff.
+- Per-source limiter state is isolated; a blocked source should not delay healthy sources.
+- A run-local circuit breaker may stop additional requests for a repeatedly failing source.
+- Circuit breaker activity should mark the source degraded or partial, not completed.
+- Operators should compare current failure count, retry count, and last successful source run before replay.
+
 ## Scenario 3: Payload Schema Drift
 
 | Area | Detail |

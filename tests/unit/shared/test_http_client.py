@@ -2,7 +2,13 @@ import httpx
 import pytest
 
 from core.errors import FetchError
-from shared.http import DEFAULT_USER_AGENT, HttpClientConfig, SourceHttpClient
+from shared.http import (
+    DEFAULT_USER_AGENT,
+    HttpClientConfig,
+    SourceHttpClient,
+    SourceRateLimitConfig,
+    SourceRateLimiter,
+)
 
 
 def client_config() -> HttpClientConfig:
@@ -90,6 +96,45 @@ async def test_source_http_client_retries_transient_status() -> None:
 
     assert response == {"ok": True}
     assert calls == 2
+    await async_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_source_http_client_uses_limiter_backoff_after_429() -> None:
+    calls = 0
+    sleeps: list[float] = []
+
+    async def sleeper(delay: float) -> None:
+        sleeps.append(delay)
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(429, json={"error": "too many requests"})
+        return httpx.Response(200, json={"ok": True})
+
+    async_client = httpx.AsyncClient(
+        base_url="https://api.example.test",
+        transport=httpx.MockTransport(handler),
+    )
+    limiter = SourceRateLimiter(
+        SourceRateLimitConfig(
+            source_platform="dealls",
+            requests_per_minute=600_000,
+            initial_backoff_seconds=0.5,
+            circuit_breaker_failure_threshold=3,
+        ),
+        sleeper=sleeper,
+        monotonic=lambda: 0.0,
+    )
+    client = SourceHttpClient(client_config(), async_client=async_client, rate_limiter=limiter)
+
+    response = await client.request_json("GET", "/jobs")
+
+    assert response == {"ok": True}
+    assert calls == 2
+    assert 0.5 in sleeps
     await async_client.aclose()
 
 

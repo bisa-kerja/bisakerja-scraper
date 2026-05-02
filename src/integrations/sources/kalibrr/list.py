@@ -94,6 +94,7 @@ def build_kalibrr_http_client(
     timeout_seconds: float,
     max_retries: int,
     max_response_bytes: int,
+    rate_limit_per_minute: int | None = None,
 ) -> SourceHttpClient:
     return SourceHttpClient(
         HttpClientConfig(
@@ -103,6 +104,7 @@ def build_kalibrr_http_client(
             max_retries=max_retries,
             max_response_bytes=max_response_bytes,
             default_headers=KALIBRR_DEFAULT_HEADERS,
+            rate_limit_per_minute=rate_limit_per_minute,
         )
     )
 

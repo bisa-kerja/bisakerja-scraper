@@ -18,6 +18,7 @@ This matrix defines the minimum evidence needed before scraper docs, code, or op
 | Area | Happy-path verification | Critical-failure verification | Evidence |
 | --- | --- | --- | --- |
 | Scheduler | Run starts inside configured window | Duplicate active run is skipped or rejected | Run record with `runId` |
+| Source HTTP client | Per-source limiter spaces requests and retry classifier marks `429` and transient `5xx` retryable | Circuit breaker opens for repeated retryable failures without blocking unrelated sources | Unit test result |
 | Dealls adapter | REST list and detail fixtures fetched and merged | Missing detail keeps list record valid | Contract test result |
 | Glints adapter | GraphQL list fixture parsed | Missing detail endpoint uses list fallback | Contract test result |
 | JobStreet adapter | GraphQL list and detail fixtures parsed without real auth | Missing bearer token is classified as config error and request bodies omit auth/session captures | Contract test result |
@@ -49,6 +50,7 @@ This matrix defines the minimum evidence needed before scraper docs, code, or op
 | Secret scan | No bearer, cookie, session, visitor, or raw credential values in docs |
 | Unit tests | Changed mapper/helper behavior passes |
 | Contract tests | All source fixtures remain accepted |
+| Fixture coverage | All supported sources have list, detail or fallback, mapper, malformed, and sanitization evidence |
 | Integration tests | Changed DB/sync behavior passes against isolated DB |
 | Smoke tests | Target runtime starts and processes fixture path |
 | Observability | Run logs include `runId`, source, stage, status, counts, and duration |

@@ -34,3 +34,4 @@ Use these references when changing source adapters, mappers, or sync behavior.
 
 Source-specific differences stop at the adapter and normalizer boundary. Backend API consumers receive normalized job records only.
 
+Shared source HTTP behavior, including timeout, retry classification, rate limiting, backoff, and circuit breaker policy, is documented in [Job Sources](../integrations/job-sources.md).

@@ -8,9 +8,13 @@ from typing import Any, Protocol
 import httpx
 
 from core.errors import FetchError
+from shared.http.rate_limit import (
+    SourceRateLimitConfig,
+    SourceRateLimiter,
+    is_retriable_status,
+)
 
 DEFAULT_USER_AGENT = "Mozilla/5.0 (compatible; BisakerjaScraper/0.1; +https://bisakerja.local)"
-RETRIABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 
 
 @dataclass(frozen=True)
@@ -22,6 +26,8 @@ class HttpClientConfig:
     max_response_bytes: int
     default_headers: dict[str, str] = field(default_factory=dict)
     retry_backoff_seconds: float = 0.2
+    rate_limit_per_minute: int | None = None
+    circuit_breaker_failure_threshold: int = 3
 
 
 class JsonHttpClient(Protocol):
@@ -43,6 +49,7 @@ class SourceHttpClient:
         config: HttpClientConfig,
         *,
         async_client: httpx.AsyncClient | None = None,
+        rate_limiter: SourceRateLimiter | None = None,
     ) -> None:
         if config.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be greater than zero")
@@ -50,6 +57,10 @@ class SourceHttpClient:
             raise ValueError("max_retries must be greater than or equal to zero")
         if config.max_response_bytes <= 0:
             raise ValueError("max_response_bytes must be greater than zero")
+        if config.rate_limit_per_minute is not None and config.rate_limit_per_minute <= 0:
+            raise ValueError("rate_limit_per_minute must be greater than zero")
+        if config.circuit_breaker_failure_threshold <= 0:
+            raise ValueError("circuit_breaker_failure_threshold must be greater than zero")
 
         self.config = config
         headers = {"user-agent": DEFAULT_USER_AGENT, **config.default_headers}
@@ -59,6 +70,16 @@ class SourceHttpClient:
             timeout=httpx.Timeout(config.timeout_seconds),
         )
         self._owns_client = async_client is None
+        self._rate_limiter = rate_limiter
+        if self._rate_limiter is None and config.rate_limit_per_minute is not None:
+            self._rate_limiter = SourceRateLimiter(
+                SourceRateLimitConfig(
+                    source_platform=config.source_platform,
+                    requests_per_minute=config.rate_limit_per_minute,
+                    initial_backoff_seconds=config.retry_backoff_seconds,
+                    circuit_breaker_failure_threshold=config.circuit_breaker_failure_threshold,
+                )
+            )
 
     async def __aenter__(self) -> SourceHttpClient:
         return self
@@ -93,9 +114,10 @@ class SourceHttpClient:
                 )
             except FetchError as error:
                 last_error = error
+                await self._record_request_error(error)
                 if not error.retryable or attempt == attempts:
                     raise
-                await asyncio.sleep(self.config.retry_backoff_seconds)
+                await self._backoff_after_failure()
 
         if last_error is not None:
             raise last_error
@@ -120,9 +142,10 @@ class SourceHttpClient:
                 return body.decode("utf-8")
             except FetchError as error:
                 last_error = error
+                await self._record_request_error(error)
                 if not error.retryable or attempt == attempts:
                     raise
-                await asyncio.sleep(self.config.retry_backoff_seconds)
+                await self._backoff_after_failure()
 
         if last_error is not None:
             raise last_error
@@ -175,6 +198,9 @@ class SourceHttpClient:
         headers: dict[str, str] | None,
         json_body: dict[str, Any] | None = None,
     ) -> bytes:
+        if self._rate_limiter is not None:
+            await self._rate_limiter.wait_before_request()
+
         try:
             async with self._client.stream(
                 method,
@@ -202,14 +228,28 @@ class SourceHttpClient:
 
         if response.is_error:
             status_code = response.status_code
-            retryable = status_code in RETRIABLE_STATUS_CODES
+            retryable = is_retriable_status(status_code)
             raise FetchError(
                 "source request returned error status",
                 source_platform=self.config.source_platform,
                 details={"statusCode": status_code},
                 retryable=retryable,
             )
+        if self._rate_limiter is not None:
+            self._rate_limiter.record_success()
         return body
+
+    async def _record_request_error(self, error: FetchError) -> None:
+        if self._rate_limiter is None:
+            return
+        if error.retryable:
+            self._rate_limiter.record_failure()
+
+    async def _backoff_after_failure(self) -> None:
+        if self._rate_limiter is not None:
+            await self._rate_limiter.backoff_after_failure()
+        elif self.config.retry_backoff_seconds > 0:
+            await asyncio.sleep(self.config.retry_backoff_seconds)
 
     async def _read_bounded(self, response: httpx.Response) -> bytes:
         chunks: list[bytes] = []

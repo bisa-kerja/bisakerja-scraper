@@ -52,12 +52,26 @@ Every adapter should produce:
 
 ## Retry And Timeout
 
-| Source | Timeout baseline | Retry posture |
-| --- | --- | --- |
-| Dealls | Standard HTTP timeout | Retry transient 5xx/timeouts; avoid aggressive pagination |
-| Glints | Standard HTTP timeout | Retry network failures; isolate GraphQL schema errors |
-| JobStreet | Standard HTTP timeout | Stop on auth failure until credential refresh; retry transient errors |
-| Kalibrr | Standard HTTP timeout | Refresh dynamic `buildId` on 404/data miss; retry transient errors |
+| Source | Timeout baseline | Rate limit policy | Retry posture |
+| --- | --- | --- | --- |
+| Dealls | Standard HTTP timeout | Per-source request spacing from configuration | Retry transient 5xx/timeouts; avoid aggressive pagination |
+| Glints | Standard HTTP timeout | Per-source request spacing from configuration | Retry network failures; isolate GraphQL schema errors |
+| JobStreet | Standard HTTP timeout | Per-source request spacing from configuration | Stop on auth failure until credential refresh; retry transient errors |
+| Kalibrr | Standard HTTP timeout | Per-source request spacing from configuration | Refresh dynamic `buildId` on 404/data miss; retry transient errors |
+
+## Backoff And Circuit Breaker
+
+Source requests use isolated rate limiter state per source platform. A throttled or failing source must not delay another source in the same run.
+
+| Condition | Handling |
+| --- | --- |
+| Request spacing | Apply configured requests-per-minute before each source request |
+| `429` | Treat as retryable and apply exponential backoff within the retry limit |
+| `408` and transient `5xx` | Treat as retryable and apply exponential backoff within the retry limit |
+| Non-retryable `4xx` | Fail the affected source without blind retry |
+| Repeated retryable failures | Open a run-local circuit breaker for that source and mark the source degraded |
+
+Circuit breaker state is local to the running client instance. Persistent recovery decisions belong to run tracking and operations review, not a process-global block list.
 
 ## Source Pages
 
