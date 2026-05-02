@@ -5,6 +5,18 @@ from pydantic import ValidationError
 
 from config.settings import AppEnvironment, Settings
 
+SETTINGS_ENV_KEYS = {
+    field.validation_alias
+    for field in Settings.model_fields.values()
+    if isinstance(field.validation_alias, str)
+}
+
+
+@pytest.fixture(autouse=True)
+def isolate_settings_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for key in SETTINGS_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
 
 def valid_env(**overrides: object) -> dict[str, object]:
     values: dict[str, object] = {
