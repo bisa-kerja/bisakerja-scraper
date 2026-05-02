@@ -147,6 +147,8 @@ class SyncEvent(Base):
     external_id: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     target: Mapped[str] = mapped_column(String(64), nullable=False, default="backend")
+    payload_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     attempted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -155,6 +157,7 @@ class SyncEvent(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error_category: Mapped[str | None] = mapped_column(String(128))
     error_message: Mapped[str | None] = mapped_column(Text)
+    response_summary: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
     scrape_run: Mapped[ScrapeRun | None] = relationship(back_populates="sync_events")
@@ -163,4 +166,10 @@ class SyncEvent(Base):
     __table_args__ = (
         Index("sync_events_status_attempted_at_idx", "status", "attempted_at"),
         Index("sync_events_source_external_id_idx", "source_platform", "external_id"),
+        UniqueConstraint(
+            "target",
+            "normalized_job_id",
+            "payload_hash",
+            name="sync_events_target_job_payload_unique",
+        ),
     )

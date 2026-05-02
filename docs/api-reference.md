@@ -47,9 +47,71 @@ Rules:
 | `GET` | `/api/v1/runs` | Internal service credential | List ingestion runs | Planned |
 | `GET` | `/api/v1/runs/:runId` | Internal service credential | Inspect one run | Planned |
 | `GET` | `/api/v1/sources` | Internal service credential | Source freshness/config summary | Planned |
+| `GET` | `/api/v1/jobs` | Internal service credential | List normalized local job records | Available |
+| `GET` | `/api/v1/jobs/:jobId` | Internal service credential | Inspect one normalized local job record | Available |
 | `GET` | `/api/v1/jobs/staging` | Internal service credential | Debug normalized staging records | Optional |
 
 The stable product job search API remains owned by Backend API.
+
+## Internal Jobs Query Contract
+
+`GET /api/v1/jobs` returns normalized local jobs from the scraper operational store. It is intended for internal diagnostics and service-to-service inspection only. Product search and public job detail remain owned by Backend API.
+
+Supported query fields:
+
+| Query | Default | Constraint |
+| --- | --- | --- |
+| `page` | `1` | Minimum `1` |
+| `limit` | `20` | Minimum `1`, maximum `100` |
+| `sourcePlatform` | none | `dealls`, `glints`, `jobstreet`, or `kalibrr` |
+| `freshness` | none | `active`, `inactive`, `expired`, or `unknown` |
+| `location` | none | Case-insensitive local payload search |
+| `keyword` | none | Case-insensitive title, company, and local payload search |
+
+Successful list response:
+
+```json
+{
+  "success": true,
+  "message": "Jobs retrieved",
+  "data": [
+    {
+      "id": "job_123",
+      "sourcePlatform": "dealls",
+      "externalJobId": "123",
+      "title": "Backend Engineer",
+      "companyName": "Example Company",
+      "sourceUrl": "https://example.com/jobs/123",
+      "applyUrl": "https://example.com/jobs/123/apply",
+      "status": "active",
+      "lastSeenAt": "2026-05-02T03:00:00+00:00",
+      "postedAt": null,
+      "payload": {
+        "title": "Backend Engineer"
+      }
+    }
+  ],
+  "meta": {
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "total": 1,
+      "totalPages": 1,
+      "hasNextPage": false,
+      "hasPrevPage": false
+    },
+    "filters": {
+      "sourcePlatform": "dealls",
+      "freshness": "active",
+      "location": null,
+      "keyword": null
+    },
+    "sort": "last_seen_desc"
+  }
+}
+```
+
+`GET /api/v1/jobs/:jobId` returns the same safe normalized record shape for one job. Missing jobs return `404 NOT_FOUND`.
 
 ## Health Contract
 

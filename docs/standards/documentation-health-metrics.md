@@ -17,7 +17,7 @@ Health metrics show whether scraper docs remain usable for engineers, operators,
 
 | Metric | Measures | Target |
 | --- | --- | --- |
-| Coverage | Required scraper docs exist for each docs section | Phase target files present |
+| Coverage | Required scraper docs exist for each docs section | Required files present |
 | Freshness | Pages are within review cadence | No stale active page without backlog |
 | Ownership completeness | Every active page has owner and reviewers | 100% |
 | Broken links | Local docs links resolve | 0 broken links |
@@ -61,4 +61,3 @@ Health metrics are not reader-facing product metrics. They are maintenance contr
 - [Freshness and Lifecycle](./freshness-and-lifecycle.md)
 - [Documentation Release Checklist](../operations/documentation-release-checklist.md)
 - [Documentation Sync](../operations/documentation-sync.md)
-

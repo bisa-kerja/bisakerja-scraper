@@ -11,6 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from api.readiness import DatabaseReadinessChecker
 from api.responses import error_response
 from api.routes.health import create_health_router
+from api.routes.jobs import JobSessionFactory, create_jobs_router
 from config.logging import bind_request_context, clear_log_context, configure_logging
 from config.settings import Settings, get_settings
 from core.errors import ScraperError
@@ -22,6 +23,7 @@ def create_app(
     *,
     settings: Settings | None = None,
     readiness_check: ReadinessCheck | None = None,
+    job_session_factory: JobSessionFactory | None = None,
 ) -> FastAPI:
     active_settings = settings or get_settings()
     configure_logging(
@@ -36,10 +38,12 @@ def create_app(
         active_settings.scraper_database_url,
         active_settings.health_check_timeout_seconds,
     )
+    app.state.job_session_factory = job_session_factory
 
     register_request_id_middleware(app, active_settings)
     register_exception_handlers(app)
     app.include_router(create_health_router())
+    app.include_router(create_jobs_router(), prefix=active_settings.api_prefix)
     return app
 
 

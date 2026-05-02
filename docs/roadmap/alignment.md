@@ -78,7 +78,7 @@ This page locks the initial documentation boundary for the Bisakerja Scraper ser
 
 ## Coverage Plan
 
-| Area | Phase 0-3 coverage | Later coverage |
+| Area | Current coverage | Planned coverage |
 | --- | --- | --- |
 | Overview | Start Here, role paths, glossary | Data flow, async workflows |
 | Services | Scraper API landing page | Synced/implementation pages when service docs exist |
@@ -89,7 +89,7 @@ This page locks the initial documentation boundary for the Bisakerja Scraper ser
 
 ## Verification Notes
 
-- Root context files listed in `TODOS.md` are covered in the audit matrix.
+- Root context files are covered in the audit matrix.
 - Source-contract matrix distinguishes list and detail reality per source.
 - Boundary stays scraper-only and does not create central platform documentation.
 - Final release readiness includes metadata, links, scope, lifecycle, health, sync, and root-context checks.

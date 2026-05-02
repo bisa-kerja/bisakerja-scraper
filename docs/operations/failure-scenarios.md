@@ -88,11 +88,19 @@ Scrape and sync should not be marked failed only because enrichment is degraded 
 
 | Area | Detail |
 | --- | --- |
-| Indicators | Sync latency increases; upsert errors; staging counts do not reach main DB |
+| Indicators | Sync latency increases; rejected payloads, retryable backend responses, dead-letter sync events, or staging counts not reaching main DB |
 | Impact | Backend keeps serving older job data |
-| First checks | Main DB connectivity, unique constraints, batch size, transaction errors |
-| Isolation | Run one small sync batch from staging rows with known source identities |
+| First checks | Backend service availability, service credential validity, response summary, payload hash, attempt count, batch size, unique constraints |
+| Isolation | Run one small sync batch from staging rows with known source identities and compare the sync event status before and after the attempt |
 | Owner | Data ingestion owner with backend owner review |
+
+Sync triage rules:
+
+- `4xx` responses usually indicate payload or credential problems and should not be retried blindly.
+- `429` and `5xx` responses may be retried within the configured limit.
+- Repeating the same payload should reuse the same sync event.
+- `dead-letter` rows require operator review before replay.
+- Response summaries must not contain service tokens, cookies, raw headers, or raw source payloads.
 
 ## Scenario 7: Jobs Become Stale After Partial Run
 
@@ -122,4 +130,3 @@ Never expire all jobs from a source after a failed or partial source run.
 - [Payload Redaction Policy](../standards/payload-redaction-policy.md)
 - [Raw Payload Contract](../references/raw-payload-contract.md)
 - [Freshness Module](../modules/freshness.md)
-

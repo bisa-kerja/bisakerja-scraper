@@ -34,4 +34,4 @@ Use this page to enter the scraper documentation without reading platform-level 
 
 ## Current Scope
 
-Phase 0-19 documentation covers orientation, boundaries, source contracts, raw payload mapping, scraper database ownership, interfaces, modules, environment, security, observability, testing, deployment, docs sync, review governance, lifecycle, versioning, and release readiness.
+The documentation set covers orientation, boundaries, source contracts, raw payload mapping, scraper database ownership, interfaces, modules, environment, security, observability, testing, deployment, docs sync, review governance, lifecycle, versioning, and release readiness.

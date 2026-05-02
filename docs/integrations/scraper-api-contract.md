@@ -54,6 +54,53 @@ Backend API must not rely on:
 - Live scraper availability for request-time search.
 - Source credentials or source request metadata.
 
+## Backend Handoff Request
+
+The scraper sends normalized jobs to Backend API in bounded batches over an internal service-to-service endpoint.
+
+Default request path:
+
+```text
+POST /api/v1/internal/scraper/jobs
+```
+
+Authentication uses a service credential in the `Authorization` header:
+
+```text
+Authorization: Bearer <managed-service-token>
+```
+
+Request body:
+
+```json
+{
+  "jobs": [
+    {
+      "sourcePlatform": "dealls",
+      "externalJobId": "123",
+      "title": "Backend Engineer",
+      "company": {
+        "name": "Example Company"
+      },
+      "location": {
+        "display": "Jakarta"
+      },
+      "salary": null,
+      "lastSeenAt": "2026-05-02T03:00:00+00:00",
+      "status": "active"
+    }
+  ]
+}
+```
+
+Behavior rules:
+
+- `2xx` responses mark the sync event as sent.
+- `4xx` responses are treated as rejected payloads and are not retried automatically.
+- `429` and `5xx` responses may be retried up to the configured limit.
+- Service tokens, raw payloads, cookies, and request headers are never stored in sync event summaries.
+- Response summaries store only safe status class, status code, message, and stable error code.
+
 ## Error Behavior
 
 | Error | Contract behavior |
@@ -65,3 +112,17 @@ Backend API must not rely on:
 | Enrichment failure | Sync base normalized job when required fields are valid |
 | Duplicate source job | Upsert by source identity |
 
+## Sync Event State
+
+Each normalized job handoff records an auditable sync event.
+
+| Field | Purpose |
+| --- | --- |
+| `target` | Downstream system name, usually `backend` |
+| `normalizedJobId` | Local normalized job record |
+| `payloadHash` | Stable hash of the normalized payload sent downstream |
+| `status` | `pending`, `sent`, `failed`, or `dead-letter` |
+| `attemptCount` | Number of recorded send attempts |
+| `responseSummary` | Safe response metadata for audit and triage |
+
+The idempotency key is `target + normalizedJobId + payloadHash`. Retrying the same payload reuses the existing event; changing the normalized payload creates a new event.

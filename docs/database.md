@@ -46,12 +46,13 @@ The scraper keeps a minimal local operational schema for replay, normalization, 
 | `scrape_runs` | One scrape, normalization, enrichment, or sync execution summary | `source_platform`, `stage`, `status`, counts, timestamps, sanitized error fields |
 | `raw_jobs` | One captured source job payload after request metadata has been sanitized | `scrape_run_id`, `source_platform`, `external_id`, `raw_payload`, `scraped_at` |
 | `normalized_jobs` | Canonical job candidate ready for sync | `source_platform`, `external_id`, `title`, `company_name`, `source_url`, `status`, `last_seen_at` |
-| `sync_events` | Backend handoff attempt and result metadata | `scrape_run_id`, `normalized_job_id`, `source_platform`, `external_id`, `status`, `target`, timestamps |
+| `sync_events` | Backend handoff attempt and result metadata | `scrape_run_id`, `normalized_job_id`, `source_platform`, `external_id`, `status`, `target`, `payload_hash`, `attempt_count`, `response_summary`, timestamps |
 
 Identity constraints:
 
 - `raw_jobs(source_platform, external_id)` is unique.
 - `normalized_jobs(source_platform, external_id)` is unique.
+- `sync_events(target, normalized_job_id, payload_hash)` is unique for idempotent retry.
 - `sync_events` keeps source identity indexed for retry and audit lookup.
 
 Schema changes are managed with Alembic migrations. Migrations must support upgrade and downgrade in isolated test databases before release.
@@ -85,6 +86,27 @@ Recommended constraints:
 | Required company fallback | Prevent ownerless visible jobs |
 | Indexed `lastSeenAt` and `status` | Freshness queries |
 | Indexed `postedAt` | Sorting |
+
+## Sync Event Audit Model
+
+Sync event rows make downstream handoff replayable and auditable without storing secrets or raw source payloads.
+
+| Status | Meaning |
+| --- | --- |
+| `pending` | Payload is staged for downstream handoff |
+| `sent` | Downstream accepted the payload with a `2xx` response |
+| `failed` | Attempt failed but remains retryable |
+| `dead-letter` | Retry limit is exhausted and operator triage is required |
+
+Audit fields:
+
+| Field | Rule |
+| --- | --- |
+| `payload_hash` | Stable hash of the normalized payload sent downstream |
+| `attempt_count` | Incremented once per recorded send attempt |
+| `response_summary` | Safe status code, status class, message, or stable error code |
+| `error_category` | Sanitized failure class such as `backend_5xx` or `validation_error` |
+| `error_message` | Short safe message without secrets, raw headers, or raw payload bodies |
 
 Cross-source duplicate merge is future scope.
 

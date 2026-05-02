@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -32,6 +32,20 @@ class PersistenceResult:
     normalized_job: NormalizedJob
     raw_created: bool
     normalized_created: bool
+
+
+@dataclass(frozen=True)
+class JobListFilters:
+    source_platform: str | None = None
+    freshness: str | None = None
+    location: str | None = None
+    keyword: str | None = None
+
+
+@dataclass(frozen=True)
+class PaginatedJobs:
+    jobs: list[NormalizedJob]
+    total: int
 
 
 class JobPersistenceRepository:
@@ -139,6 +153,61 @@ class JobPersistenceRepository:
                 external_id=raw_input.external_id,
                 details={"error": exc.__class__.__name__},
             ) from exc
+
+
+class NormalizedJobQueryRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def list_jobs(
+        self,
+        *,
+        filters: JobListFilters,
+        page: int,
+        limit: int,
+    ) -> PaginatedJobs:
+        statement = select(NormalizedJob)
+        statement = apply_job_filters(statement, filters)
+        total = self.session.scalar(
+            apply_job_filters(select(func.count()).select_from(NormalizedJob), filters)
+        )
+        jobs = self.session.scalars(
+            statement.order_by(
+                NormalizedJob.last_seen_at.desc(),
+                NormalizedJob.id.asc(),
+            )
+            .offset((page - 1) * limit)
+            .limit(limit)
+        ).all()
+        return PaginatedJobs(jobs=list(jobs), total=int(total or 0))
+
+    def get_job(self, job_id: str) -> NormalizedJob | None:
+        return self.session.get(NormalizedJob, job_id)
+
+
+def apply_job_filters(statement, filters: JobListFilters):  # noqa: ANN001, ANN201
+    if filters.source_platform:
+        statement = statement.where(NormalizedJob.source_platform == filters.source_platform)
+    if filters.freshness:
+        statement = statement.where(NormalizedJob.status == filters.freshness)
+    if filters.location:
+        needle = like_needle(filters.location)
+        statement = statement.where(cast(NormalizedJob.normalized_payload, String).ilike(needle))
+    if filters.keyword:
+        needle = like_needle(filters.keyword)
+        payload_text = cast(NormalizedJob.normalized_payload, String)
+        statement = statement.where(
+            or_(
+                NormalizedJob.title.ilike(needle),
+                NormalizedJob.company_name.ilike(needle),
+                payload_text.ilike(needle),
+            )
+        )
+    return statement
+
+
+def like_needle(value: str) -> str:
+    return f"%{value.strip()}%"
 
 
 def stable_payload_hash(payload: dict[str, Any]) -> str:
