@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.errors import ParseError
+from integrations.sources.time_utils import parse_source_datetime
 from shared.http import HttpClientConfig, JsonHttpClient, SourceHttpClient
 
 DEALLS_SOURCE_PLATFORM = "dealls"
@@ -155,6 +156,12 @@ def _parse_raw_job(raw_job: Any) -> RawSourceJob:
         external_id=external_id,
         source_url=source_url,
         raw_payload=raw_job,
+    )
+
+
+def extract_dealls_source_timestamp(raw_payload: dict[str, Any]):
+    return parse_source_datetime(raw_payload.get("publishedAt")) or parse_source_datetime(
+        raw_payload.get("latestUpdatedAt")
     )
 
 

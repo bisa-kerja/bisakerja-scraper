@@ -11,6 +11,7 @@ from integrations.sources.kalibrr.build_id import (
     KalibrrBuildIdResolver,
     request_kalibrr_data_with_build_refresh,
 )
+from integrations.sources.time_utils import parse_source_datetime
 from shared.http import HttpClientConfig, JsonHttpClient, SourceHttpClient
 
 KALIBRR_BASE_URL = "https://www.kalibrr.id"
@@ -147,6 +148,14 @@ def build_kalibrr_source_url(raw_job: dict[str, Any]) -> str:
     if isinstance(slug, str) and slug:
         return f"{KALIBRR_PUBLIC_JOB_BASE_URL}/jobs/{external_id}/{slug}"
     return f"{KALIBRR_PUBLIC_JOB_BASE_URL}/jobs/{external_id}"
+
+
+def extract_kalibrr_source_timestamp(raw_payload: dict[str, Any]):
+    return (
+        parse_source_datetime(raw_payload.get("activationDate"))
+        or parse_source_datetime(raw_payload.get("createdAt"))
+        or parse_source_datetime(raw_payload.get("updatedAt"))
+    )
 
 
 def _parse_raw_job(raw_job: Any) -> RawSourceJob:

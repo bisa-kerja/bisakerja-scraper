@@ -16,6 +16,7 @@ from integrations.sources.jobstreet import (
     build_jobstreet_default_headers,
     build_jobstreet_detail_request_body,
     build_jobstreet_list_request_body,
+    extract_jobstreet_source_timestamp,
     merge_jobstreet_list_and_detail,
     parse_jobstreet_detail_payload,
     parse_jobstreet_list_payload,
@@ -67,13 +68,24 @@ def test_parse_jobstreet_list_fixture_produces_raw_jobs() -> None:
     assert result.raw_jobs[0].external_id == "91789576"
     assert result.raw_jobs[0].source_url.endswith("/91789576")
     assert result.raw_jobs[1].raw_payload["salaryLabel"] == ""
+    assert (
+        extract_jobstreet_source_timestamp(result.raw_jobs[0].raw_payload)
+        .isoformat()
+        .startswith("2026-04-28T09:08:34+00:00")
+    )
 
 
 @pytest.mark.asyncio
 async def test_jobstreet_list_adapter_sends_sanitized_graphql_request_shape() -> None:
     http_client = MockJsonClient(load_fixture("tests/fixtures/raw/jobstreet/sample.json"))
     adapter = JobStreetListAdapter(http_client)
-    query = JobStreetListQuery(keywords="developer", page=2, page_size=32)
+    query = JobStreetListQuery(
+        keywords="developer",
+        page=2,
+        page_size=32,
+        date_range=7,
+        new_since="2026-04-28",
+    )
     expected_body = build_jobstreet_list_request_body(query)
 
     result = await adapter.fetch_page(query)

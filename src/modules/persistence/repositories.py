@@ -23,6 +23,7 @@ class RawJobInput:
     external_id: str
     source_url: str | None
     raw_payload: dict[str, Any]
+    metadata_json: dict[str, Any] | None = None
     scraped_at: datetime | None = None
 
 
@@ -69,6 +70,7 @@ class JobPersistenceRepository:
                 external_id=job.external_id,
                 source_url=job.source_url,
                 raw_payload=job.raw_payload,
+                metadata_json=job.metadata_json,
                 payload_hash=payload_hash,
                 scraped_at=scraped_at,
             )
@@ -79,6 +81,7 @@ class JobPersistenceRepository:
         existing.scrape_run_id = job.scrape_run_id
         existing.source_url = job.source_url
         existing.raw_payload = job.raw_payload
+        existing.metadata_json = job.metadata_json
         existing.payload_hash = payload_hash
         existing.scraped_at = scraped_at
         self.session.flush()

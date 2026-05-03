@@ -26,6 +26,7 @@ from integrations.sources.kalibrr.list import (
     RawSourceJob,
     build_kalibrr_http_client,
     build_kalibrr_source_url,
+    extract_kalibrr_source_timestamp,
     parse_kalibrr_list_payload,
 )
 from integrations.sources.kalibrr.mapper import map_kalibrr_job
@@ -48,6 +49,7 @@ __all__ = [
     "RawSourceJob",
     "build_kalibrr_http_client",
     "build_kalibrr_source_url",
+    "extract_kalibrr_source_timestamp",
     "merge_kalibrr_list_and_detail",
     "map_kalibrr_job",
     "parse_kalibrr_build_id_from_html",

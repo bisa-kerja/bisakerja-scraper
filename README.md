@@ -113,6 +113,7 @@ PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape
 PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --env-file .env.example
 ```
 
 The smoke dry-run command is fixture-backed and network-free. It validates parsing and mapping for a bounded Dealls fixture only. The pipeline command runs the local orchestrator against sanitized fixtures and an in-memory database by default.
@@ -145,6 +146,7 @@ Important groups:
 - Application: `APP_NAME`, `APP_ENV`, `PORT`, `API_PREFIX`
 - Database: `SCRAPER_DATABASE_URL`, `BACKEND_DATABASE_URL`, `BACKEND_SYNC_ENABLED`
 - Schedule: scrape, normalize, enrich, sync, and notify handoff cron values
+- Scrape plan: `SCRAPER_KEYWORDS`, `SCRAPER_MAX_ITEMS_PER_KEYWORD`, `SCRAPER_RECENCY_MODE`, `SCRAPER_RECENCY_DAYS`
 - Sources: Dealls, Glints, JobStreet, and Kalibrr settings
 - Backend sync: base URL, service token, timeout, batch size, freshness thresholds
 - AI enrichment: OpenAI-compatible API key, base URL, model, batch settings
@@ -175,9 +177,10 @@ Do not commit real secrets, cookies, bearer tokens, source sessions, or database
 | `PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example` | Validate app liveness wiring |
 | `PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape` | Run fixture-backed smoke dry-run for one stage |
 | `PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --env-file .env.example` | Run offline fixture-backed manual pipeline |
+| `PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --env-file .env.example` | Run multi-keyword latest scrape dry-run |
 | `PYTHONPATH=src uv run python -m cli.pipeline status --run-id <run-id> --env-file .env` | Read safe run status from the configured DB |
 
-`cli.smoke dry-run` validates a narrow Dealls fixture path. `cli.pipeline run` executes the local orchestrator with sanitized fixtures by default and prints compact JSON without secrets or raw payload bodies. Add `--execute` only for an operator-controlled environment with a migrated, non-production database.
+`cli.smoke dry-run` validates a narrow Dealls fixture path. `cli.pipeline run` executes the local orchestrator with sanitized fixtures by default and prints compact JSON without secrets or raw payload bodies. Keyword flags override `SCRAPER_KEYWORDS`; otherwise the env list is used. `--limit` applies per keyword. Add `--execute` only for an operator-controlled environment with a migrated, non-production database.
 
 ## Testing And Verification
 

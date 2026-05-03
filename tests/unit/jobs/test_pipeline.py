@@ -23,6 +23,7 @@ from modules.persistence import (
     JobPersistenceRepository,
     NormalizationQuarantine,
     NormalizedJob,
+    RawJob,
     RawJobInput,
 )
 from modules.quarantine import QuarantineRepository
@@ -125,12 +126,44 @@ async def test_normalize_stage_quarantines_malformed_raw_job() -> None:
         assert session.scalars(select(NormalizedJob)).all() == []
 
 
+@pytest.mark.asyncio
+async def test_scrape_stage_tracks_keyword_metadata_without_changing_identity() -> None:
+    with session_scope() as session:
+        orchestrator = PipelineOrchestrator(
+            sources=[
+                KeywordSource("dealls", "developer", ["job-1"]),
+                KeywordSource("dealls", "intern", ["job-1"]),
+            ],
+            persistence=JobPersistenceRepository(session),
+            run_tracker=RunStateTracker(session),
+            correlation_id_factory=lambda: "corr-1",
+        )
+
+        result = await orchestrator.run_scrape(run_id="run-scrape")
+
+        raw_jobs = session.scalars(select(RawJob)).all()
+        assert result.status == "completed"
+        assert result.counts.fetched == 2
+        assert len(raw_jobs) == 1
+        assert raw_jobs[0].source_platform == "dealls"
+        assert raw_jobs[0].external_id == "job-1"
+        assert raw_jobs[0].metadata_json["keyword"] in {"developer", "intern"}
+        assert raw_jobs[0].metadata_json["recencyMode"] == "latest"
+        assert raw_jobs[0].metadata_json["requestedLimit"] == 50
+        assert {source.keyword for source in result.source_results} == {"developer", "intern"}
+
+
 @dataclass
 class RawJobStub:
     source_platform: str
     external_id: str
     source_url: str
     raw_payload: dict[str, Any]
+    keyword: str | None = None
+    requested_limit: int | None = None
+    recency_mode: str | None = None
+    recency_days: int | None = None
+    source_timestamp: datetime | None = None
 
 
 class FakeSource:
@@ -156,6 +189,33 @@ class FakeSource:
             job=canonical_job(raw_job, scraped_at=scraped_at),
             field_provenance={"title": "raw.title"},
         )
+
+
+class KeywordSource(FakeSource):
+    def __init__(self, source_platform: str, keyword: str, external_ids: list[str]) -> None:
+        super().__init__(source_platform, external_ids)
+        self.keyword = keyword
+        self.requested_limit = 50
+        self.recency_mode = "latest"
+        self.recency_days = 7
+
+    async def fetch_raw_jobs(self) -> list[RawJobStub]:
+        self.fetch_count += 1
+        now = datetime.now(UTC)
+        return [
+            RawJobStub(
+                source_platform=self.source_platform,
+                external_id=external_id,
+                source_url=f"https://example.test/{external_id}",
+                raw_payload={"id": external_id},
+                keyword=self.keyword,
+                requested_limit=self.requested_limit,
+                recency_mode=self.recency_mode,
+                recency_days=self.recency_days,
+                source_timestamp=now,
+            )
+            for external_id in self.external_ids
+        ]
 
 
 class FailingSource:

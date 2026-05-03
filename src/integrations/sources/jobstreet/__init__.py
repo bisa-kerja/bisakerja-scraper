@@ -26,6 +26,7 @@ from integrations.sources.jobstreet.list import (
     build_jobstreet_http_client,
     build_jobstreet_list_request_body,
     build_jobstreet_source_url,
+    extract_jobstreet_source_timestamp,
     parse_jobstreet_list_payload,
 )
 from integrations.sources.jobstreet.mapper import map_jobstreet_job
@@ -52,6 +53,7 @@ __all__ = [
     "build_jobstreet_http_client",
     "build_jobstreet_list_request_body",
     "build_jobstreet_source_url",
+    "extract_jobstreet_source_timestamp",
     "merge_jobstreet_list_and_detail",
     "map_jobstreet_job",
     "parse_jobstreet_detail_payload",

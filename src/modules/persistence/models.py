@@ -83,6 +83,7 @@ class RawJob(Base):
     external_id: Mapped[str] = mapped_column(String(255), nullable=False)
     source_url: Mapped[str | None] = mapped_column(Text)
     raw_payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     payload_hash: Mapped[str | None] = mapped_column(String(128))
     scraped_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

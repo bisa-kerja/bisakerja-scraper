@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.errors import ParseError
+from integrations.sources.time_utils import parse_source_datetime
 from shared.http import HttpClientConfig, JsonHttpClient, SourceHttpClient
 
 GLINTS_SOURCE_PLATFORM = "glints"
@@ -264,6 +265,12 @@ def parse_glints_list_payload(
 
 def build_glints_source_url(job_id: str) -> str:
     return f"{GLINTS_PUBLIC_JOB_BASE_URL}/{job_id}"
+
+
+def extract_glints_source_timestamp(raw_payload: dict[str, Any]):
+    return parse_source_datetime(raw_payload.get("createdAt")) or parse_source_datetime(
+        raw_payload.get("updatedAt")
+    )
 
 
 def _parse_raw_job(raw_job: Any) -> RawSourceJob:

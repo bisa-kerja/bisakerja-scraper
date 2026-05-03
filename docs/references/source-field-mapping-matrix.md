@@ -39,6 +39,15 @@ This matrix keeps mapper work tied to observed payload fields.
 | `sourceUpdatedAt` | source update field if present | `updatedAt` | source update field if present | `activationDate` |
 | `lastSeenAt` | scrape time | scrape time | scrape time | scrape time |
 
+## Latest Timestamp Fallbacks
+
+| Source | Preferred | Fallback |
+| --- | --- | --- |
+| Dealls | `publishedAt` | `latestUpdatedAt` |
+| Glints | `createdAt` | `updatedAt` |
+| JobStreet | `listingDate.dateTimeUtc` | detail `listedAt.dateTimeUtc` |
+| Kalibrr | `activationDate` | `createdAt`, then `updatedAt` |
+
 ## Transform Rules
 
 - Normalize enum-like fields into backend-compatible values.

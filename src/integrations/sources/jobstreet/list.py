@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.errors import ConfigError, ParseError
+from integrations.sources.time_utils import parse_source_datetime
 from shared.http import HttpClientConfig, JsonHttpClient, SourceHttpClient
 
 JOBSTREET_SOURCE_PLATFORM = "jobstreet"
@@ -87,6 +88,7 @@ class JobStreetListQuery:
     page: int = 1
     page_size: int = 32
     date_range: int | None = 7
+    new_since: str | None = None
     site_key: str = "ID"
     channel: str = "mobileWeb"
 
@@ -101,6 +103,8 @@ class JobStreetListQuery:
             params["keywords"] = self.keywords
         if self.date_range is not None:
             params["dateRange"] = self.date_range
+        if self.new_since:
+            params["newSince"] = self.new_since
         return params
 
 
@@ -241,6 +245,22 @@ def parse_jobstreet_list_payload(
 
 def build_jobstreet_source_url(job_id: str) -> str:
     return f"{JOBSTREET_PUBLIC_JOB_BASE_URL}/{job_id}"
+
+
+def extract_jobstreet_source_timestamp(raw_payload: dict[str, Any]):
+    listing_date = raw_payload.get("listingDate")
+    if isinstance(listing_date, dict):
+        parsed = parse_source_datetime(listing_date.get("dateTimeUtc"))
+        if parsed is not None:
+            return parsed
+    detail = raw_payload.get("detail")
+    if isinstance(detail, dict):
+        job = detail.get("job")
+        if isinstance(job, dict):
+            listed_at = job.get("listedAt")
+            if isinstance(listed_at, dict):
+                return parse_source_datetime(listed_at.get("dateTimeUtc"))
+    return None
 
 
 def _parse_raw_job(raw_job: Any) -> RawSourceJob:

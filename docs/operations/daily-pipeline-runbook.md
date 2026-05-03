@@ -52,6 +52,7 @@ Use the pipeline command for an operator-style end-to-end dry run. By default it
 ```bash
 PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --limit 5 --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 5 --latest --recency-days 7 --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage normalize --source dealls --limit 5 --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline status --run-id <run-id> --env-file .env
 ```
@@ -60,8 +61,14 @@ Pipeline command rules:
 
 - `--stage` accepts `full`, `scrape`, `normalize`, `enrich`, `sync`, and `notify-handoff`.
 - `--source` accepts `all`, `dealls`, `glints`, `jobstreet`, and `kalibrr`.
-- `--limit` must be between `1` and `100`.
+- `--limit` must be between `1` and `100` and limits each keyword, not the whole run.
+- `--keyword` may be repeated for individual keyword overrides.
+- `--keywords` accepts a comma-separated keyword override.
+- When keyword flags are absent, the command uses `SCRAPER_KEYWORDS`.
+- `--latest` forces latest retrieval mode.
+- `--recency-days` must be between `1` and `365`; when absent, the command uses `SCRAPER_RECENCY_DAYS`.
 - Dry-run output is compact JSON and must not print service tokens, bearer tokens, cookies, raw headers, database passwords, or raw payload bodies.
+- Dry-run output includes source and keyword summaries with requested limit and newest/oldest source timestamps when available.
 - Manual runs share the scheduler guard so only one in-process operator run is accepted at a time.
 - `--execute` uses the configured scraper database and should only run after migration and readiness checks pass in a controlled non-production environment.
 

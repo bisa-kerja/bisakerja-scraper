@@ -19,6 +19,7 @@ from integrations.sources.dealls.list import (
     RawSourceJob,
     build_dealls_http_client,
     build_dealls_source_url,
+    extract_dealls_source_timestamp,
     parse_dealls_list_payload,
 )
 from integrations.sources.dealls.mapper import map_dealls_job
@@ -38,6 +39,7 @@ __all__ = [
     "RawSourceJob",
     "build_dealls_http_client",
     "build_dealls_source_url",
+    "extract_dealls_source_timestamp",
     "merge_dealls_list_and_detail",
     "map_dealls_job",
     "parse_dealls_detail_payload",

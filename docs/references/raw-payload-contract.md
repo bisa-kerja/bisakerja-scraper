@@ -70,3 +70,15 @@ Raw captures used in docs, fixtures, logs, or examples must remove:
 - User-specific flags where they imply a real account state.
 
 Use placeholders such as `<redacted>` only when the field name itself is relevant.
+
+## Raw Row Metadata
+
+Raw rows store safe scrape metadata beside the source payload:
+
+- `keyword`
+- `requestedLimit`
+- `recencyMode`
+- `recencyDays`
+- `sourceTimestamp`
+
+This metadata supports audit and replay. It is not part of deduplication identity.

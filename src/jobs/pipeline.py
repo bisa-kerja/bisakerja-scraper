@@ -45,6 +45,13 @@ class PipelineConfig:
 class SourcePipelineResult:
     source_platform: str
     status: str
+    keyword: str | None = None
+    requested_limit: int | None = None
+    recency_mode: str | None = None
+    recency_days: int | None = None
+    newest_source_timestamp: datetime | None = None
+    oldest_source_timestamp: datetime | None = None
+    truncated_count: int = 0
     counts: RunCounts = field(default_factory=RunCounts)
     errors: list[RunErrorSummary] = field(default_factory=list)
 
@@ -200,13 +207,14 @@ class PipelineOrchestrator:
         correlation_id: str,
         stage_events: list[str],
     ) -> SourcePipelineResult:
-        result = SourcePipelineResult(source_platform=source.source_platform, status="started")
+        result = source_pipeline_result_from(source)
         mapped_jobs: list[SourceMapperResult] = []
 
         try:
             stage_events.append(f"{source.source_platform}:scrape")
-            fetched = list(await source.fetch_raw_jobs())
+            fetched = sorted_by_source_timestamp(list(await source.fetch_raw_jobs()))
             result.counts.fetched = len(fetched)
+            update_source_timestamp_bounds(result, fetched)
 
             stage_events.append(f"{source.source_platform}:normalize")
             semaphore = asyncio.Semaphore(self.config.max_concurrency_per_source)
@@ -244,11 +252,12 @@ class PipelineOrchestrator:
         run_id: str,
         stage_events: list[str],
     ) -> SourcePipelineResult:
-        result = SourcePipelineResult(source_platform=source.source_platform, status="started")
+        result = source_pipeline_result_from(source)
         try:
             stage_events.append(f"{source.source_platform}:scrape")
-            fetched = list(await source.fetch_raw_jobs())
+            fetched = sorted_by_source_timestamp(list(await source.fetch_raw_jobs()))
             result.counts.fetched = len(fetched)
+            update_source_timestamp_bounds(result, fetched)
             for raw_job in fetched:
                 self.persistence.upsert_raw_job(raw_input_from(raw_job, run_id=run_id))
                 result.counts.persisted += 1
@@ -409,6 +418,7 @@ def raw_input_from(raw_job: Any, *, run_id: str) -> RawJobInput:
         external_id=raw_job.external_id,
         source_url=getattr(raw_job, "source_url", None),
         raw_payload=raw_job.raw_payload,
+        metadata_json=raw_metadata_from(raw_job),
         scraped_at=utc_now(),
     )
 
@@ -437,8 +447,63 @@ def merge_source_results(results: Sequence[SourcePipelineResult]) -> RunSummary:
         summary.counts.persisted += result.counts.persisted
         summary.counts.skipped += result.counts.skipped
         summary.errors.extend(result.errors)
-        summary.source_counts[result.source_platform] = result.counts.model_dump()
+        source_key = result.source_platform
+        if result.keyword:
+            source_key = f"{result.source_platform}:{result.keyword}"
+        summary.source_counts[source_key] = result.counts.model_dump()
     return summary
+
+
+def source_pipeline_result_from(source: PipelineSource) -> SourcePipelineResult:
+    return SourcePipelineResult(
+        source_platform=source.source_platform,
+        status="started",
+        keyword=getattr(source, "keyword", None),
+        requested_limit=getattr(source, "requested_limit", None),
+        recency_mode=getattr(source, "recency_mode", None),
+        recency_days=getattr(source, "recency_days", None),
+    )
+
+
+def sorted_by_source_timestamp(raw_jobs: list[Any]) -> list[Any]:
+    return sorted(
+        raw_jobs,
+        key=lambda raw_job: source_timestamp_sort_key(getattr(raw_job, "source_timestamp", None)),
+        reverse=True,
+    )
+
+
+def source_timestamp_sort_key(value: Any) -> datetime:
+    return value if isinstance(value, datetime) else datetime.min.replace(tzinfo=UTC)
+
+
+def update_source_timestamp_bounds(result: SourcePipelineResult, raw_jobs: Sequence[Any]) -> None:
+    timestamps = [
+        value
+        for raw_job in raw_jobs
+        if isinstance((value := getattr(raw_job, "source_timestamp", None)), datetime)
+    ]
+    if not timestamps:
+        return
+    result.newest_source_timestamp = max(timestamps)
+    result.oldest_source_timestamp = min(timestamps)
+
+
+def raw_metadata_from(raw_job: Any) -> dict[str, Any]:
+    metadata = {
+        "keyword": getattr(raw_job, "keyword", None),
+        "recencyMode": getattr(raw_job, "recency_mode", None),
+        "recencyDays": getattr(raw_job, "recency_days", None),
+        "requestedLimit": getattr(raw_job, "requested_limit", None),
+        "sourceTimestamp": serialized_datetime(getattr(raw_job, "source_timestamp", None)),
+    }
+    return {key: value for key, value in metadata.items() if value is not None}
+
+
+def serialized_datetime(value: Any) -> str | None:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return None
 
 
 def error_summary(source_platform: str, exc: Exception) -> RunErrorSummary:

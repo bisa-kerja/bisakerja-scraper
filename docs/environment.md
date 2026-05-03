@@ -78,6 +78,22 @@ Rules:
 | `HTTP_MAX_RETRIES` | Yes | Bounded retry count |
 | `HTTP_RESPONSE_MAX_BYTES` | Yes | Maximum response body size accepted from external sources |
 | `DEFAULT_RATE_LIMIT_PER_MINUTE` | Yes | Default bounded source request rate |
+| `SCRAPER_KEYWORDS` | Yes | Comma-separated keyword list |
+| `SCRAPER_MAX_ITEMS_PER_KEYWORD` | Yes | Positive integer, maximum `100` |
+| `SCRAPER_RECENCY_MODE` | Yes | `latest` |
+| `SCRAPER_RECENCY_DAYS` | Yes | Positive integer, maximum `365` |
+
+Keyword rules:
+
+- Split values on commas.
+- Trim leading and trailing whitespace.
+- Reject empty entries such as `developer,,intern`.
+- Keep internal spaces and search operators such as `/`, `+`, and `-`.
+- Deduplicate case-insensitively while preserving the first spelling sent to sources.
+
+The scraper fans out scrape work by `source x keyword`. The per-keyword limit applies to every fan-out item, not to the whole run. Job deduplication still uses `sourcePlatform + externalJobId`; the search keyword is audit metadata and must not become part of job identity.
+
+Latest mode requests newest listings first when a source supports it. If a source only supports sorting, the scraper reads newest-first pages and stops locally by limit or recency threshold.
 
 ## Backend Sync Variables
 

@@ -72,6 +72,8 @@ Source contract tests must verify:
 
 - Payload root exists for each source.
 - Required raw identity exists.
+- Latest request params or GraphQL body match the documented source contract.
+- Canonical source timestamp mapping uses the preferred source timestamp and fallback fields.
 - Optional salary fields can be null.
 - HTML fields are sanitized before normalized output.
 - Relative labels are not used as canonical timestamps when timestamps exist.
@@ -141,6 +143,7 @@ PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape
 PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --limit 1 --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --env-file .env.example
 uv run pytest tests/smoke
 ```
 
@@ -199,6 +202,7 @@ The scraper test suite covers:
 - DB-backed stage queue retry, completion, and dead-letter behavior.
 - CLI smoke checks for config, health, and fixture-backed dry-run behavior.
 - Manual pipeline CLI dry-run, source/stage validation, status lookup, and output redaction.
+- Multi-keyword fan-out, per-keyword limits, latest-mode request contracts, and source timestamp summaries.
 - Release readiness checks for documentation metadata, local links, and secret-safe docs/fixtures/raw captures.
 
 ## Release Gate

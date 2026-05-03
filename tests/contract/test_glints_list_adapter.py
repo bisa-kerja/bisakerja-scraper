@@ -12,6 +12,7 @@ from integrations.sources.glints import (
     GlintsListQuery,
     build_glints_detail_fallback,
     build_glints_list_request_body,
+    extract_glints_source_timestamp,
     parse_glints_list_payload,
 )
 
@@ -60,6 +61,11 @@ def test_parse_glints_list_fixture_produces_raw_jobs() -> None:
     assert result.raw_jobs[0].external_id == "aaed8a7f-de12-479c-8df8-56f26b35bed9"
     assert result.raw_jobs[0].source_url.endswith("/aaed8a7f-de12-479c-8df8-56f26b35bed9")
     assert result.raw_jobs[0].raw_payload["title"] == "Full Stack Developer"
+    assert (
+        extract_glints_source_timestamp(result.raw_jobs[0].raw_payload)
+        .isoformat()
+        .startswith("2026-05-01T04:41:42.821000+00:00")
+    )
 
 
 @pytest.mark.asyncio

@@ -38,6 +38,10 @@ def valid_env(**overrides: object) -> dict[str, object]:
         "HTTP_MAX_RETRIES": "2",
         "HTTP_RESPONSE_MAX_BYTES": "5242880",
         "DEFAULT_RATE_LIMIT_PER_MINUTE": "60",
+        "SCRAPER_KEYWORDS": "developer,intern,ui/ux",
+        "SCRAPER_MAX_ITEMS_PER_KEYWORD": "50",
+        "SCRAPER_RECENCY_MODE": "latest",
+        "SCRAPER_RECENCY_DAYS": "7",
         "BACKEND_SYNC_TIMEOUT_SECONDS": "20",
         "BACKEND_SYNC_BATCH_SIZE": "100",
         "FRESHNESS_STALE_AFTER_HOURS": "72",
@@ -146,6 +150,35 @@ def test_ai_enrichment_rejects_relative_base_url() -> None:
     )
 
     with pytest.raises(ValidationError, match="OPENAI_BASE_URL"):
+        Settings(**env, _env_file=None)
+
+
+def test_scraper_keywords_trim_deduplicate_and_preserve_symbols() -> None:
+    env = valid_env(SCRAPER_KEYWORDS=" Developer , developer, ui/ux, c++, full stack ")
+
+    settings = Settings(**env, _env_file=None)
+
+    assert settings.scraper_keywords == ("Developer", "ui/ux", "c++", "full stack")
+
+
+def test_scraper_keywords_reject_empty_entries() -> None:
+    env = valid_env(SCRAPER_KEYWORDS="developer,,intern")
+
+    with pytest.raises(ValidationError, match="SCRAPER_KEYWORDS"):
+        Settings(**env, _env_file=None)
+
+
+def test_scraper_limit_rejects_unsafe_values() -> None:
+    env = valid_env(SCRAPER_MAX_ITEMS_PER_KEYWORD="101")
+
+    with pytest.raises(ValidationError, match="SCRAPER_MAX_ITEMS_PER_KEYWORD"):
+        Settings(**env, _env_file=None)
+
+
+def test_scraper_recency_days_rejects_invalid_values() -> None:
+    env = valid_env(SCRAPER_RECENCY_DAYS="0")
+
+    with pytest.raises(ValidationError, match="SCRAPER_RECENCY_DAYS"):
         Settings(**env, _env_file=None)
 
 

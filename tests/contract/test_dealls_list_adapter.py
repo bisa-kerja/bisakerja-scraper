@@ -8,6 +8,7 @@ from core.errors import ParseError
 from integrations.sources.dealls import (
     DeallsListAdapter,
     DeallsListQuery,
+    extract_dealls_source_timestamp,
     parse_dealls_list_payload,
 )
 
@@ -53,6 +54,11 @@ def test_parse_dealls_list_fixture_produces_raw_jobs() -> None:
     assert result.raw_jobs[0].external_id == "69f30ce4b9f8ed001233b47c"
     assert result.raw_jobs[0].source_url.endswith("/academy-project-development-officer")
     assert result.raw_jobs[0].raw_payload["role"] == "Academy Project Development Officer"
+    assert (
+        extract_dealls_source_timestamp(result.raw_jobs[0].raw_payload)
+        .isoformat()
+        .startswith("2026-04-30T08:03:48.066000+00:00")
+    )
 
 
 @pytest.mark.asyncio

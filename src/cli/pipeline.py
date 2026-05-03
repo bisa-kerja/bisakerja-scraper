@@ -5,7 +5,7 @@ import asyncio
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +47,10 @@ DEFAULT_FIXTURE_ROOT = Path("tests/fixtures/raw")
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    result = asyncio.run(args.command_handler(args))
+    try:
+        result = asyncio.run(args.command_handler(args))
+    except argparse.ArgumentTypeError as exc:
+        parser.error(str(exc))
     print(json.dumps(result, sort_keys=True, separators=(",", ":")))
     return 0 if result["status"] == "ok" else 1
 
@@ -59,7 +62,11 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser = subparsers.add_parser("run")
     run_parser.add_argument("--stage", choices=STAGE_CHOICES, default="full")
     run_parser.add_argument("--source", choices=SOURCE_CHOICES, default="all")
-    run_parser.add_argument("--limit", type=positive_int, default=10)
+    run_parser.add_argument("--limit", type=positive_int, default=None)
+    run_parser.add_argument("--keyword", action="append", default=None)
+    run_parser.add_argument("--keywords", default=None)
+    run_parser.add_argument("--latest", action="store_true")
+    run_parser.add_argument("--recency-days", type=recency_days, default=None)
     run_parser.add_argument("--env-file", default=None)
     run_parser.add_argument("--fixture-root", default=str(DEFAULT_FIXTURE_ROOT))
     run_parser.add_argument("--run-id", default=None)
@@ -76,6 +83,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     settings = load_settings(args.env_file)
+    keywords = resolve_keywords(args, settings)
+    limit = args.limit or settings.scraper_max_items_per_keyword
+    recency_mode = "latest" if args.latest else settings.scraper_recency_mode.value
+    recency_days_value = args.recency_days or settings.scraper_recency_days
     engine = build_engine(settings.scraper_database_url, execute=args.execute)
     if not args.execute:
         Base.metadata.create_all(engine)
@@ -86,8 +97,11 @@ async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             session=session,
             stage=args.stage,
             source=args.source,
+            keywords=keywords,
             fixture_root=Path(args.fixture_root),
-            limit=args.limit,
+            limit=limit,
+            recency_mode=recency_mode,
+            recency_days=recency_days_value,
             execute=args.execute,
             run_id=args.run_id,
         )
@@ -145,16 +159,22 @@ class ManualPipelineRunner:
         session: Session,
         stage: str,
         source: str,
+        keywords: tuple[str, ...],
         fixture_root: Path,
         limit: int,
+        recency_mode: str,
+        recency_days: int,
         execute: bool,
         run_id: str | None,
     ) -> None:
         self.session = session
         self.stage = stage
         self.source = source
+        self.keywords = keywords
         self.fixture_root = fixture_root
         self.limit = limit
+        self.recency_mode = recency_mode
+        self.recency_days = recency_days
         self.execute = execute
         self.run_id = run_id
         self.output: dict[str, Any] | None = None
@@ -174,8 +194,11 @@ class ManualPipelineRunner:
             result,
             stage=stage_value,
             source=self.source,
+            keywords=self.keywords,
             execute=self.execute,
             limit=self.limit,
+            recency_mode=self.recency_mode,
+            recency_days=self.recency_days,
         )
 
     async def run_named_stage(self, stage: str) -> None:
@@ -203,7 +226,7 @@ class ManualPipelineRunner:
                 client=RecordingBackendClient(),
                 events=SyncEventRepository(self.session),
             )
-            max_jobs = self.limit * source_count(self.source)
+            max_jobs = self.limit * source_count(self.source) * len(self.keywords)
             result = await worker.sync_eligible_jobs(
                 scrape_run_id=run_id,
                 limit=max_jobs,
@@ -228,8 +251,11 @@ class ManualPipelineRunner:
         return PipelineOrchestrator(
             sources=fixture_sources(
                 source=self.source,
+                keywords=self.keywords,
                 fixture_root=self.fixture_root,
                 limit=self.limit,
+                recency_mode=self.recency_mode,
+                recency_days=self.recency_days,
             ),
             persistence=JobPersistenceRepository(self.session),
             run_tracker=RunStateTracker(self.session),
@@ -291,28 +317,51 @@ class FixtureRawJob:
     external_id: str
     source_url: str
     raw_payload: dict[str, Any]
+    keyword: str
+    requested_limit: int
+    recency_mode: str
+    recency_days: int
+    source_timestamp: datetime
 
 
 class FixturePipelineSource:
-    def __init__(self, source_platform: str, fixture_path: Path, limit: int) -> None:
+    def __init__(
+        self,
+        source_platform: str,
+        keyword: str,
+        fixture_path: Path,
+        limit: int,
+        recency_mode: str,
+        recency_days: int,
+    ) -> None:
         self.source_platform = source_platform
+        self.keyword = keyword
         self.fixture_path = fixture_path
-        self.limit = limit
+        self.requested_limit = limit
+        self.recency_mode = recency_mode
+        self.recency_days = recency_days
 
     async def fetch_raw_jobs(self) -> list[FixtureRawJob]:
         payload = json.loads(self.fixture_path.read_text(encoding="utf-8"))
+        now = datetime.now(UTC)
         return [
             FixtureRawJob(
                 source_platform=self.source_platform,
                 external_id=f"{self.source_platform}-fixture-{index}",
                 source_url=f"https://example.test/{self.source_platform}/fixture-{index}",
                 raw_payload=payload,
+                keyword=self.keyword,
+                requested_limit=self.requested_limit,
+                recency_mode=self.recency_mode,
+                recency_days=self.recency_days,
+                source_timestamp=now - timedelta(minutes=index),
             )
-            for index in range(1, self.limit + 1)
+            for index in range(1, self.requested_limit + 1)
         ]
 
     def map_raw_job(self, raw_job: FixtureRawJob, *, scraped_at: datetime) -> SourceMapperResult:
         platform = SourcePlatform(raw_job.source_platform)
+        source_timestamp = source_timestamp_from_raw_job(raw_job) or scraped_at
         return SourceMapperResult(
             job=CanonicalJobSchema(
                 source=SourceMetadataSchema(
@@ -320,6 +369,7 @@ class FixturePipelineSource:
                     external_job_id=raw_job.external_id,
                     source_url=raw_job.source_url,
                     scraped_at=scraped_at,
+                    source_updated_at=source_timestamp,
                 ),
                 title=f"{platform.value.title()} Backend Engineer",
                 company=CompanySchema(name=f"{platform.value.title()} Company"),
@@ -327,6 +377,7 @@ class FixturePipelineSource:
                 description="Build Python APIs and data pipelines.",
                 requirements="Python and SQL experience.",
                 skills=["Python", "SQL"],
+                posted_at=source_timestamp,
                 last_seen_at=datetime.now(UTC),
                 status=CanonicalJobStatus.ACTIVE,
             ),
@@ -350,13 +401,24 @@ class RecordingHandoffClient:
 def fixture_sources(
     *,
     source: str,
+    keywords: tuple[str, ...],
     fixture_root: Path,
     limit: int,
+    recency_mode: str,
+    recency_days: int,
 ) -> list[FixturePipelineSource]:
     selected = SOURCE_CHOICES[1:] if source == "all" else (source,)
     return [
-        FixturePipelineSource(platform, fixture_root / platform / "sample.json", limit)
+        FixturePipelineSource(
+            platform,
+            keyword,
+            fixture_root / platform / "sample.json",
+            limit,
+            recency_mode,
+            recency_days,
+        )
         for platform in selected
+        for keyword in keywords
     ]
 
 
@@ -369,8 +431,11 @@ def output_from_result(
     *,
     stage: str,
     source: str,
+    keywords: tuple[str, ...],
     execute: bool,
     limit: int,
+    recency_mode: str,
+    recency_days: int,
 ) -> dict[str, Any]:
     return {
         "check": "pipeline-run",
@@ -378,16 +443,24 @@ def output_from_result(
         "mode": "execute" if execute else "dry-run",
         "stage": stage,
         "source": source,
+        "keywords": list(keywords),
         "runId": result.run_id,
         "runStatus": result.status,
         "correlationId": result.correlation_id,
         "limit": limit,
+        "recencyMode": recency_mode,
+        "recencyDays": recency_days,
         "counts": result.counts.model_dump(),
         "sources": [
             {
                 "source": source_result.source_platform,
+                "keyword": source_result.keyword,
                 "status": source_result.status,
                 "counts": source_result.counts.model_dump(),
+                "requestedLimit": source_result.requested_limit,
+                "newestSourceTimestamp": serialize_datetime(source_result.newest_source_timestamp),
+                "oldestSourceTimestamp": serialize_datetime(source_result.oldest_source_timestamp),
+                "truncatedCount": source_result.truncated_count,
             }
             for source_result in result.source_results
         ],
@@ -425,6 +498,62 @@ def positive_int(value: str) -> int:
     if parsed > 100:
         raise argparse.ArgumentTypeError("must be less than or equal to 100")
     return parsed
+
+
+def recency_days(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    if parsed > 365:
+        raise argparse.ArgumentTypeError("must be less than or equal to 365")
+    return parsed
+
+
+def resolve_keywords(args: argparse.Namespace, settings: Settings) -> tuple[str, ...]:
+    values: list[str] = []
+    if args.keyword:
+        values.extend(args.keyword)
+    if args.keywords:
+        values.append(args.keywords)
+    if not values:
+        return settings.scraper_keywords
+    return parse_keyword_values(values)
+
+
+def parse_keyword_values(values: Sequence[str]) -> tuple[str, ...]:
+    keywords: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        for raw_keyword in value.split(","):
+            keyword = raw_keyword.strip()
+            if not keyword:
+                raise argparse.ArgumentTypeError("keywords must not contain empty entries")
+            key = keyword.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            keywords.append(keyword)
+    return tuple(keywords)
+
+
+def serialize_datetime(value: datetime | None) -> str | None:
+    return value.isoformat() if value else None
+
+
+def source_timestamp_from_raw_job(raw_job: Any) -> datetime | None:
+    value = getattr(raw_job, "source_timestamp", None)
+    if isinstance(value, datetime):
+        return value
+    metadata = getattr(raw_job, "metadata_json", None)
+    if isinstance(metadata, dict):
+        raw_value = metadata.get("sourceTimestamp")
+        if isinstance(raw_value, str):
+            text = raw_value[:-1] + "+00:00" if raw_value.endswith("Z") else raw_value
+            try:
+                return datetime.fromisoformat(text)
+            except ValueError:
+                return None
+    return None
 
 
 def stage_for_guard(stage: str) -> ScheduledStage:

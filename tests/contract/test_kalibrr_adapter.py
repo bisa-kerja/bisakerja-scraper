@@ -9,6 +9,7 @@ from integrations.sources.kalibrr import (
     KalibrrBuildIdResolver,
     KalibrrListAdapter,
     KalibrrListQuery,
+    extract_kalibrr_source_timestamp,
     merge_kalibrr_list_and_detail,
     parse_kalibrr_detail_payload,
     parse_kalibrr_list_payload,
@@ -66,6 +67,11 @@ def test_parse_kalibrr_list_fixture_produces_raw_jobs() -> None:
     assert result.raw_jobs[0].source_platform == "kalibrr"
     assert result.raw_jobs[0].external_id == "265196"
     assert "/c/simbadda-group/jobs/265196/" in result.raw_jobs[0].source_url
+    assert (
+        extract_kalibrr_source_timestamp(result.raw_jobs[0].raw_payload)
+        .isoformat()
+        .startswith("2026-05-01T03:51:58.260489+00:00")
+    )
 
 
 @pytest.mark.asyncio

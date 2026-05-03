@@ -24,6 +24,10 @@ class LogLevel(StrEnum):
     SILENT = "silent"
 
 
+class ScraperRecencyMode(StrEnum):
+    LATEST = "latest"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -31,6 +35,7 @@ class Settings(BaseSettings):
         extra="ignore",
         populate_by_name=True,
         validate_default=True,
+        enable_decoding=False,
     )
 
     app_name: NonEmptyStr = Field(validation_alias="APP_NAME")
@@ -65,6 +70,18 @@ class Settings(BaseSettings):
     default_rate_limit_per_minute: int = Field(
         validation_alias="DEFAULT_RATE_LIMIT_PER_MINUTE",
         ge=1,
+    )
+    scraper_keywords: tuple[str, ...] = Field(validation_alias="SCRAPER_KEYWORDS")
+    scraper_max_items_per_keyword: int = Field(
+        validation_alias="SCRAPER_MAX_ITEMS_PER_KEYWORD",
+        ge=1,
+        le=100,
+    )
+    scraper_recency_mode: ScraperRecencyMode = Field(validation_alias="SCRAPER_RECENCY_MODE")
+    scraper_recency_days: int = Field(
+        validation_alias="SCRAPER_RECENCY_DAYS",
+        ge=1,
+        le=365,
     )
 
     backend_sync_base_url: NonEmptyStr | None = Field(
@@ -181,6 +198,34 @@ class Settings(BaseSettings):
         if any(not origin for origin in origins):
             raise ValueError("CORS_ORIGINS must not contain empty entries")
         return ",".join(origins)
+
+    @field_validator("scraper_keywords", mode="before")
+    @classmethod
+    def parse_scraper_keywords(cls, value: object) -> tuple[str, ...]:
+        if isinstance(value, str):
+            raw_keywords = value.split(",")
+        elif isinstance(value, list | tuple):
+            raw_keywords = list(value)
+        else:
+            raise ValueError("SCRAPER_KEYWORDS must be a comma-separated list")
+
+        keywords: list[str] = []
+        seen: set[str] = set()
+        for raw_keyword in raw_keywords:
+            if not isinstance(raw_keyword, str):
+                raise ValueError("SCRAPER_KEYWORDS entries must be strings")
+            keyword = raw_keyword.strip()
+            if not keyword:
+                raise ValueError("SCRAPER_KEYWORDS must not contain empty entries")
+            key = keyword.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            keywords.append(keyword)
+
+        if not keywords:
+            raise ValueError("SCRAPER_KEYWORDS must contain at least one keyword")
+        return tuple(keywords)
 
     @field_validator(
         "backend_sync_service_token",
