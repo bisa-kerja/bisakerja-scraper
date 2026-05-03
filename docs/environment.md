@@ -55,6 +55,7 @@ Rules:
 - Do not fallback from scraper DB to backend DB.
 - PostgreSQL URLs may use `postgresql://`, `postgresql+asyncpg://`, or `postgresql+psycopg://`.
 - Alembic online migration uses a sync PostgreSQL driver path and normalizes async PostgreSQL URLs to a sync `psycopg` dialect for migration execution.
+- Deployment preflight validates the configured scraper database with a lightweight query before migrations and prints only password-redacted URLs.
 
 ## Queue And Schedule Variables
 

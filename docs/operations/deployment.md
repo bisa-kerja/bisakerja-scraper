@@ -80,7 +80,10 @@ Run smoke checks before deploying an image:
 PYTHONPATH=src uv run python -m cli.smoke config --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
+uv run python scripts/deploy/db_preflight.py --env-file .env.production.example
 ```
+
+The example env file uses placeholder database hosts, so the preflight command should fail safely with redacted output. On a real deployment target, the same preflight runs from container environment variables and must pass before migration.
 
 Container rules:
 
@@ -104,6 +107,7 @@ Workflow behavior:
 | Write env file | VPS receives `.env.production` from GitHub environment secret |
 | Sync checkout | Remote repository is reset to the exact build commit SHA only when clean |
 | Pull image | Compose pulls the immutable GHCR SHA tag from the same build run |
+| DB preflight | Container verifies database env and lightweight connectivity with redacted output |
 | Migrate | `alembic upgrade head` runs before app startup |
 | Start app | Compose starts the `app` service and waits for health |
 | Verify | `/health/live` and `/health/ready` pass on localhost |
@@ -191,6 +195,25 @@ Use hotfix only when production freshness or sync is materially degraded.
 - Re-run enrichment separately when scrape and normalization are healthy.
 - Re-run sync from staging when main DB handoff failed.
 - Rotate exposed source credentials if logs or artifacts leaked real values.
+
+## Database Connection Failures
+
+If deploy logs show `password authentication failed for user 'neondb_owner'`, treat the runtime database secret as invalid or stale. Correct the database URL in the deployment secret source, redeploy the env file, then rerun migration and readiness checks.
+
+Neon logs can also include IPv6 `Network is unreachable` attempts. When IPv4 attempts fail with password authentication errors in the same trace, fix credentials first; do not treat IPv6 reachability as the primary blocker.
+
+Safe validation sequence:
+
+```bash
+python scripts/deploy/db_preflight.py --from-env
+uv run alembic upgrade head
+PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.production
+curl --fail http://127.0.0.1:${APP_PORT:-8000}/health/ready
+```
+
+Never paste full database URLs, passwords, or deployment env payloads into docs, tickets, or logs.
+
+The deployment preflight runs inside the application container before migrations. It verifies required environment variables, opens a lightweight database connection, and prints a compact JSON result with password-redacted URLs. Authentication failures stop deployment before Alembic starts. If the same trace includes IPv6 `Network is unreachable` and IPv4 password failures, rotate or redeploy the database credential first.
 
 ## Scheduler Runtime
 

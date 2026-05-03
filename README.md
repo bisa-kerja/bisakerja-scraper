@@ -111,7 +111,11 @@ Run smoke checks:
 PYTHONPATH=src uv run python -m cli.smoke config --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape
+PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --env-file .env.example
 ```
+
+The smoke dry-run command is fixture-backed and network-free. It validates parsing and mapping for a bounded Dealls fixture only. The pipeline command runs the local orchestrator against sanitized fixtures and an in-memory database by default.
 
 Start the API:
 
@@ -163,9 +167,17 @@ Do not commit real secrets, cookies, bearer tokens, source sessions, or database
 | `uv run pytest`                                     | Run full test suite                        |
 | `uv run alembic upgrade head`                       | Apply migrations                           |
 | `uv run alembic downgrade base`                     | Roll back migrations                       |
+| `uv run python scripts/deploy/db_preflight.py --env-file .env.production.example` | Validate deployment DB preflight output safety |
 | `uv run python scripts/sanitize_raw_fixtures.py`    | Sanitize raw fixtures                      |
 | `uv run python scripts/check_release_readiness.py`  | Validate docs, links, and unsafe artifacts |
 | `uv run python scripts/prepare_docs_sync_bundle.py` | Build central-docs sync bundle             |
+| `PYTHONPATH=src uv run python -m cli.smoke config --env-file .env.example` | Validate config loading |
+| `PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example` | Validate app liveness wiring |
+| `PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape` | Run fixture-backed smoke dry-run for one stage |
+| `PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --env-file .env.example` | Run offline fixture-backed manual pipeline |
+| `PYTHONPATH=src uv run python -m cli.pipeline status --run-id <run-id> --env-file .env` | Read safe run status from the configured DB |
+
+`cli.smoke dry-run` validates a narrow Dealls fixture path. `cli.pipeline run` executes the local orchestrator with sanitized fixtures by default and prints compact JSON without secrets or raw payload bodies. Add `--execute` only for an operator-controlled environment with a migrated, non-production database.
 
 ## Testing And Verification
 
@@ -239,6 +251,8 @@ The workflow:
 - Starts the app through Docker Compose.
 - Checks `/health/live` and `/health/ready`.
 - Collects Compose logs on failure.
+
+If deployment fails with database connection errors like `password authentication failed for user 'neondb_owner'`, rotate or correct the database secret in `DEPLOY_ENV_FILE` first, then redeploy. IPv6 `Network is unreachable` entries from Neon can appear alongside the real auth failure; treat failed IPv4 password authentication as the primary root cause when both are present.
 
 Required GitHub environment secrets:
 

@@ -138,6 +138,9 @@ Smoke checks are available through the scraper CLI and do not require external n
 PYTHONPATH=src uv run python -m cli.smoke config --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape
+PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --limit 1 --env-file .env.example
 uv run pytest tests/smoke
 ```
 
@@ -153,7 +156,9 @@ The automated smoke suite includes a runtime boot regression check:
 uv run pytest tests/smoke/test_runtime_boot.py
 ```
 
-The dry-run command reads the sanitized Dealls fixture, parses the list payload, maps one job into the canonical schema, and prints a compact JSON result.
+The smoke dry-run command reads the sanitized Dealls fixture, parses the list payload, maps one job into the canonical schema, and prints a compact JSON result.
+
+The pipeline command runs the local orchestrator with sanitized fixtures by default. It exercises scrape, normalize, enrichment staging, backend sync handoff preparation, and notification handoff preparation without external network access or production database mutation.
 
 ## CI Verification
 
@@ -193,6 +198,7 @@ The scraper test suite covers:
 - Enrichment staging upsert behavior for skills and requirements.
 - DB-backed stage queue retry, completion, and dead-letter behavior.
 - CLI smoke checks for config, health, and fixture-backed dry-run behavior.
+- Manual pipeline CLI dry-run, source/stage validation, status lookup, and output redaction.
 - Release readiness checks for documentation metadata, local links, and secret-safe docs/fixtures/raw captures.
 
 ## Release Gate

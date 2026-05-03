@@ -15,47 +15,67 @@ Use this runbook to operate the scheduled scraper pipeline and recover partial r
 
 ## Schedule
 
-| Time | Stage | Expected result |
-| --- | --- | --- |
-| 01:00 | Scrape | Raw records stored per source |
-| 01:30 | Normalize | Valid records become normalized jobs; invalid records are quarantined |
-| 02:00 | Enrich | Skills and requirements staged from normalized safe text |
-| 03:00 | Sync | Eligible jobs are sent to Backend API in chunks |
-| 05:00-06:00 | Notification handoff | Sent sync events become backend-owned recommendation candidates |
+| Time        | Stage                | Expected result                                                       |
+| ----------- | -------------------- | --------------------------------------------------------------------- |
+| 01:00       | Scrape               | Raw records stored per source                                         |
+| 01:30       | Normalize            | Valid records become normalized jobs; invalid records are quarantined |
+| 02:00       | Enrich               | Skills and requirements staged from normalized safe text              |
+| 03:00       | Sync                 | Eligible jobs are sent to Backend API in chunks                       |
+| 05:00-06:00 | Notification handoff | Sent sync events become backend-owned recommendation candidates       |
 
 ## First Checks
 
-| Stage | Check |
-| --- | --- |
-| Scrape | Run record exists; per-source fetched counts are non-zero or intentionally partial |
-| Normalize | Normalized count and quarantine count match source health |
-| Enrich | AI request logs contain status, retry count, model, and safe base URL alias |
-| Sync | Sync events show `sent`, retryable `failed`, or reviewed `dead-letter` states |
-| Notification handoff | Handoff events exist only for sent sync events |
+| Stage                | Check                                                                              |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| Scrape               | Run record exists; per-source fetched counts are non-zero or intentionally partial |
+| Normalize            | Normalized count and quarantine count match source health                          |
+| Enrich               | AI request logs contain status, retry count, model, and safe base URL alias        |
+| Sync                 | Sync events show `sent`, retryable `failed`, or reviewed `dead-letter` states      |
+| Notification handoff | Handoff events exist only for sent sync events                                     |
 
 ## Manual Stage Commands
 
 Run commands from the repository root with a complete environment loaded.
 
+Use the smoke command for a narrow parser check. It uses a sanitized Dealls fixture, disables network access, and does not persist data, call AI enrichment, sync to Backend API, or perform notification handoff.
+
 ```bash
-PYTHONPATH=src python -m cli.smoke dry-run --stage scrape
-PYTHONPATH=src python -m cli.smoke dry-run --stage normalize
-PYTHONPATH=src python -m cli.smoke dry-run --stage enrich
-PYTHONPATH=src python -m cli.smoke dry-run --stage sync
-PYTHONPATH=src python -m cli.smoke dry-run --stage notify-handoff
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage normalize
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage enrich
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage sync
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage notify-handoff
 ```
 
-Dry runs must not print service tokens, bearer tokens, cookies, raw headers, or raw payload bodies.
+Use the pipeline command for an operator-style end-to-end dry run. By default it uses sanitized fixtures and an in-memory database, so it does not mutate staging or production data.
+
+```bash
+PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --limit 5 --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline run --stage normalize --source dealls --limit 5 --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline status --run-id <run-id> --env-file .env
+```
+
+Pipeline command rules:
+
+- `--stage` accepts `full`, `scrape`, `normalize`, `enrich`, `sync`, and `notify-handoff`.
+- `--source` accepts `all`, `dealls`, `glints`, `jobstreet`, and `kalibrr`.
+- `--limit` must be between `1` and `100`.
+- Dry-run output is compact JSON and must not print service tokens, bearer tokens, cookies, raw headers, database passwords, or raw payload bodies.
+- Manual runs share the scheduler guard so only one in-process operator run is accepted at a time.
+- `--execute` uses the configured scraper database and should only run after migration and readiness checks pass in a controlled non-production environment.
+
+The HTTP trigger route is still not exposed. Operators should use the CLI until the internal run API is implemented.
 
 ## Recovery
 
-| Failure | Recovery |
-| --- | --- |
-| One source scrape fails | Re-run only the affected source after checking source auth, headers, rate limits, and timeout |
-| Normalize fails for some records | Inspect quarantine metadata, fix mapper, then replay affected raw records |
-| Enrichment fails | Retry failed enrichment jobs when error is timeout, rate limit, or provider unavailable |
-| Sync chunk fails | Retry pending or retryable failed sync events; do not replay sent or dead-letter events blindly |
-| Notification handoff fails | Retry failed handoff events after backend notification endpoint is healthy |
+| Failure                          | Recovery                                                                                        |
+| -------------------------------- | ----------------------------------------------------------------------------------------------- |
+| One source scrape fails          | Re-run only the affected source after checking source auth, headers, rate limits, and timeout   |
+| Normalize fails for some records | Inspect quarantine metadata, fix mapper, then replay affected raw records                       |
+| Enrichment fails                 | Retry failed enrichment jobs when error is timeout, rate limit, or provider unavailable         |
+| Sync chunk fails                 | Retry pending or retryable failed sync events; do not replay sent or dead-letter events blindly |
+| Notification handoff fails       | Retry failed handoff events after backend notification endpoint is healthy                      |
 
 ## Safe Partial Run Rules
 
@@ -69,14 +89,14 @@ Dry runs must not print service tokens, bearer tokens, cookies, raw headers, or 
 
 Before production promotion, capture:
 
-| Gate | Evidence |
-| --- | --- |
-| Unit and contract tests | Passing test output |
-| Database migration | Upgrade and rollback result |
-| E2E fixture pipeline | Offline fixture run result |
-| Smoke CLI | Dry-run output per stage |
-| Secret safety | Scan showing no raw secrets in docs, logs, or fixtures |
-| Backend contract | Sync payload and handoff payload checked against docs |
+| Gate                    | Evidence                                               |
+| ----------------------- | ------------------------------------------------------ |
+| Unit and contract tests | Passing test output                                    |
+| Database migration      | Upgrade and rollback result                            |
+| E2E fixture pipeline    | Offline fixture run result                             |
+| Smoke CLI               | Dry-run output per stage                               |
+| Secret safety           | Scan showing no raw secrets in docs, logs, or fixtures |
+| Backend contract        | Sync payload and handoff payload checked against docs  |
 
 ## Related Docs
 

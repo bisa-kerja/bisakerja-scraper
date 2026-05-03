@@ -53,6 +53,15 @@ Rules:
 
 The stable product job search API remains owned by Backend API.
 
+Manual operator execution is currently exposed through the repository CLI, not HTTP:
+
+```bash
+PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline status --run-id <run-id> --env-file .env
+```
+
+The CLI output is safe operational JSON. It does not expose service tokens, bearer tokens, database passwords, cookies, raw headers, or raw payload bodies.
+
 ## Internal Jobs Query Contract
 
 `GET /api/v1/jobs` returns normalized local jobs from the scraper operational store. It is intended for internal diagnostics and service-to-service inspection only. Product search and public job detail remain owned by Backend API.
@@ -167,6 +176,8 @@ Every health response includes the configured request id header. Callers may pro
 ## Trigger Run Contract
 
 `POST /api/v1/runs` starts a controlled scraper pipeline run.
+
+Implementation status: planned only. The current app exposes health and internal jobs routes, but does not yet implement `POST /api/v1/runs` or `GET /api/v1/runs`. Use `cli.pipeline` for manual operator runs until the HTTP route is available.
 
 Allowed body fields:
 

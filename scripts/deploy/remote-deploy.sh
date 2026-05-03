@@ -112,6 +112,10 @@ export COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME_VALUE"
 log "Pulling immutable application image $APP_IMAGE"
 docker compose -f "$COMPOSE_FILE" --env-file "$RUNTIME_ENV_FILE" pull app
 
+log "Running database connectivity preflight"
+docker compose -f "$COMPOSE_FILE" --env-file "$RUNTIME_ENV_FILE" run --rm --no-deps app \
+  python scripts/deploy/db_preflight.py --from-env
+
 log "Applying Alembic migrations"
 docker compose -f "$COMPOSE_FILE" --env-file "$RUNTIME_ENV_FILE" run --rm --no-deps app alembic upgrade head
 

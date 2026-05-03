@@ -29,7 +29,7 @@ def to_sync_migration_url(database_url: str) -> str:
     if url.get_backend_name() != "postgresql":
         return database_url
     if url.drivername in {"postgresql", "postgresql+asyncpg", "postgresql+psycopg_async"}:
-        return str(url.set(drivername="postgresql+psycopg"))
+        return url.set(drivername="postgresql+psycopg").render_as_string(hide_password=False)
     return database_url
 
 
