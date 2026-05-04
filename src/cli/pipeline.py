@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -11,7 +12,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlparse
 
-from sqlalchemy import create_engine, select
+import httpx
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -79,12 +81,17 @@ from modules.jobs.schemas import (
 from modules.notifications import HandoffSuccess, NotificationHandoffRepository
 from modules.notifications.handoff import RecommendationHandoffWorker
 from modules.persistence import (
+    AIRequestLog,
     Base,
     JobPersistenceRepository,
+    JobRequirementStaging,
+    JobSkillStaging,
+    NormalizationQuarantine,
     NormalizedJob,
     NotificationHandoffEvent,
     RawJob,
     ScrapeRun,
+    StageJob,
     SyncEvent,
 )
 from modules.runs import RunCounts, RunStage, RunStateTracker
@@ -135,6 +142,24 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("--env-file", default=None)
     verify_parser.add_argument("--database-url", default=None)
     verify_parser.set_defaults(command_handler=run_verify)
+
+    staging_parser = subparsers.add_parser("staging-report")
+    staging_parser.add_argument("--run-id", required=True)
+    staging_parser.add_argument("--env-file", default=None)
+    staging_parser.add_argument("--scraper-database-url", default=None)
+    staging_parser.add_argument("--backend-database-url", default=None)
+    staging_parser.add_argument("--backend-base-url", default=None)
+    staging_parser.add_argument("--backend-token", default=None)
+    staging_parser.add_argument("--sample-per-source", type=positive_sample_size, default=1)
+    staging_parser.add_argument(
+        "--stage-p95-threshold-ms",
+        type=positive_metric_value,
+        default=None,
+    )
+    staging_parser.add_argument("--ai-p95-threshold-ms", type=positive_metric_value, default=None)
+    staging_parser.add_argument("--sync-p95-threshold-ms", type=positive_metric_value, default=None)
+    staging_parser.add_argument("--retry-threshold", type=non_negative_metric_value, default=None)
+    staging_parser.set_defaults(command_handler=run_staging_report)
     return parser
 
 
@@ -219,6 +244,568 @@ async def run_verify(args: argparse.Namespace) -> dict[str, Any]:
             return verify_database_state(session, run_id=args.run_id)
     finally:
         engine.dispose()
+
+
+async def run_staging_report(args: argparse.Namespace) -> dict[str, Any]:
+    settings = load_settings(args.env_file)
+    scraper_database_url = args.scraper_database_url or settings.scraper_database_url
+    scraper_engine = create_engine(to_sync_url(scraper_database_url), pool_pre_ping=True)
+
+    try:
+        with Session(scraper_engine) as scraper_session:
+            report = build_staging_report(
+                scraper_session,
+                run_id=args.run_id,
+                sample_per_source=args.sample_per_source,
+            )
+    finally:
+        scraper_engine.dispose()
+
+    backend_database_url = args.backend_database_url or settings.backend_database_url
+    if backend_database_url:
+        backend_engine = create_engine(to_sync_url(backend_database_url), pool_pre_ping=True)
+        try:
+            with Session(backend_engine) as backend_session:
+                report["backendDatabaseConsistency"] = verify_backend_database_consistency(
+                    backend_session
+                )
+        finally:
+            backend_engine.dispose()
+    else:
+        report["backendDatabaseConsistency"] = {
+            "status": "skipped",
+            "reason": "backend database URL is not configured",
+        }
+
+    backend_base_url = args.backend_base_url or settings.backend_sync_base_url
+    backend_token = args.backend_token
+    if backend_token is None and settings.backend_sync_service_token is not None:
+        backend_token = settings.backend_sync_service_token.get_secret_value()
+    if backend_base_url:
+        report["backendApiReadCheck"] = await verify_backend_read_paths(
+            run_id=args.run_id,
+            source_targets=report["sourceTargets"],
+            backend_base_url=backend_base_url,
+            backend_token=backend_token,
+            timeout_seconds=settings.backend_sync_timeout_seconds,
+            sample_per_source=args.sample_per_source,
+        )
+    else:
+        report["backendApiReadCheck"] = {
+            "status": "skipped",
+            "reason": "backend base URL is not configured",
+        }
+
+    report["gates"] = evaluate_staging_gates(
+        report,
+        stage_p95_threshold_ms=args.stage_p95_threshold_ms,
+        ai_p95_threshold_ms=args.ai_p95_threshold_ms,
+        sync_p95_threshold_ms=args.sync_p95_threshold_ms,
+        retry_threshold=args.retry_threshold,
+    )
+    report["status"] = "ok" if report["gates"]["failed"] == 0 else "fail"
+    return report
+
+
+def build_staging_report(
+    session: Session,
+    *,
+    run_id: str,
+    sample_per_source: int,
+) -> dict[str, Any]:
+    run_ids = stage_run_ids(run_id)
+    runs = list(
+        session.scalars(
+            select(ScrapeRun)
+            .where(ScrapeRun.id.in_(run_ids))
+            .order_by(ScrapeRun.started_at.asc(), ScrapeRun.id.asc())
+        ).all()
+    )
+    run_by_id = {run.id: run for run in runs}
+    stage_id_map = stage_id_map_from(run_ids)
+
+    raw_jobs = list(
+        session.scalars(
+            select(RawJob)
+            .where(RawJob.scrape_run_id.in_(run_ids))
+            .order_by(RawJob.source_platform.asc(), RawJob.external_id.asc())
+        ).all()
+    )
+    raw_job_ids = [job.id for job in raw_jobs]
+    normalized_jobs: list[NormalizedJob] = []
+    if raw_job_ids:
+        normalized_jobs = list(
+            session.scalars(
+                select(NormalizedJob)
+                .where(NormalizedJob.raw_job_id.in_(raw_job_ids))
+                .order_by(NormalizedJob.source_platform.asc(), NormalizedJob.external_id.asc())
+            ).all()
+        )
+    normalized_job_ids = [job.id for job in normalized_jobs]
+
+    sync_events = list(
+        session.scalars(
+            select(SyncEvent)
+            .where(SyncEvent.scrape_run_id.in_(run_ids))
+            .order_by(SyncEvent.attempted_at.asc(), SyncEvent.id.asc())
+        ).all()
+    )
+    handoff_events = list(
+        session.scalars(
+            select(NotificationHandoffEvent)
+            .where(NotificationHandoffEvent.scrape_run_id.in_(run_ids))
+            .order_by(
+                NotificationHandoffEvent.attempted_at.asc(),
+                NotificationHandoffEvent.id.asc(),
+            )
+        ).all()
+    )
+    quarantine_rows = list(
+        session.scalars(
+            select(NormalizationQuarantine)
+            .where(NormalizationQuarantine.scrape_run_id.in_(run_ids))
+            .order_by(NormalizationQuarantine.created_at.asc(), NormalizationQuarantine.id.asc())
+        ).all()
+    )
+
+    ai_logs: list[AIRequestLog] = []
+    skill_rows: list[JobSkillStaging] = []
+    requirement_rows: list[JobRequirementStaging] = []
+    if normalized_job_ids:
+        ai_logs = list(
+            session.scalars(
+                select(AIRequestLog)
+                .where(AIRequestLog.normalized_job_id.in_(normalized_job_ids))
+                .order_by(AIRequestLog.created_at.asc(), AIRequestLog.id.asc())
+            ).all()
+        )
+        skill_rows = list(
+            session.scalars(
+                select(JobSkillStaging).where(
+                    JobSkillStaging.normalized_job_id.in_(normalized_job_ids)
+                )
+            ).all()
+        )
+        requirement_rows = list(
+            session.scalars(
+                select(JobRequirementStaging).where(
+                    JobRequirementStaging.normalized_job_id.in_(normalized_job_ids)
+                )
+            ).all()
+        )
+
+    stage_jobs = list(
+        session.scalars(
+            select(StageJob)
+            .where(StageJob.scrape_run_id.in_(run_ids))
+            .order_by(StageJob.created_at.asc(), StageJob.id.asc())
+        ).all()
+    )
+
+    run_skipped = sum(run_summary_value(run, "skipped") for run in runs)
+    sync_sent = [event for event in sync_events if event.status == "sent"]
+    sync_failed = [event for event in sync_events if event.status in {"failed", "dead-letter"}]
+    handoff_failed = [
+        event for event in handoff_events if event.status in {"failed", "dead-letter"}
+    ]
+    ai_failed = [log for log in ai_logs if log.status != "succeeded"]
+    ai_retries = [log.retry_count for log in ai_logs]
+    ai_latencies = [log.latency_ms for log in ai_logs if isinstance(log.latency_ms, int)]
+
+    enriched_job_ids = {
+        job_id
+        for job_id in (
+            *[log.normalized_job_id for log in ai_logs if log.status == "succeeded"],
+            *[row.normalized_job_id for row in skill_rows],
+            *[row.normalized_job_id for row in requirement_rows],
+        )
+        if isinstance(job_id, str)
+    }
+
+    sync_latencies = [
+        duration_ms_between(event.attempted_at, event.completed_at)
+        for event in sync_events
+        if event.completed_at is not None
+    ]
+    sync_latencies = [value for value in sync_latencies if value is not None]
+
+    stage_timings = {
+        stage: stage_duration_entry(stage, stage_run_id, run_by_id)
+        for stage, stage_run_id in stage_id_map.items()
+    }
+    stage_latency_values = [
+        entry["durationMs"]
+        for entry in stage_timings.values()
+        if isinstance(entry["durationMs"], int)
+    ]
+    stage_p95 = percentile_nearest_rank(stage_latency_values, 95)
+    ai_p95 = percentile_nearest_rank(ai_latencies, 95)
+    sync_p95 = percentile_nearest_rank(sync_latencies, 95)
+
+    raw_identity_counts = Counter((job.source_platform, job.external_id) for job in raw_jobs)
+    normalized_identity_counts = Counter(
+        (job.source_platform, job.external_id) for job in normalized_jobs
+    )
+    active_without_last_seen = [
+        job.id
+        for job in normalized_jobs
+        if job.status == CanonicalJobStatus.ACTIVE.value and job.last_seen_at is None
+    ]
+    queue_backlog = Counter(job.status for job in stage_jobs)
+    quarantine_by_reason = Counter(row.error_category for row in quarantine_rows)
+    source_targets = source_targets_from_sync(sync_sent, sample_per_source=sample_per_source)
+
+    return {
+        "check": "staging-report",
+        "runId": run_id,
+        "stageRunIds": stage_id_map,
+        "runRowsFound": len(runs),
+        "stageCounts": {
+            "fetched": len(raw_jobs),
+            "rawPersisted": len(raw_jobs),
+            "normalized": len(normalized_jobs),
+            "enriched": len(enriched_job_ids),
+            "syncUpserted": len(sync_sent),
+            "skipped": run_skipped,
+            "quarantined": len(quarantine_rows),
+            "errors": len(sync_failed) + len(handoff_failed) + len(ai_failed),
+        },
+        "latency": {
+            "stageDurationsMs": stage_timings,
+            "stageP95Ms": stage_p95,
+            "aiP95Ms": ai_p95,
+            "syncP95Ms": sync_p95,
+        },
+        "retries": {
+            "aiTotalRetries": sum(ai_retries),
+            "aiMaxRetryCount": max(ai_retries, default=0),
+            "syncFailedEvents": len(sync_failed),
+        },
+        "queue": {
+            "backlogByStatus": dict(sorted(queue_backlog.items())),
+            "totalRows": len(stage_jobs),
+        },
+        "quarantine": {
+            "count": len(quarantine_rows),
+            "openCount": sum(1 for row in quarantine_rows if row.status == "open"),
+            "byReason": dict(sorted(quarantine_by_reason.items())),
+        },
+        "consistency": {
+            "duplicateRawIdentities": duplicate_count(raw_identity_counts),
+            "duplicateNormalizedIdentities": duplicate_count(normalized_identity_counts),
+            "activeMissingLastSeenAt": len(active_without_last_seen),
+            "status": (
+                "ok"
+                if duplicate_count(raw_identity_counts) == 0
+                and duplicate_count(normalized_identity_counts) == 0
+                and not active_without_last_seen
+                else "fail"
+            ),
+        },
+        "sourceTargets": source_targets,
+    }
+
+
+def verify_backend_database_consistency(session: Session) -> dict[str, Any]:
+    duplicate_rows = session.execute(
+        text(
+            """
+        SELECT source_platform_id, external_job_id, COUNT(*) AS total
+        FROM job_listings
+        GROUP BY source_platform_id, external_job_id
+        HAVING COUNT(*) > 1
+        """
+        )
+    ).all()
+    orphan_company = session.execute(
+        text(
+            """
+        SELECT COUNT(*) AS total
+        FROM job_listings jl
+        LEFT JOIN companies c ON c.id = jl.company_id
+        WHERE c.id IS NULL
+        """
+        )
+    ).scalar_one()
+    orphan_job_skill = session.execute(
+        text(
+            """
+        SELECT COUNT(*) AS total
+        FROM job_skills js
+        LEFT JOIN skills s ON s.id = js.skill_id
+        WHERE s.id IS NULL
+        """
+        )
+    ).scalar_one()
+    orphan_job_requirement = session.execute(
+        text(
+            """
+        SELECT COUNT(*) AS total
+        FROM job_requirements jr
+        LEFT JOIN job_listings jl ON jl.id = jr.job_listing_id
+        WHERE jl.id IS NULL
+        """
+        )
+    ).scalar_one()
+    active_missing_last_seen = session.execute(
+        text(
+            """
+        SELECT COUNT(*) AS total
+        FROM job_listings
+        WHERE status = 'ACTIVE' AND last_seen_at IS NULL
+        """
+        )
+    ).scalar_one()
+    duplicate_count_rows = len(duplicate_rows)
+    status = (
+        "ok"
+        if duplicate_count_rows == 0
+        and orphan_company == 0
+        and orphan_job_skill == 0
+        and orphan_job_requirement == 0
+        and active_missing_last_seen == 0
+        else "fail"
+    )
+    return {
+        "status": status,
+        "duplicateSourceExternalRows": duplicate_count_rows,
+        "orphanCompanyRefs": orphan_company,
+        "orphanSkillRefs": orphan_job_skill,
+        "orphanRequirementRefs": orphan_job_requirement,
+        "activeMissingLastSeenAt": active_missing_last_seen,
+    }
+
+
+async def verify_backend_read_paths(
+    *,
+    run_id: str,
+    source_targets: list[dict[str, Any]],
+    backend_base_url: str,
+    backend_token: str | None,
+    timeout_seconds: float,
+    sample_per_source: int,
+) -> dict[str, Any]:
+    origin = origin_base_url(backend_base_url)
+    headers: dict[str, str] = {}
+    if backend_token:
+        headers["authorization"] = f"Bearer {backend_token}"
+    checks: list[dict[str, Any]] = []
+
+    try:
+        async with httpx.AsyncClient(
+            base_url=origin,
+            timeout=httpx.Timeout(timeout_seconds),
+            headers=headers,
+        ) as client:
+            for target in source_targets:
+                source = str(target["source"])
+                list_response = await client.get(
+                    "/api/v1/jobs",
+                    params={"sourcePlatform": source, "limit": sample_per_source},
+                )
+                list_ok = 200 <= list_response.status_code < 300
+                list_body = safe_json_dict(list_response)
+                jobs = jobs_from_list_body(list_body)
+
+                detail_ok = False
+                detail_status = None
+                detail_id = None
+                if jobs:
+                    first_job = jobs[0]
+                    detail_id = first_job.get("id") if isinstance(first_job, dict) else None
+                    if isinstance(detail_id, str) and detail_id:
+                        detail_response = await client.get(f"/api/v1/jobs/{detail_id}")
+                        detail_status = detail_response.status_code
+                        detail_ok = 200 <= detail_response.status_code < 300
+
+                checks.append(
+                    {
+                        "source": source,
+                        "listStatusCode": list_response.status_code,
+                        "listOk": list_ok,
+                        "listSampleCount": len(jobs),
+                        "detailId": detail_id,
+                        "detailStatusCode": detail_status,
+                        "detailOk": detail_ok if detail_id else False,
+                    }
+                )
+    except httpx.HTTPError as exc:
+        return {
+            "status": "fail",
+            "runId": run_id,
+            "baseUrl": origin,
+            "reason": exc.__class__.__name__,
+            "message": str(exc),
+            "checks": checks,
+        }
+
+    failed = [item for item in checks if not item["listOk"] or not item["detailOk"]]
+    return {
+        "status": "ok" if not failed else "fail",
+        "runId": run_id,
+        "baseUrl": origin,
+        "checks": checks,
+        "failedChecks": len(failed),
+    }
+
+
+def evaluate_staging_gates(
+    report: dict[str, Any],
+    *,
+    stage_p95_threshold_ms: int | None,
+    ai_p95_threshold_ms: int | None,
+    sync_p95_threshold_ms: int | None,
+    retry_threshold: int | None,
+) -> dict[str, Any]:
+    checks: list[dict[str, Any]] = []
+    stage_p95 = report.get("latency", {}).get("stageP95Ms")
+    ai_p95 = report.get("latency", {}).get("aiP95Ms")
+    sync_p95 = report.get("latency", {}).get("syncP95Ms")
+    ai_retries = report.get("retries", {}).get("aiMaxRetryCount")
+
+    checks.append(
+        gate_entry(
+            name="consistency",
+            passed=report.get("consistency", {}).get("status") == "ok",
+            actual=report.get("consistency", {}),
+            expected="no duplicate identities and all active jobs have lastSeenAt",
+        )
+    )
+    checks.append(
+        gate_entry(
+            name="backendDatabaseConsistency",
+            passed=report.get("backendDatabaseConsistency", {}).get("status") in {"ok", "skipped"},
+            actual=report.get("backendDatabaseConsistency", {}),
+            expected="no orphan relation and no duplicate source identity rows",
+        )
+    )
+    checks.append(
+        gate_entry(
+            name="backendApiReadCheck",
+            passed=report.get("backendApiReadCheck", {}).get("status") in {"ok", "skipped"},
+            actual=report.get("backendApiReadCheck", {}).get("status"),
+            expected="list and detail read paths succeed for each source sample",
+        )
+    )
+
+    if stage_p95_threshold_ms is not None and isinstance(stage_p95, int):
+        checks.append(
+            gate_entry(
+                name="stageP95Threshold",
+                passed=stage_p95 <= stage_p95_threshold_ms,
+                actual=stage_p95,
+                expected=f"<= {stage_p95_threshold_ms}",
+            )
+        )
+    if ai_p95_threshold_ms is not None and isinstance(ai_p95, int):
+        checks.append(
+            gate_entry(
+                name="aiP95Threshold",
+                passed=ai_p95 <= ai_p95_threshold_ms,
+                actual=ai_p95,
+                expected=f"<= {ai_p95_threshold_ms}",
+            )
+        )
+    if sync_p95_threshold_ms is not None and isinstance(sync_p95, int):
+        checks.append(
+            gate_entry(
+                name="syncP95Threshold",
+                passed=sync_p95 <= sync_p95_threshold_ms,
+                actual=sync_p95,
+                expected=f"<= {sync_p95_threshold_ms}",
+            )
+        )
+    if retry_threshold is not None and isinstance(ai_retries, int):
+        checks.append(
+            gate_entry(
+                name="retryThreshold",
+                passed=ai_retries <= retry_threshold,
+                actual=ai_retries,
+                expected=f"<= {retry_threshold}",
+            )
+        )
+
+    passed = sum(1 for check in checks if check["passed"])
+    failed = sum(1 for check in checks if not check["passed"])
+    return {"checks": checks, "passed": passed, "failed": failed}
+
+
+def gate_entry(*, name: str, passed: bool, actual: Any, expected: Any) -> dict[str, Any]:
+    return {"name": name, "passed": passed, "actual": actual, "expected": expected}
+
+
+def stage_id_map_from(run_ids: list[str]) -> dict[str, str]:
+    stages = ("scrape", "normalize", "enrich", "sync", "notify")
+    return {stage: run_id for stage, run_id in zip(stages, run_ids, strict=True)}
+
+
+def stage_duration_entry(
+    stage: str,
+    run_id: str,
+    run_by_id: dict[str, ScrapeRun],
+) -> dict[str, Any]:
+    run = run_by_id.get(run_id)
+    if run is None:
+        return {"runId": run_id, "status": "missing", "durationMs": None}
+    return {
+        "runId": run.id,
+        "status": run.status,
+        "durationMs": duration_ms_between(run.started_at, run.finished_at),
+    }
+
+
+def duration_ms_between(started_at: datetime | None, finished_at: datetime | None) -> int | None:
+    if started_at is None or finished_at is None:
+        return None
+    delta = finished_at - started_at
+    return int(delta.total_seconds() * 1000)
+
+
+def percentile_nearest_rank(values: Sequence[int], percentile: int) -> int | None:
+    clean = sorted(value for value in values if isinstance(value, int))
+    if not clean:
+        return None
+    rank = max(1, math.ceil((percentile / 100) * len(clean)))
+    return clean[rank - 1]
+
+
+def source_targets_from_sync(
+    sync_sent: Sequence[SyncEvent],
+    *,
+    sample_per_source: int,
+) -> list[dict[str, Any]]:
+    counts = Counter(event.source_platform for event in sync_sent)
+    return [
+        {
+            "source": source,
+            "sentCount": count,
+            "sample": min(count, sample_per_source),
+        }
+        for source, count in sorted(counts.items())
+    ]
+
+
+def run_summary_value(run: ScrapeRun, key: str) -> int:
+    metadata = run.metadata_json if isinstance(run.metadata_json, dict) else {}
+    summary = metadata.get("summary") if isinstance(metadata.get("summary"), dict) else {}
+    counts = summary.get("counts") if isinstance(summary.get("counts"), dict) else {}
+    value = counts.get(key)
+    return value if isinstance(value, int) else 0
+
+
+def safe_json_dict(response: httpx.Response) -> dict[str, Any]:
+    try:
+        payload = response.json()
+    except ValueError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def jobs_from_list_body(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    data = payload.get("data")
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, dict)]
+    return []
 
 
 def verify_database_state(session: Session, *, run_id: str) -> dict[str, Any]:
@@ -1097,6 +1684,29 @@ def recency_days(value: str) -> int:
         raise argparse.ArgumentTypeError("must be greater than zero")
     if parsed > 365:
         raise argparse.ArgumentTypeError("must be less than or equal to 365")
+    return parsed
+
+
+def positive_sample_size(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    if parsed > 20:
+        raise argparse.ArgumentTypeError("must be less than or equal to 20")
+    return parsed
+
+
+def positive_metric_value(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return parsed
+
+
+def non_negative_metric_value(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be greater than or equal to zero")
     return parsed
 
 

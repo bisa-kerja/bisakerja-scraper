@@ -145,6 +145,7 @@ PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --lim
 PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --limit 1 --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline verify --run-id local-e2e --env-file .env
+PYTHONPATH=src uv run python -m cli.pipeline staging-report --run-id local-e2e --env-file .env
 uv run pytest tests/smoke
 ```
 
@@ -172,9 +173,12 @@ PYTHONPATH=src uv run python -m cli.smoke health --env-file .env
 uv run alembic upgrade head
 PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --run-id local-e2e --execute --env-file .env
 PYTHONPATH=src uv run python -m cli.pipeline verify --run-id local-e2e --env-file .env
+PYTHONPATH=src uv run python -m cli.pipeline staging-report --run-id local-e2e --env-file .env
 ```
 
 The verify output must show zero duplicate raw and normalized identities. It must summarize source, keyword, sync, handoff, recency mode, recency days, requested limit, newest source timestamp, and oldest source timestamp without raw payload bodies or secrets.
+
+The staging-report output must include stage counts, latency percentiles, retry totals, quarantine summary, duplicate identity checks, backend relation consistency checks, and backend list/detail read checks without exposing secrets.
 
 ## CI Verification
 

@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-01
+last_reviewed: 2026-05-04
 ---
 
 # References
@@ -21,5 +21,6 @@ This section is reserved for scraper-owned references.
 - [Source Field Mapping Matrix](./source-field-mapping-matrix.md)
 - [Backend Sync Schema Map](./backend-sync-schema-map.md)
 - [AI Normalization Prompt Contract](./ai-normalization-prompt.md)
+- [Staging End-to-End Validation Reference](./staging-e2e-validation.md)
 - [Domain Entities](./domain-entities.md)
 - [Payload Redaction Policy](../standards/payload-redaction-policy.md)

@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-01
+last_reviewed: 2026-05-04
 ---
 
 # Scraper Observability
@@ -121,6 +121,19 @@ Error logs should include the category, stage, source platform, external job id 
 | `stage_queue_depth` | Job type, status | Detect blocked stage workers |
 | `dead_letter_count` | Job type, error category | Detect recovery backlog requiring operator action |
 | `retry_count` | Source, stage | Detect throttling or unstable dependency |
+
+## Staging Validation Evidence
+
+For controlled staging runs, generate one `staging-report` artifact per run id. The artifact should include:
+
+- stage count progression from fetch to sync
+- stage, AI, and sync latency percentile summaries
+- retry and failed-event summaries
+- queue backlog and quarantine reason distribution
+- duplicate identity checks in scraper staging tables
+- backend relation consistency checks and backend read-path samples
+
+This artifact is used for go or no-go decisions and incident triage handoff.
 
 ## Health Signals
 

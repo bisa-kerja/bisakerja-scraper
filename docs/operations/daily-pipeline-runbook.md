@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-02
+last_reviewed: 2026-05-04
 ---
 
 # Daily Pipeline Runbook
@@ -65,6 +65,7 @@ PYTHONPATH=src uv run python -m cli.smoke health --env-file .env
 uv run alembic upgrade head
 PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --run-id local-e2e --execute --env-file .env
 PYTHONPATH=src uv run python -m cli.pipeline verify --run-id local-e2e --env-file .env
+PYTHONPATH=src uv run python -m cli.pipeline staging-report --run-id local-e2e --env-file .env
 ```
 
 Pipeline command rules:
@@ -82,6 +83,7 @@ Pipeline command rules:
 - Manual runs share the scheduler guard so only one in-process operator run is accepted at a time.
 - `--execute` uses the configured scraper database and should only run after migration and readiness checks pass in a controlled non-production environment.
 - `verify` summarizes run rows, raw and normalized counts, source/keyword counts, sync and handoff counts, duplicate identity counts, and latest metadata without printing raw payloads or secrets.
+- `staging-report` adds staging evidence checks for latency percentiles, retries, quarantine distribution, backend relation consistency, and backend read-path sampling.
 
 The HTTP trigger route is still not exposed. Operators should use the CLI until the internal run API is implemented.
 
@@ -121,4 +123,5 @@ Before production promotion, capture:
 - [Observability](./observability.md)
 - [Failure Scenarios](./failure-scenarios.md)
 - [Verification Matrix](./verification-matrix.md)
+- [Staging End-to-End Validation Reference](../references/staging-e2e-validation.md)
 - [Recommendation Email Handoff](../integrations/recommendation-email-handoff.md)

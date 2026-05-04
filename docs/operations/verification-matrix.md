@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-01
+last_reviewed: 2026-05-04
 ---
 
 # Scraper Verification Matrix
@@ -58,6 +58,7 @@ This matrix defines the minimum evidence needed before scraper docs, code, or op
 | Integration tests | Changed DB/sync behavior passes against isolated DB |
 | Smoke tests | Target runtime starts and processes fixture path |
 | E2E fixture pipeline | Raw fixtures produce normalized, enriched, synced, and handed-off jobs without network |
+| Staging validation report | Stage counts, latency percentiles, retries, consistency checks, and backend read sampling pass configured gates |
 | Observability | Run logs include `runId`, source, stage, status, counts, and duration |
 | Recovery | Rollback or retry path exists for changed operational behavior |
 
