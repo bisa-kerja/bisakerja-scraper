@@ -11,11 +11,11 @@ def test_scheduler_registers_daily_stage_jobs() -> None:
     runner = RecordingRunner()
     scheduler = DailyPipelineScheduler(
         config=SchedulerConfig(
-            scrape_cron="0 1 * * *",
-            normalize_cron="30 1 * * *",
-            enrich_cron="0 2 * * *",
-            sync_cron="0 3 * * *",
-            notify_handoff_cron="0 5 * * *",
+            scrape_cron="0 0 * * *",
+            normalize_cron="0 2 * * *",
+            enrich_cron="0 4 * * *",
+            sync_cron="0 6 * * *",
+            notify_handoff_cron="0 8 * * *",
         ),
         runner=runner,
     )
@@ -39,11 +39,11 @@ async def test_scheduler_rejects_overlapping_manual_trigger() -> None:
     runner = BlockingRunner()
     scheduler = DailyPipelineScheduler(
         config=SchedulerConfig(
-            scrape_cron="0 1 * * *",
-            normalize_cron="30 1 * * *",
-            enrich_cron="0 2 * * *",
-            sync_cron="0 3 * * *",
-            notify_handoff_cron="0 5 * * *",
+            scrape_cron="0 0 * * *",
+            normalize_cron="0 2 * * *",
+            enrich_cron="0 4 * * *",
+            sync_cron="0 6 * * *",
+            notify_handoff_cron="0 8 * * *",
         ),
         runner=runner,
     )

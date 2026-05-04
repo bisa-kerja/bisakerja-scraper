@@ -18,7 +18,7 @@ from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from config.settings import Settings
-from integrations.ai import OpenAINormalizationClient
+from integrations.ai import OpenAIEnrichmentClient, OpenAINormalizationClient
 from integrations.backend import (
     BackendNotificationHandoffClient,
     BackendSyncClient,
@@ -68,6 +68,7 @@ from integrations.sources.kalibrr.mapper import map_kalibrr_job
 from integrations.sources.mapper_utils import SourceMapperResult
 from jobs.pipeline import PipelineOrchestrator, PipelineResult
 from jobs.scheduler import ManualTriggerGuard, ScheduledStage
+from modules.enrichment import EnrichmentService, EnrichmentServiceConfig
 from modules.enrichment.repositories import EnrichmentSource, EnrichmentStagingRepository
 from modules.enrichment.schemas import (
     EnrichedRequirement,
@@ -133,7 +134,9 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--env-file", default=None)
     run_parser.add_argument("--fixture-root", default=str(DEFAULT_FIXTURE_ROOT))
     run_parser.add_argument("--run-id", default=None)
-    run_parser.add_argument("--execute", action="store_true")
+    mode_group = run_parser.add_mutually_exclusive_group(required=True)
+    mode_group.add_argument("--dry-run", action="store_true")
+    mode_group.add_argument("--execute", action="store_true")
     run_parser.set_defaults(command_handler=run_pipeline)
 
     status_parser = subparsers.add_parser("status")
@@ -1144,6 +1147,10 @@ class ManualPipelineRunner:
             self.settings,
             execute=self.execute,
         )
+        ai_enrichment_client = build_ai_enrichment_client(
+            self.settings,
+            execute=self.execute,
+        )
         backend_sync_client = build_backend_sync_client(
             self.settings,
             execute=self.execute,
@@ -1155,16 +1162,57 @@ class ManualPipelineRunner:
 
         async def enrich_hook(run_id: str, correlation_id: str) -> RunCounts:
             jobs = self.normalized_jobs_for_stage(run_id)
+            if not jobs:
+                return RunCounts()
+
             repository = EnrichmentStagingRepository(self.session)
-            for job in jobs:
-                repository.upsert_output(
-                    job=job,
-                    output=fake_enrichment_output(),
-                    ai_request_log_id=None,
-                    source=EnrichmentSource.AI,
+            if ai_enrichment_client is None:
+                for job in jobs:
+                    repository.upsert_output(
+                        job=job,
+                        output=source_enrichment_output_from_job(job),
+                        ai_request_log_id=None,
+                        source=EnrichmentSource.SOURCE,
+                    )
+                self.session.commit()
+                return RunCounts(
+                    fetched=len(jobs),
+                    parsed=len(jobs),
+                    normalized=len(jobs),
+                    persisted=len(jobs),
                 )
+
+            service = EnrichmentService(
+                session=self.session,
+                client=ai_enrichment_client,
+                config=EnrichmentServiceConfig(
+                    provider="openai-compatible",
+                    model=self.settings.openai_model or ai_enrichment_client.model,
+                    base_url=(
+                        str(self.settings.openai_base_url)
+                        if self.settings.openai_base_url is not None
+                        else None
+                    ),
+                    batch_size=self.settings.openai_batch_size,
+                    max_attempts=max(self.settings.openai_max_retries + 1, 1),
+                ),
+            )
+            succeeded = 0
+            failed = 0
+            for job in jobs:
+                result = await service.enrich_one(job, scrape_run_id=run_id)
+                if result.status == "success":
+                    succeeded += 1
+                else:
+                    failed += 1
             self.session.commit()
-            return RunCounts(fetched=len(jobs), persisted=len(jobs))
+            return RunCounts(
+                fetched=len(jobs),
+                parsed=len(jobs),
+                normalized=len(jobs),
+                persisted=succeeded,
+                skipped=failed,
+            )
 
         async def sync_hook(run_id: str, correlation_id: str) -> RunCounts:
             worker = BackendSyncWorker(
@@ -1446,6 +1494,7 @@ def pipeline_sources(
     if not execute:
         return fixture_sources(
             source=source,
+            settings=settings,
             keywords=keywords,
             fixture_root=fixture_root,
             limit=limit,
@@ -1772,13 +1821,14 @@ def build_handoff_client(
 def fixture_sources(
     *,
     source: str,
+    settings: Settings,
     keywords: tuple[str, ...],
     fixture_root: Path,
     limit: int,
     recency_mode: str,
     recency_days: int,
 ) -> list[FixturePipelineSource]:
-    selected = SOURCE_CHOICES[1:] if source == "all" else (source,)
+    selected = live_platforms(source, settings)
     return [
         FixturePipelineSource(
             platform,
@@ -1813,6 +1863,30 @@ def build_ai_normalization_client(
     ):
         return None
     return OpenAINormalizationClient(
+        api_key=settings.openai_api_key.get_secret_value(),
+        base_url=str(settings.openai_base_url),
+        model=settings.openai_model,
+        timeout_seconds=settings.openai_timeout_seconds,
+        max_retries=settings.openai_max_retries,
+    )
+
+
+def build_ai_enrichment_client(
+    settings: Settings,
+    *,
+    execute: bool,
+) -> OpenAIEnrichmentClient | None:
+    if not execute:
+        return None
+    if not settings.ai_enrichment_enabled:
+        return None
+    if (
+        settings.openai_api_key is None
+        or settings.openai_base_url is None
+        or settings.openai_model is None
+    ):
+        return None
+    return OpenAIEnrichmentClient(
         api_key=settings.openai_api_key.get_secret_value(),
         base_url=str(settings.openai_base_url),
         model=settings.openai_model,
@@ -1993,17 +2067,36 @@ def suffixed_run_id(prefix: str | None, suffix: str) -> str | None:
     return f"{prefix}-{suffix}" if prefix else None
 
 
-def fake_enrichment_output() -> EnrichmentOutput:
-    return EnrichmentOutput(
-        skills=[EnrichedSkill(name="Python", confidence=0.9)],
-        requirements=[
+def source_enrichment_output_from_job(job: NormalizedJob) -> EnrichmentOutput:
+    payload = job.normalized_payload if isinstance(job.normalized_payload, dict) else {}
+    raw_skills = payload.get("skills")
+    skills = (
+        [
+            EnrichedSkill(name=skill, confidence=0.6)
+            for skill in raw_skills
+            if isinstance(skill, str) and skill.strip()
+        ]
+        if isinstance(raw_skills, list)
+        else []
+    )
+
+    raw_requirements = payload.get("requirements")
+    requirements = (
+        [
             EnrichedRequirement(
-                type=RequirementType.SKILL,
-                value="SQL experience",
-                confidence=0.8,
+                type=RequirementType.OTHER,
+                value=raw_requirements.strip(),
+                confidence=0.5,
             )
-        ],
-        confidence=0.85,
+        ]
+        if isinstance(raw_requirements, str) and raw_requirements.strip()
+        else []
+    )
+
+    return EnrichmentOutput(
+        skills=skills,
+        requirements=requirements,
+        confidence=0.5 if skills or requirements else 0.0,
     )
 
 

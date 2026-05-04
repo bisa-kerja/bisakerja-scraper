@@ -45,11 +45,11 @@ External Job Platforms
 
 | Time | Stage | Owner | Input | Output |
 | --- | --- | --- | --- | --- |
-| 01:00 | Scrape | Source adapters | Source config and query windows | Raw captures per source |
-| 01:30 | Normalize | Normalizer | Raw captures | Staging records keyed by source identity |
-| 02:00 | Enrich | Enrichment worker | Safe title/description/requirements text | Skills and structured requirements |
-| 03:00 | Sync | Sync service | Staging rows | Main DB normalized job rows |
-| 05:00-06:00 | Notify handoff | Backend/product worker | Normalized jobs and user preferences | Recommendation emails |
+| 00:00 | Scrape | Source adapters | Source config and query windows | Raw captures per source |
+| 02:00 | Normalize | Normalizer | Raw captures | Staging records keyed by source identity |
+| 04:00 | Enrich | Enrichment worker | Safe title/description/requirements text | Skills and structured requirements |
+| 06:00 | Sync | Sync service | Staging rows | Main DB normalized job rows |
+| 08:00 | Notify handoff | Backend/product worker | Normalized jobs and user preferences | Recommendation emails |
 
 ## Data Ownership
 

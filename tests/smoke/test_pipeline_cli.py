@@ -40,6 +40,7 @@ def test_pipeline_full_dry_run_uses_fixture_flow(monkeypatch, capsys) -> None:
                 "1",
                 "--keyword",
                 "developer",
+                "--dry-run",
             ]
         )
         == 0
@@ -54,14 +55,13 @@ def test_pipeline_full_dry_run_uses_fixture_flow(monkeypatch, capsys) -> None:
     assert output["limit"] == 1
     assert output["recencyMode"] == "latest"
     assert output["recencyDays"] == 7
-    assert output["counts"]["persisted"] == 4
+    assert output["counts"]["persisted"] == 3
     assert {item["source"] for item in output["sources"]} == {
         "dealls",
         "glints",
-        "jobstreet",
         "kalibrr",
     }
-    assert len(output["sources"]) == 4
+    assert len(output["sources"]) == 3
     assert "password" not in json.dumps(output).lower()
 
 
@@ -80,6 +80,7 @@ def test_pipeline_stage_dry_run_limits_source(monkeypatch, capsys) -> None:
                 "2",
                 "--keyword",
                 "developer",
+                "--dry-run",
             ]
         )
         == 0
@@ -112,7 +113,21 @@ def test_pipeline_stage_dry_run_limits_source(monkeypatch, capsys) -> None:
 def test_pipeline_uses_env_keywords_and_cli_limit_per_keyword(monkeypatch, capsys) -> None:
     apply_env(monkeypatch)
 
-    assert main(["run", "--stage", "scrape", "--source", "dealls", "--limit", "2"]) == 0
+    assert (
+        main(
+            [
+                "run",
+                "--stage",
+                "scrape",
+                "--source",
+                "dealls",
+                "--limit",
+                "2",
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
 
     output = json.loads(capsys.readouterr().out)
     assert output["keywords"] == ["developer", "intern", "ui/ux"]
@@ -127,7 +142,21 @@ def test_pipeline_full_normalizes_once_per_platform_with_overlapping_keywords(
 ) -> None:
     apply_env(monkeypatch)
 
-    assert main(["run", "--stage", "full", "--source", "dealls", "--limit", "1"]) == 0
+    assert (
+        main(
+            [
+                "run",
+                "--stage",
+                "full",
+                "--source",
+                "dealls",
+                "--limit",
+                "1",
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
 
     output = json.loads(capsys.readouterr().out)
     assert output["status"] == "ok"
@@ -152,6 +181,7 @@ def test_pipeline_keyword_override_deduplicates_case_insensitive(monkeypatch, ca
                 "Developer, developer,ui/ux",
                 "--limit",
                 "1",
+                "--dry-run",
             ]
         )
         == 0
@@ -166,7 +196,16 @@ def test_pipeline_rejects_invalid_stage(monkeypatch) -> None:
     apply_env(monkeypatch)
 
     with pytest.raises(SystemExit) as exc:
-        main(["run", "--stage", "invalid"])
+        main(["run", "--stage", "invalid", "--dry-run"])
+
+    assert exc.value.code == 2
+
+
+def test_pipeline_requires_explicit_mode(monkeypatch) -> None:
+    apply_env(monkeypatch)
+
+    with pytest.raises(SystemExit) as exc:
+        main(["run", "--stage", "scrape", "--source", "dealls"])
 
     assert exc.value.code == 2
 

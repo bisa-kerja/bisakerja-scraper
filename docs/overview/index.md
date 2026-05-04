@@ -53,5 +53,5 @@ external job platforms
 Baseline daily pipeline:
 
 ```text
-01:00 scrape -> 01:30 normalize -> 02:00 enrich -> 03:00 sync -> 05:00-06:00 notify
+00:00 scrape -> 02:00 normalize -> 04:00 enrich -> 06:00 sync -> 08:00 notify
 ```

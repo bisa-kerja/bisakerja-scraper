@@ -142,9 +142,9 @@ PYTHONPATH=src uv run python -m cli.smoke config --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape
-PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --env-file .env.example
-PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --limit 1 --env-file .env.example
-PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --dry-run --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --limit 1 --dry-run --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --dry-run --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline verify --run-id local-e2e --env-file .env
 PYTHONPATH=src uv run python -m cli.pipeline staging-report --run-id local-e2e --env-file .env
 uv run pytest tests/smoke
@@ -164,7 +164,7 @@ uv run pytest tests/smoke/test_runtime_boot.py
 
 The smoke dry-run command reads the sanitized Dealls fixture, parses the list payload, maps one job into the canonical schema, and prints a compact JSON result.
 
-The pipeline command runs the local orchestrator with sanitized fixtures by default. It exercises scrape, normalize, enrichment staging, backend sync handoff preparation, and notification handoff preparation without external network access or production database mutation.
+The pipeline command requires explicit mode selection (`--dry-run` or `--execute`). Dry-run mode uses sanitized fixtures and in-memory storage. It exercises scrape, normalize, enrichment staging, backend sync handoff preparation, and notification handoff preparation without external network access or production database mutation.
 
 For controlled local end-to-end validation, run execute mode with a fixed run id after migration:
 

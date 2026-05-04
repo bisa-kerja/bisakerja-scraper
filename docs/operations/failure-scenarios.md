@@ -25,7 +25,7 @@ Use this page when job data is missing, stale, malformed, or blocked before Back
 
 | Area | Detail |
 | --- | --- |
-| Indicators | No run record near `01:00`; no source logs; freshness age increases |
+| Indicators | No run record near `00:00`; no source logs; freshness age increases |
 | Impact | All sources stale; backend may keep serving old jobs |
 | First checks | Scheduler process, cron/Celery Beat config, runtime env, recent deploy |
 | Isolation | Start a dry-run or one-source run in staging/local with same config |

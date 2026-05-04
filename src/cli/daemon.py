@@ -81,13 +81,24 @@ class DeploymentStageRunner:
         factory = sessionmaker(bind=engine)
         try:
             with factory() as session:
-                if run_exists(session, run_id):
+                existing = run_row(session, run_id)
+                if existing is not None and existing.status == "completed":
                     self.logger.info(
                         "scheduler_stage_skipped_existing_run",
                         stage=stage.value,
                         runId=run_id,
                     )
                     return
+                if existing is not None:
+                    retry_run_id = next_retry_run_id(session, run_id)
+                    self.logger.info(
+                        "scheduler_stage_retry_run",
+                        stage=stage.value,
+                        previousRunId=run_id,
+                        previousRunStatus=existing.status,
+                        runId=retry_run_id,
+                    )
+                    run_id = retry_run_id
                 runner = ManualPipelineRunner(
                     session=session,
                     settings=self.settings,
@@ -113,7 +124,19 @@ class DeploymentStageRunner:
 
 
 def run_exists(session, run_id: str) -> bool:
-    return session.scalar(select(ScrapeRun.id).where(ScrapeRun.id == run_id)) is not None
+    return run_row(session, run_id) is not None
+
+
+def run_row(session, run_id: str) -> ScrapeRun | None:
+    return session.scalar(select(ScrapeRun).where(ScrapeRun.id == run_id))
+
+
+def next_retry_run_id(session, base_run_id: str) -> str:
+    prefix = f"{base_run_id}-retry-"
+    existing_retry_ids = list(
+        session.scalars(select(ScrapeRun.id).where(ScrapeRun.id.like(f"{prefix}%"))).all()
+    )
+    return f"{prefix}{len(existing_retry_ids) + 1:02d}"
 
 
 def scheduled_run_id(

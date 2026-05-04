@@ -28,11 +28,11 @@ This page defines deployment expectations for the scraper service. Exact hosting
 Baseline daily flow:
 
 ```text
-01:00 scrape
-  -> 01:30 normalize
-  -> 02:00 enrich
-  -> 03:00 sync
-  -> 05:00-06:00 notify handoff
+00:00 scrape
+  -> 02:00 normalize
+  -> 04:00 enrich
+  -> 06:00 sync
+  -> 08:00 notify handoff
 ```
 
 ## Artifact Assumptions

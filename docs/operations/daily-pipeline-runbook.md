@@ -22,11 +22,11 @@ Deployment default runs two containers:
 
 | Time        | Stage                | Expected result                                                       |
 | ----------- | -------------------- | --------------------------------------------------------------------- |
-| 01:00       | Scrape               | Raw records stored per source                                         |
-| 01:30       | Normalize            | Valid records become normalized jobs; invalid records are quarantined |
-| 02:00       | Enrich               | Skills and requirements staged from normalized safe text              |
-| 03:00       | Sync                 | Eligible jobs are sent to Backend API in chunks                       |
-| 05:00-06:00 | Notification handoff | Sent sync events become backend-owned recommendation candidates       |
+| 00:00       | Scrape               | Raw records stored per source                                         |
+| 02:00       | Normalize            | Valid records become normalized jobs; invalid records are quarantined |
+| 04:00       | Enrich               | Skills and requirements staged from normalized safe text              |
+| 06:00       | Sync                 | Eligible jobs are sent to Backend API in chunks                       |
+| 08:00       | Notification handoff | Sent sync events become backend-owned recommendation candidates       |
 
 ## First Checks
 
@@ -52,13 +52,13 @@ PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage sync
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage notify-handoff
 ```
 
-Use the pipeline command for an operator-style end-to-end dry run. By default it uses sanitized fixtures and an in-memory database, so it does not mutate staging or production data.
+Use the pipeline command for an operator-style end-to-end dry run. Use explicit `--dry-run` mode with sanitized fixtures and an in-memory database, so it does not mutate staging or production data.
 
 ```bash
-PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --env-file .env.example
-PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --limit 5 --env-file .env.example
-PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 5 --latest --recency-days 7 --env-file .env.example
-PYTHONPATH=src uv run python -m cli.pipeline run --stage normalize --source dealls --limit 5 --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --dry-run --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --limit 5 --dry-run --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 5 --latest --recency-days 7 --dry-run --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline run --stage normalize --source dealls --limit 5 --dry-run --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline status --run-id <run-id> --env-file .env
 ```
 
@@ -82,6 +82,7 @@ Pipeline command rules:
 
 - `--stage` accepts `full`, `scrape`, `normalize`, `enrich`, `sync`, and `notify-handoff`.
 - `--source` accepts `all`, `dealls`, `glints`, `jobstreet`, and `kalibrr`.
+- exactly one mode flag is required: `--dry-run` or `--execute`.
 - `--limit` must be between `1` and `100` and limits each keyword, not the whole run.
 - `--keyword` may be repeated for individual keyword overrides.
 - `--keywords` accepts a comma-separated keyword override.
@@ -94,7 +95,7 @@ Pipeline command rules:
 - Manual runs share the scheduler guard so only one in-process operator run is accepted at a time.
 - `--execute` uses the configured scraper database and should only run after migration and readiness checks pass in a controlled non-production environment.
 - `--run-id` must be unique per execute run. For `--stage full`, stage rows use deterministic ids (`<run-id>-scrape`, `<run-id>-normalize`, `<run-id>-enrich`, `<run-id>-sync`, `<run-id>-notify`), so reusing the same run id will fail on primary-key collisions.
-- Deployed scheduler stage runs use deterministic day-based ids (`scheduled-YYYYMMDD-<stage>`) and skip duplicate day-stage triggers to avoid primary-key collisions.
+- Deployed scheduler stage runs use deterministic day-based ids (`scheduled-YYYYMMDD-<stage>`). Completed day-stage rows are skipped; failed or partial rows run with retry ids (`scheduled-YYYYMMDD-<stage>-retry-XX`).
 - `verify` summarizes run rows, raw and normalized counts, source/keyword counts, sync and handoff counts, duplicate identity counts, and latest metadata without printing raw payloads or secrets.
 - `staging-report` adds staging evidence checks for latency percentiles, retries, quarantine distribution, backend relation consistency, and backend read-path sampling.
 - Stage run-id derivation accepts base IDs and stage-suffixed IDs, including `-notify` and `-notify-handoff`.

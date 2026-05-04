@@ -17,11 +17,11 @@ Scraper work runs as scheduled and retryable jobs. User-facing Backend API reque
 
 | Workflow | Trigger | Input | Output | Owner | Failure mode |
 | --- | --- | --- | --- | --- | --- |
-| Daily scrape | Cron/Celery Beat at 01:00 | Source list config | Raw captures | Scraper workers | Source unavailable, auth/header rejected |
-| Normalize batch | Scheduled after scrape at 01:30 | Raw captures | Staging jobs | Normalizer worker | Mapper mismatch, missing identity |
-| Enrichment batch | Scheduled at 02:00 | Safe staging text | Skills and structured requirements | Enrichment worker | Provider timeout, rate limit |
-| Sync batch | Scheduled at 03:00 | Valid staging rows | Main DB upserts | Sync worker | Constraint conflict, partial chunk failure |
-| Notification handoff | 05:00-06:00 | Fresh normalized jobs | Backend/product notification inputs | Backend/product worker | User preference mismatch, mail provider failure |
+| Daily scrape | Cron/Celery Beat at 00:00 | Source list config | Raw captures | Scraper workers | Source unavailable, auth/header rejected |
+| Normalize batch | Scheduled after scrape at 02:00 | Raw captures | Staging jobs | Normalizer worker | Mapper mismatch, missing identity |
+| Enrichment batch | Scheduled at 04:00 | Safe staging text | Skills and structured requirements | Enrichment worker | Provider timeout, rate limit |
+| Sync batch | Scheduled at 06:00 | Valid staging rows | Main DB upserts | Sync worker | Constraint conflict, partial chunk failure |
+| Notification handoff | 08:00 | Fresh normalized jobs | Backend/product notification inputs | Backend/product worker | User preference mismatch, mail provider failure |
 | Retry quarantine | Event or manual task | Failed raw/staging rows | Reprocessed rows or rejected state | Scraper operator | Repeated malformed payload |
 
 ## Run State
@@ -70,4 +70,3 @@ Each workflow should emit:
 - Retry count.
 
 Logs must not include bearer tokens, cookies, session ids, raw CV content, or unredacted source headers.
-

@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-01
+last_reviewed: 2026-05-04
 ---
 
 # Scraper API Reference
@@ -56,7 +56,7 @@ The stable product job search API remains owned by Backend API.
 Manual operator execution is currently exposed through the repository CLI, not HTTP:
 
 ```bash
-PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --dry-run --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline status --run-id <run-id> --env-file .env
 ```
 

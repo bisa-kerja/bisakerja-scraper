@@ -128,11 +128,11 @@ Baseline schedule:
 
 | Stage | Baseline |
 | --- | --- |
-| Scrape | `01:00` |
-| Normalize | `01:30` |
-| Enrich | `02:00` |
-| Sync | `03:00` |
-| Notify handoff | `05:00-06:00` |
+| Scrape | `00:00` |
+| Normalize | `02:00` |
+| Enrich | `04:00` |
+| Sync | `06:00` |
+| Notify handoff | `08:00` |
 
 ## Source Variables
 

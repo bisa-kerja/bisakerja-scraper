@@ -35,11 +35,11 @@ Operational docs for this repository should cover scraper runtime behavior only.
 
 | Time | Stage | Expected output |
 | --- | --- | --- |
-| 01:00 | Scrape | Raw payload batches stored per source |
-| 01:30 | Normalize | Valid normalized job staging rows |
-| 02:00 | Enrich | Skill and requirement enrichment batches |
-| 03:00 | Sync | Upsert-ready records in main database shape |
-| 05:00-06:00 | Notify handoff | Backend notification inputs available |
+| 00:00 | Scrape | Raw payload batches stored per source |
+| 02:00 | Normalize | Valid normalized job staging rows |
+| 04:00 | Enrich | Skill and requirement enrichment batches |
+| 06:00 | Sync | Upsert-ready records in main database shape |
+| 08:00 | Notify handoff | Backend notification inputs available |
 
 ## Failure Classes
 

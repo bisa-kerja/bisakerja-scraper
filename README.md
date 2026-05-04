@@ -58,11 +58,11 @@ Frontend clients must not call Scraper API directly. Backend API is the product-
 Baseline daily flow:
 
 ```text
-01:00 scrape
-  -> 01:30 normalize
-  -> 02:00 enrich
-  -> 03:00 sync
-  -> 05:00-06:00 notify handoff
+00:00 scrape
+  -> 02:00 normalize
+  -> 04:00 enrich
+  -> 06:00 sync
+  -> 08:00 notify handoff
 ```
 
 Pipeline stages must keep raw/staging data replayable. Failed source runs must not expire unseen jobs.
@@ -112,11 +112,11 @@ PYTHONPATH=src uv run python -m cli.smoke config --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape
-PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --env-file .env.example
-PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --dry-run --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --dry-run --env-file .env.example
 ```
 
-The smoke dry-run command is fixture-backed and network-free. It validates parsing and mapping for a bounded Dealls fixture only. The pipeline command runs the local orchestrator against sanitized fixtures and an in-memory database by default.
+The smoke dry-run command is fixture-backed and network-free. It validates parsing and mapping for a bounded Dealls fixture only. The pipeline command requires explicit mode: `--dry-run` or `--execute`.
 
 `cli.pipeline run --execute` has two sync modes:
 
@@ -194,19 +194,21 @@ Do not commit real secrets, cookies, bearer tokens, source sessions, or database
 | `PYTHONPATH=src uv run python -m cli.smoke config --env-file .env.example` | Validate config loading |
 | `PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example` | Validate app liveness wiring |
 | `PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape` | Run fixture-backed smoke dry-run for one stage |
-| `PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --env-file .env.example` | Run offline fixture-backed manual pipeline |
-| `PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --env-file .env.example` | Run multi-keyword latest scrape dry-run |
+| `PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --dry-run --env-file .env.example` | Run offline fixture-backed manual pipeline |
+| `PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --dry-run --env-file .env.example` | Run multi-keyword latest scrape dry-run |
 | `PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 3 --run-id local-e2e-<timestamp> --execute --env-file .env` | Run controlled execute pipeline (real source fetch and DB writes; backend sync/handoff real only when `BACKEND_SYNC_ENABLED=true`) |
 | `PYTHONPATH=src uv run python -m cli.pipeline status --run-id <run-id> --env-file .env` | Read safe run status from the configured DB |
 | `PYTHONPATH=src uv run python -m cli.pipeline verify --run-id <run-id-prefix> --env-file .env` | Verify stage rows, counts, duplicate identities, and safe metadata |
 | `PYTHONPATH=src uv run python -m cli.pipeline staging-report --run-id <run-id-prefix> --env-file .env` | Build operational report with latency, retry, consistency, and backend-read evidence |
 | `PYTHONPATH=src uv run python -m cli.daemon --env-file .env.production` | Run scheduled stage daemon (scrape, normalize, enrich, sync, notify-handoff) |
 
-`cli.smoke dry-run` validates a narrow Dealls fixture path. `cli.pipeline run` executes the local orchestrator with sanitized fixtures by default and prints compact JSON without secrets or raw payload bodies. Keyword flags override `SCRAPER_KEYWORDS`; otherwise the env list is used. `--limit` applies per keyword. Add `--execute` only for an operator-controlled environment with a migrated, non-production database.
+`cli.smoke dry-run` validates a narrow Dealls fixture path. `cli.pipeline run` prints compact JSON without secrets or raw payload bodies and requires mode selection (`--dry-run` or `--execute`). `--dry-run` uses sanitized fixtures with in-memory DB. Keyword flags override `SCRAPER_KEYWORDS`; otherwise the env list is used. `--limit` applies per keyword. Add `--execute` only for an operator-controlled environment with a migrated, non-production database.
 
 Execute mode behavior:
 
 - `--execute` always uses configured source endpoints and configured scraper database.
+- Enrichment stage with `AI_ENRICHMENT_ENABLED=true` uses OpenAI structured output and persists AI request logs.
+- Enrichment stage with `AI_ENRICHMENT_ENABLED=false` still persists enrichment staging rows from normalized source fields (no outbound AI call).
 - `--execute` with `BACKEND_SYNC_ENABLED=false` keeps backend sync/handoff local (recording clients).
 - `--execute` with `BACKEND_SYNC_ENABLED=true` sends sync payloads to Backend API and sends notification handoff payloads to Backend API.
 
@@ -296,7 +298,7 @@ Current deploy runtime behavior:
 - Backend mutation is controlled by `BACKEND_SYNC_ENABLED`:
   - `true`: sync and notification handoff call backend internal endpoints.
   - `false`: sync and notification handoff stay local via recording clients.
-- Scheduled stage run IDs are deterministic per day (`scheduled-YYYYMMDD-<stage>`). Repeated trigger on the same day and stage is skipped to avoid primary-key collisions.
+- Scheduled stage run IDs are deterministic per day (`scheduled-YYYYMMDD-<stage>`). Repeated trigger is skipped only when that stage already completed for the day; failed/partial rows use retry IDs (`scheduled-YYYYMMDD-<stage>-retry-XX`).
 
 If deployment fails with database connection errors like `password authentication failed for user 'neondb_owner'`, rotate or correct the database secret in `DEPLOY_ENV_FILE` first, then redeploy. IPv6 `Network is unreachable` entries from Neon can appear alongside the real auth failure; treat failed IPv4 password authentication as the primary root cause when both are present.
 
