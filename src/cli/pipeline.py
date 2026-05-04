@@ -19,7 +19,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from config.settings import Settings
 from integrations.ai import OpenAINormalizationClient
-from integrations.backend import BackendSyncResult
+from integrations.backend import (
+    BackendNotificationHandoffClient,
+    BackendSyncClient,
+    BackendSyncResult,
+)
 from integrations.sources.dealls.list import (
     DeallsListAdapter,
     DeallsListQuery,
@@ -1140,6 +1144,14 @@ class ManualPipelineRunner:
             self.settings,
             execute=self.execute,
         )
+        backend_sync_client = build_backend_sync_client(
+            self.settings,
+            execute=self.execute,
+        )
+        handoff_client = build_handoff_client(
+            self.settings,
+            execute=self.execute,
+        )
 
         async def enrich_hook(run_id: str, correlation_id: str) -> RunCounts:
             jobs = self.normalized_jobs_for_stage(run_id)
@@ -1157,7 +1169,7 @@ class ManualPipelineRunner:
         async def sync_hook(run_id: str, correlation_id: str) -> RunCounts:
             worker = BackendSyncWorker(
                 session=self.session,
-                client=RecordingBackendClient(),
+                client=backend_sync_client,
                 events=SyncEventRepository(self.session),
             )
             max_jobs = self.limit * source_count(self.source) * len(self.keywords)
@@ -1174,7 +1186,7 @@ class ManualPipelineRunner:
             worker = RecommendationHandoffWorker(
                 session=self.session,
                 repository=NotificationHandoffRepository(self.session),
-                client=RecordingHandoffClient(),
+                client=handoff_client,
             )
             result = await worker.handoff_synced_jobs(
                 scrape_run_id=sync_run_id.get("value", run_id)
@@ -1722,6 +1734,39 @@ class RecordingBackendClient:
 class RecordingHandoffClient:
     async def send_candidates(self, payload: dict[str, Any]) -> HandoffSuccess:
         return HandoffSuccess({"statusCode": 202, "statusClass": "2xx"})
+
+
+def build_backend_sync_client(
+    settings: Settings,
+    *,
+    execute: bool,
+) -> BackendSyncClient | RecordingBackendClient:
+    if not execute or not settings.backend_sync_enabled:
+        return RecordingBackendClient()
+    if settings.backend_sync_base_url is None or settings.backend_sync_service_token is None:
+        raise ValueError("backend sync client requires base URL and service token")
+    return BackendSyncClient(
+        base_url=settings.backend_sync_base_url,
+        service_token=settings.backend_sync_service_token.get_secret_value(),
+        timeout_seconds=settings.backend_sync_timeout_seconds,
+        max_retries=settings.http_max_retries,
+    )
+
+
+def build_handoff_client(
+    settings: Settings,
+    *,
+    execute: bool,
+) -> BackendNotificationHandoffClient | RecordingHandoffClient:
+    if not execute or not settings.backend_sync_enabled:
+        return RecordingHandoffClient()
+    if settings.backend_sync_base_url is None or settings.backend_sync_service_token is None:
+        raise ValueError("notification handoff client requires base URL and service token")
+    return BackendNotificationHandoffClient(
+        base_url=settings.backend_sync_base_url,
+        service_token=settings.backend_sync_service_token.get_secret_value(),
+        timeout_seconds=settings.backend_sync_timeout_seconds,
+    )
 
 
 def fixture_sources(

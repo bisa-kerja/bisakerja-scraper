@@ -7,7 +7,18 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from cli.pipeline import ManualPipelineRunner, live_platforms, main, stage_run_ids, to_sync_url
+from cli.pipeline import (
+    ManualPipelineRunner,
+    RecordingBackendClient,
+    RecordingHandoffClient,
+    build_backend_sync_client,
+    build_handoff_client,
+    live_platforms,
+    main,
+    stage_run_ids,
+    to_sync_url,
+)
+from integrations.backend import BackendNotificationHandoffClient, BackendSyncClient
 from jobs.pipeline import PipelineResult, SourcePipelineResult
 from modules.persistence import Base, NormalizedJob, RawJob, ScrapeRun, SyncEvent
 from modules.runs import RunCounts
@@ -171,6 +182,30 @@ def test_live_all_respects_jobstreet_enabled_flag() -> None:
     settings = valid_env(JOBSTREET_ENABLED="false")
 
     assert live_platforms("all", settings_from_env(settings)) == ("dealls", "glints", "kalibrr")
+
+
+def test_pipeline_execute_uses_recording_clients_when_backend_sync_disabled() -> None:
+    settings = settings_from_env(valid_env(BACKEND_SYNC_ENABLED="false"))
+
+    assert isinstance(build_backend_sync_client(settings, execute=True), RecordingBackendClient)
+    assert isinstance(build_handoff_client(settings, execute=True), RecordingHandoffClient)
+
+
+def test_pipeline_execute_uses_real_clients_when_backend_sync_enabled() -> None:
+    settings = settings_from_env(
+        valid_env(
+            BACKEND_SYNC_ENABLED="true",
+            BACKEND_DATABASE_URL="postgresql+asyncpg://user:pass@localhost:5432/backend_test",
+            BACKEND_SYNC_BASE_URL="http://localhost:3000",
+            BACKEND_SYNC_SERVICE_TOKEN="service-token",
+        )
+    )
+
+    assert isinstance(build_backend_sync_client(settings, execute=True), BackendSyncClient)
+    assert isinstance(
+        build_handoff_client(settings, execute=True),
+        BackendNotificationHandoffClient,
+    )
 
 
 def test_stage_run_ids_accept_notify_handoff_suffix() -> None:

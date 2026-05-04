@@ -13,6 +13,11 @@ last_reviewed: 2026-05-04
 
 Use this runbook to operate the scheduled scraper pipeline and recover partial runs without exposing secrets or raw source payloads.
 
+Deployment default runs two containers:
+
+- `app` for API serving.
+- `scheduler` for automatic stage execution by cron (`python -m cli.daemon`).
+
 ## Schedule
 
 | Time        | Stage                | Expected result                                                       |
@@ -68,6 +73,11 @@ PYTHONPATH=src uv run python -m cli.pipeline verify --run-id local-e2e --env-fil
 PYTHONPATH=src uv run python -m cli.pipeline staging-report --run-id local-e2e --env-file .env
 ```
 
+Execute sync semantics:
+
+- When `BACKEND_SYNC_ENABLED=false`, sync and notification handoff use recording clients (no outbound backend API mutation).
+- When `BACKEND_SYNC_ENABLED=true`, sync and notification handoff call backend internal endpoints using `BACKEND_SYNC_BASE_URL` and `BACKEND_SYNC_SERVICE_TOKEN`.
+
 Pipeline command rules:
 
 - `--stage` accepts `full`, `scrape`, `normalize`, `enrich`, `sync`, and `notify-handoff`.
@@ -83,6 +93,8 @@ Pipeline command rules:
 - Full-stage run status is `completed`, `partial`, or `failed`; treat `failed` as hard failure even when prior stages succeeded.
 - Manual runs share the scheduler guard so only one in-process operator run is accepted at a time.
 - `--execute` uses the configured scraper database and should only run after migration and readiness checks pass in a controlled non-production environment.
+- `--run-id` must be unique per execute run. For `--stage full`, stage rows use deterministic ids (`<run-id>-scrape`, `<run-id>-normalize`, `<run-id>-enrich`, `<run-id>-sync`, `<run-id>-notify`), so reusing the same run id will fail on primary-key collisions.
+- Deployed scheduler stage runs use deterministic day-based ids (`scheduled-YYYYMMDD-<stage>`) and skip duplicate day-stage triggers to avoid primary-key collisions.
 - `verify` summarizes run rows, raw and normalized counts, source/keyword counts, sync and handoff counts, duplicate identity counts, and latest metadata without printing raw payloads or secrets.
 - `staging-report` adds staging evidence checks for latency percentiles, retries, quarantine distribution, backend relation consistency, and backend read-path sampling.
 - Stage run-id derivation accepts base IDs and stage-suffixed IDs, including `-notify` and `-notify-handoff`.

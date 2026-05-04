@@ -177,6 +177,12 @@ PYTHONPATH=src uv run python -m cli.pipeline verify --run-id local-e2e --env-fil
 PYTHONPATH=src uv run python -m cli.pipeline staging-report --run-id local-e2e --env-file .env
 ```
 
+Execute sync semantics:
+
+- `BACKEND_SYNC_ENABLED=false`: sync and handoff use recording clients only.
+- `BACKEND_SYNC_ENABLED=true`: sync and handoff call backend internal endpoints using configured base URL and token.
+- Reuse of the same execute run id causes stage-row primary-key collisions; use a unique run id per run.
+
 The verify output must show zero duplicate raw and normalized identities. It must summarize source, keyword, sync, handoff, recency mode, recency days, requested limit, newest source timestamp, and oldest source timestamp without raw payload bodies or secrets.
 
 The staging-report output must include stage counts, latency percentiles, retry totals, quarantine summary, duplicate identity checks, backend relation consistency checks, and backend list/detail read checks without exposing secrets.

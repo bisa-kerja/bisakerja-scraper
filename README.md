@@ -118,6 +118,24 @@ PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls 
 
 The smoke dry-run command is fixture-backed and network-free. It validates parsing and mapping for a bounded Dealls fixture only. The pipeline command runs the local orchestrator against sanitized fixtures and an in-memory database by default.
 
+`cli.pipeline run --execute` has two sync modes:
+
+- When `BACKEND_SYNC_ENABLED=false`, sync and notification handoff use recording clients (no outbound backend API mutation).
+- When `BACKEND_SYNC_ENABLED=true`, sync and notification handoff use real backend API clients with `BACKEND_SYNC_BASE_URL` and `BACKEND_SYNC_SERVICE_TOKEN`.
+
+Recommended controlled local execute sequence:
+
+```bash
+PYTHONPATH=src uv run python -m cli.smoke config --env-file .env
+PYTHONPATH=src uv run python -m cli.smoke health --env-file .env
+uv run alembic upgrade head
+PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 3 --run-id local-e2e-$(date +%Y%m%d-%H%M%S) --execute --env-file .env
+PYTHONPATH=src uv run python -m cli.pipeline verify --run-id <run-id-prefix> --env-file .env
+PYTHONPATH=src uv run python -m cli.pipeline staging-report --run-id <run-id-prefix> --env-file .env
+```
+
+Use a unique `--run-id` for each execute run. A repeated run id causes primary-key collisions on stage run rows (`<run-id>-scrape`, `<run-id>-normalize`, and so on).
+
 Start the API:
 
 ```bash
@@ -178,9 +196,19 @@ Do not commit real secrets, cookies, bearer tokens, source sessions, or database
 | `PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape` | Run fixture-backed smoke dry-run for one stage |
 | `PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --env-file .env.example` | Run offline fixture-backed manual pipeline |
 | `PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --env-file .env.example` | Run multi-keyword latest scrape dry-run |
+| `PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 3 --run-id local-e2e-<timestamp> --execute --env-file .env` | Run controlled execute pipeline (real source fetch and DB writes; backend sync/handoff real only when `BACKEND_SYNC_ENABLED=true`) |
 | `PYTHONPATH=src uv run python -m cli.pipeline status --run-id <run-id> --env-file .env` | Read safe run status from the configured DB |
+| `PYTHONPATH=src uv run python -m cli.pipeline verify --run-id <run-id-prefix> --env-file .env` | Verify stage rows, counts, duplicate identities, and safe metadata |
+| `PYTHONPATH=src uv run python -m cli.pipeline staging-report --run-id <run-id-prefix> --env-file .env` | Build operational report with latency, retry, consistency, and backend-read evidence |
+| `PYTHONPATH=src uv run python -m cli.daemon --env-file .env.production` | Run scheduled stage daemon (scrape, normalize, enrich, sync, notify-handoff) |
 
 `cli.smoke dry-run` validates a narrow Dealls fixture path. `cli.pipeline run` executes the local orchestrator with sanitized fixtures by default and prints compact JSON without secrets or raw payload bodies. Keyword flags override `SCRAPER_KEYWORDS`; otherwise the env list is used. `--limit` applies per keyword. Add `--execute` only for an operator-controlled environment with a migrated, non-production database.
+
+Execute mode behavior:
+
+- `--execute` always uses configured source endpoints and configured scraper database.
+- `--execute` with `BACKEND_SYNC_ENABLED=false` keeps backend sync/handoff local (recording clients).
+- `--execute` with `BACKEND_SYNC_ENABLED=true` sends sync payloads to Backend API and sends notification handoff payloads to Backend API.
 
 ## Testing And Verification
 
@@ -227,7 +255,12 @@ RUNTIME_ENV_FILE=.env.production \
 docker compose --env-file .env.production up -d
 ```
 
-The image runs Uvicorn as a non-root user and checks `/health/live`.
+This Compose setup runs two services:
+
+- `app`: Uvicorn API container.
+- `scheduler`: APScheduler daemon container (`python -m cli.daemon`) that triggers pipeline stages automatically by cron.
+
+The app image runs as a non-root user and checks `/health/live`.
 
 Render Compose config safely from example env:
 
@@ -251,9 +284,19 @@ The workflow:
 - Syncs the remote checkout to the exact build commit SHA.
 - Pulls the immutable SHA-tagged image from the same build run.
 - Runs `alembic upgrade head`.
-- Starts the app through Docker Compose.
+- Starts app and scheduler through Docker Compose.
 - Checks `/health/live` and `/health/ready`.
 - Collects Compose logs on failure.
+
+Current deploy runtime behavior:
+
+- `app` serves HTTP (`/health/live`, `/health/ready`, internal jobs routes).
+- `scheduler` runs cron-driven stage automation using `SCRAPE_SCHEDULE_CRON`, `NORMALIZE_SCHEDULE_CRON`, `ENRICH_SCHEDULE_CRON`, `SYNC_SCHEDULE_CRON`, and `NOTIFY_HANDOFF_SCHEDULE_CRON`.
+- Scheduler execute mode uses live source endpoints and scraper DB writes.
+- Backend mutation is controlled by `BACKEND_SYNC_ENABLED`:
+  - `true`: sync and notification handoff call backend internal endpoints.
+  - `false`: sync and notification handoff stay local via recording clients.
+- Scheduled stage run IDs are deterministic per day (`scheduled-YYYYMMDD-<stage>`). Repeated trigger on the same day and stage is skipped to avoid primary-key collisions.
 
 If deployment fails with database connection errors like `password authentication failed for user 'neondb_owner'`, rotate or correct the database secret in `DEPLOY_ENV_FILE` first, then redeploy. IPv6 `Network is unreachable` entries from Neon can appear alongside the real auth failure; treat failed IPv4 password authentication as the primary root cause when both are present.
 

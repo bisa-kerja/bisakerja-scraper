@@ -110,7 +110,7 @@ export RUNTIME_ENV_FILE
 export COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME_VALUE"
 
 log "Pulling immutable application image $APP_IMAGE"
-docker compose -f "$COMPOSE_FILE" --env-file "$RUNTIME_ENV_FILE" pull app
+docker compose -f "$COMPOSE_FILE" --env-file "$RUNTIME_ENV_FILE" pull app scheduler
 
 log "Running database connectivity preflight"
 docker compose -f "$COMPOSE_FILE" --env-file "$RUNTIME_ENV_FILE" run --rm --no-deps app \
@@ -119,8 +119,8 @@ docker compose -f "$COMPOSE_FILE" --env-file "$RUNTIME_ENV_FILE" run --rm --no-d
 log "Applying Alembic migrations"
 docker compose -f "$COMPOSE_FILE" --env-file "$RUNTIME_ENV_FILE" run --rm --no-deps app alembic upgrade head
 
-log "Starting application service"
-docker compose -f "$COMPOSE_FILE" --env-file "$RUNTIME_ENV_FILE" up -d --wait app
+log "Starting application and scheduler services"
+docker compose -f "$COMPOSE_FILE" --env-file "$RUNTIME_ENV_FILE" up -d --wait app scheduler
 
 log "Running health checks"
 curl --fail --silent --show-error "http://127.0.0.1:${APP_PORT}/health/live" >/dev/null

@@ -26,3 +26,20 @@ services:
       options:
         max-size: 10m
         max-file: "3"
+  scheduler:
+    image: ${APP_IMAGE:-ghcr.io/bisa-kerja/bisakerja-scraper:develop}
+    restart: unless-stopped
+    env_file:
+      - path: ${RUNTIME_ENV_FILE:-.env.production}
+        required: false
+    command: ["python", "-m", "cli.daemon"]
+    depends_on:
+      app:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
