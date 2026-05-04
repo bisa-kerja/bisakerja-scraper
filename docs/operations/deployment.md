@@ -110,7 +110,7 @@ Workflow behavior:
 | DB preflight | Container verifies database env and lightweight connectivity with redacted output |
 | Migrate | `alembic upgrade head` runs before app startup |
 | Start app | Compose starts the `app` service and waits for health |
-| Verify | `/health/live` and `/health/ready` pass on localhost |
+| Verify | `/health/live` and `/health/ready` pass on localhost with bounded retry during startup |
 | Diagnose failure | Compose status and recent app logs are collected |
 
 Required GitHub environment secrets:
@@ -210,6 +210,13 @@ uv run alembic upgrade head
 PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.production
 curl --fail http://127.0.0.1:${APP_PORT:-8000}/health/ready
 ```
+
+Neon compatibility notes for runtime and deploy checks:
+
+- Pooled hostnames (`-pooler...neon.tech`) and direct hostnames (`...neon.tech`) are both supported.
+- If `sslmode` is missing, scraper runtime and deploy preflight normalize Neon URLs to `sslmode=require`.
+- For async readiness/runtime checks, `channel_binding` is removed from the URL because asyncpg does not consume libpq channel-binding parameters.
+- For sync preflight/migration checks, `channel_binding` is preserved.
 
 Never paste full database URLs, passwords, or deployment env payloads into docs, tickets, or logs.
 

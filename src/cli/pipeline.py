@@ -14,9 +14,10 @@ from urllib.parse import quote, urlparse
 
 import httpx
 from sqlalchemy import create_engine, select, text
-from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from config.database_urls import to_sync_postgres_url
 from config.settings import Settings
 from integrations.ai import OpenAIEnrichmentClient, OpenAINormalizationClient
 from integrations.backend import (
@@ -1946,14 +1947,7 @@ def build_engine(database_url: str, *, execute: bool) -> Engine:
 
 
 def to_sync_url(database_url: str) -> str:
-    url = make_url(database_url)
-    if url.get_backend_name() == "postgresql" and url.drivername in {
-        "postgresql",
-        "postgresql+asyncpg",
-        "postgresql+psycopg_async",
-    }:
-        return url.set(drivername="postgresql+psycopg").render_as_string(hide_password=False)
-    return database_url
+    return to_sync_postgres_url(database_url)
 
 
 def load_settings(env_file: str | None) -> Settings:

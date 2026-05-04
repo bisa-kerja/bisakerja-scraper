@@ -60,6 +60,27 @@ def test_readiness_fails_when_database_is_unavailable() -> None:
     }
 
 
+def test_readiness_fails_with_service_unavailable_on_unexpected_error() -> None:
+    async def readiness_check() -> None:
+        raise RuntimeError("boom")
+
+    client = TestClient(create_app(settings=make_settings(), readiness_check=readiness_check))
+
+    response = client.get("/health/ready", headers={"x-request-id": "req_boom"})
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "success": False,
+        "message": "Service dependency is unavailable",
+        "data": None,
+        "error": {
+            "code": "SERVICE_UNAVAILABLE",
+            "details": {"dependency": "scraper-db"},
+            "requestId": "req_boom",
+        },
+    }
+
+
 def make_settings() -> Settings:
     return Settings(**valid_env(LOG_LEVEL="silent"), _env_file=None)
 

@@ -287,7 +287,7 @@ The workflow:
 - Pulls the immutable SHA-tagged image from the same build run.
 - Runs `alembic upgrade head`.
 - Starts app and scheduler through Docker Compose.
-- Checks `/health/live` and `/health/ready`.
+- Checks `/health/live` and `/health/ready` with retry windows during warm-up.
 - Collects Compose logs on failure.
 
 Current deploy runtime behavior:
@@ -301,6 +301,13 @@ Current deploy runtime behavior:
 - Scheduled stage run IDs are deterministic per day (`scheduled-YYYYMMDD-<stage>`). Repeated trigger is skipped only when that stage already completed for the day; failed/partial rows use retry IDs (`scheduled-YYYYMMDD-<stage>-retry-XX`).
 
 If deployment fails with database connection errors like `password authentication failed for user 'neondb_owner'`, rotate or correct the database secret in `DEPLOY_ENV_FILE` first, then redeploy. IPv6 `Network is unreachable` entries from Neon can appear alongside the real auth failure; treat failed IPv4 password authentication as the primary root cause when both are present.
+
+Neon runtime compatibility is normalized automatically:
+
+- runtime async checks use `postgresql+asyncpg`
+- CLI/deploy sync checks use `postgresql+psycopg`
+- Neon URLs enforce `sslmode=require` when absent
+- async runtime removes `channel_binding` query parameter to avoid asyncpg startup-parameter conflicts
 
 Required GitHub environment secrets:
 

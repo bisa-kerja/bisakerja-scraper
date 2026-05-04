@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
@@ -161,13 +161,32 @@ def check_database(name: str, database_url: str) -> PreflightResult:
 
 def to_sync_url(database_url: str) -> str:
     url = make_url(database_url)
-    if url.get_backend_name() == "postgresql" and url.drivername in {
+    if url.get_backend_name() != "postgresql":
+        return database_url
+    normalized = url
+    if normalized.drivername in {
         "postgresql",
         "postgresql+asyncpg",
         "postgresql+psycopg_async",
     }:
-        return url.set(drivername="postgresql+psycopg").render_as_string(hide_password=False)
-    return database_url
+        normalized = normalized.set(drivername="postgresql+psycopg")
+    if is_neon_host(normalized):
+        normalized = normalize_neon_query(normalized)
+    return normalized.render_as_string(hide_password=False)
+
+
+def is_neon_host(url: URL) -> bool:
+    host = url.host or ""
+    return host.endswith(".neon.tech")
+
+
+def normalize_neon_query(url: URL) -> URL:
+    lowered_map = {key.lower(): key for key in url.query}
+    if "sslmode" in lowered_map:
+        return url
+    query = dict(url.query)
+    query["sslmode"] = "require"
+    return url.set(query=query)
 
 
 def safe_url(database_url: str) -> str:

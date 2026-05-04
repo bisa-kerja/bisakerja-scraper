@@ -24,7 +24,10 @@ BEARER_PATTERN = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
 COOKIE_PAIR_PATTERN = re.compile(
     r"(?i)(^|;\s*)([^=;\s]*(session|token|csrf|visitor|device)[^=;\s]*)=[^;]+"
 )
-POSTGRES_URL_PATTERN = re.compile(r"postgresql(?:\+asyncpg)?://[^@\s]+@[^\s]+", re.IGNORECASE)
+POSTGRES_URL_PATTERN = re.compile(
+    r"postgres(?:ql)?(?:\+[a-z0-9_]+)?://[^@\s]+@[^\s]+",
+    re.IGNORECASE,
+)
 
 
 def new_correlation_id(prefix: str = "req") -> str:

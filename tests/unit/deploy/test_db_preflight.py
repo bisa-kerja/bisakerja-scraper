@@ -61,6 +61,15 @@ def test_preflight_sync_url_conversion_preserves_runtime_password() -> None:
     )
 
 
+def test_preflight_neon_sync_url_enforces_sslmode_if_missing() -> None:
+    assert (
+        db_preflight.to_sync_url(
+            "postgresql+asyncpg://neondb_owner:super-secret@ep-cool-darkness-123456.us-east-2.aws.neon.tech/neondb"
+        )
+        == "postgresql+psycopg://neondb_owner:super-secret@ep-cool-darkness-123456.us-east-2.aws.neon.tech/neondb?sslmode=require"
+    )
+
+
 @pytest.mark.parametrize(
     ("message", "category", "safe_message"),
     [

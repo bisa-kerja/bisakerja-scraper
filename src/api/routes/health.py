@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
+import structlog
 from fastapi import APIRouter, Request
 
 from api.readiness import ReadinessError
@@ -40,6 +41,15 @@ def create_health_router(readiness_check: ReadinessCheck | None = None) -> APIRo
                 code="SERVICE_UNAVAILABLE",
                 status_code=503,
                 details={"dependency": exc.dependency},
+                request_id=request.state.request_id,
+            )
+        except Exception:  # noqa: BLE001
+            structlog.get_logger(__name__).exception("readiness_check_unexpected_error")
+            return error_response(
+                message="Service dependency is unavailable",
+                code="SERVICE_UNAVAILABLE",
+                status_code=503,
+                details={"dependency": "scraper-db"},
                 request_id=request.state.request_id,
             )
 

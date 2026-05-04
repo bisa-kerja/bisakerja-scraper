@@ -18,6 +18,31 @@ log() {
   printf '[deploy] %s\n' "$1"
 }
 
+wait_for_health() {
+  local name="$1"
+  local url="$2"
+  local attempts="${3:-12}"
+  local sleep_seconds="${4:-5}"
+  local tmp_body
+  tmp_body="$(mktemp)"
+  trap 'rm -f "$tmp_body"' RETURN
+
+  for attempt in $(seq 1 "$attempts"); do
+    local status_code
+    status_code="$(curl --silent --show-error --output "$tmp_body" --write-out '%{http_code}' "$url" || true)"
+    if [ "$status_code" = "200" ]; then
+      return 0
+    fi
+    log "$name check attempt $attempt/$attempts failed with status $status_code"
+    sleep "$sleep_seconds"
+  done
+
+  printf '%s check failed for %s after %s attempts\n' "$name" "$url" "$attempts" >&2
+  printf '%s\n' "last response body:" >&2
+  cat "$tmp_body" >&2 || true
+  return 1
+}
+
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     printf 'Missing required command: %s\n' "$1" >&2
@@ -123,8 +148,8 @@ log "Starting application and scheduler services"
 docker compose -f "$COMPOSE_FILE" --env-file "$RUNTIME_ENV_FILE" up -d --wait app scheduler
 
 log "Running health checks"
-curl --fail --silent --show-error "http://127.0.0.1:${APP_PORT}/health/live" >/dev/null
-curl --fail --silent --show-error "http://127.0.0.1:${APP_PORT}/health/ready" >/dev/null
+wait_for_health "liveness" "http://127.0.0.1:${APP_PORT}/health/live"
+wait_for_health "readiness" "http://127.0.0.1:${APP_PORT}/health/ready"
 
 log "Container status"
 docker compose -f "$COMPOSE_FILE" --env-file "$RUNTIME_ENV_FILE" ps

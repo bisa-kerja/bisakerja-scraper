@@ -4,6 +4,7 @@ from typing import Annotated
 
 from pydantic import AnyUrl, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 NonEmptyStr = Annotated[str, Field(min_length=1)]
 
@@ -176,17 +177,12 @@ class Settings(BaseSettings):
     def validate_database_url(cls, value: str | None) -> str | None:
         if value is None:
             return value
-        if not value.startswith(
-            (
-                "postgresql://",
-                "postgresql+asyncpg://",
-                "postgresql+psycopg://",
-                "postgresql+psycopg_async://",
-            )
-        ):
-            raise ValueError(
-                "database URL must use postgresql, postgresql+asyncpg, or postgresql+psycopg"
-            )
+        try:
+            parsed = make_url(value)
+        except Exception as exc:  # pragma: no cover - parser detail already tested upstream
+            raise ValueError("database URL must be a valid SQLAlchemy URL") from exc
+        if parsed.get_backend_name() not in {"postgresql", "postgres"}:
+            raise ValueError("database URL must use postgres or postgresql scheme")
         return value
 
     @field_validator("cors_origins")

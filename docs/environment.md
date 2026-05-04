@@ -54,8 +54,14 @@ Rules:
 - Never use production DB for tests.
 - Do not fallback from scraper DB to backend DB.
 - PostgreSQL URLs may use `postgresql://`, `postgresql+asyncpg://`, or `postgresql+psycopg://`.
+- `postgres://` aliases are accepted and normalized at runtime.
 - Alembic online migration uses a sync PostgreSQL driver path and normalizes async PostgreSQL URLs to a sync `psycopg` dialect for migration execution.
 - Deployment preflight validates the configured scraper database with a lightweight query before migrations and prints only password-redacted URLs.
+- For Neon-hosted PostgreSQL (`*.neon.tech`), runtime applies Neon-safe normalization:
+  - async runtime path uses `postgresql+asyncpg`.
+  - sync migration/preflight path uses `postgresql+psycopg`.
+  - `sslmode=require` is enforced when not explicitly present.
+  - `channel_binding=require` is removed only on async runtime URLs (asyncpg does not use libpq channel binding parameters).
 
 ## Queue And Schedule Variables
 

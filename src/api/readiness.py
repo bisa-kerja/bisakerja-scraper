@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from config.database_urls import to_async_postgres_url
+
 
 class ReadinessError(Exception):
     def __init__(self, dependency: str, message: str = "dependency unavailable") -> None:
@@ -20,12 +22,18 @@ class DatabaseReadinessChecker:
     timeout_seconds: float
 
     async def __call__(self) -> None:
-        engine = create_async_engine(self.database_url, pool_pre_ping=True)
+        engine = None
         try:
+            engine = create_async_engine(to_async_url(self.database_url), pool_pre_ping=True)
             async with asyncio.timeout(self.timeout_seconds):
                 async with engine.connect() as connection:
                     await connection.execute(text("SELECT 1"))
         except Exception as exc:
             raise ReadinessError("scraper-db") from exc
         finally:
-            await engine.dispose()
+            if engine is not None:
+                await engine.dispose()
+
+
+def to_async_url(database_url: str) -> str:
+    return to_async_postgres_url(database_url)

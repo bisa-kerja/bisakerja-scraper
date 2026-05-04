@@ -83,6 +83,15 @@ def test_settings_load_required_values() -> None:
     assert settings.cors_origins is None
 
 
+def test_settings_accept_postgres_scheme_alias() -> None:
+    settings = Settings(
+        **valid_env(SCRAPER_DATABASE_URL="postgres://user:pass@localhost:5432/scraper_test"),
+        _env_file=None,
+    )
+
+    assert settings.scraper_database_url.startswith("postgres://")
+
+
 def test_missing_required_env_fails_fast() -> None:
     env = valid_env()
     del env["SCRAPER_DATABASE_URL"]
