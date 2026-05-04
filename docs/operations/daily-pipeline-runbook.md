@@ -57,6 +57,16 @@ PYTHONPATH=src uv run python -m cli.pipeline run --stage normalize --source deal
 PYTHONPATH=src uv run python -m cli.pipeline status --run-id <run-id> --env-file .env
 ```
 
+Use execute mode only against a controlled local or staging environment. It reads the configured source endpoints and scraper database from the env file.
+
+```bash
+PYTHONPATH=src uv run python -m cli.smoke config --env-file .env
+PYTHONPATH=src uv run python -m cli.smoke health --env-file .env
+uv run alembic upgrade head
+PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --run-id local-e2e --execute --env-file .env
+PYTHONPATH=src uv run python -m cli.pipeline verify --run-id local-e2e --env-file .env
+```
+
 Pipeline command rules:
 
 - `--stage` accepts `full`, `scrape`, `normalize`, `enrich`, `sync`, and `notify-handoff`.
@@ -71,6 +81,7 @@ Pipeline command rules:
 - Dry-run output includes source and keyword summaries with requested limit and newest/oldest source timestamps when available.
 - Manual runs share the scheduler guard so only one in-process operator run is accepted at a time.
 - `--execute` uses the configured scraper database and should only run after migration and readiness checks pass in a controlled non-production environment.
+- `verify` summarizes run rows, raw and normalized counts, source/keyword counts, sync and handoff counts, duplicate identity counts, and latest metadata without printing raw payloads or secrets.
 
 The HTTP trigger route is still not exposed. Operators should use the CLI until the internal run API is implemented.
 

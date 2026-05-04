@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-01
+last_reviewed: 2026-05-04
 ---
 
 # Parsing and Normalization Module
@@ -130,5 +130,7 @@ Track:
 ## Related Docs
 
 - [Source Field Mapping Matrix](../references/source-field-mapping-matrix.md)
+- [Backend Sync Schema Map](../references/backend-sync-schema-map.md)
+- [AI Normalization Prompt Contract](../references/ai-normalization-prompt.md)
 - [Data Flow](../overview/data-flow.md)
 - [Scraper Database Design](../database.md)

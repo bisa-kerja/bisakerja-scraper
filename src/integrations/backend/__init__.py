@@ -13,6 +13,7 @@ from integrations.backend.notifications import (
 )
 from integrations.backend.payloads import (
     BackendJobPayload,
+    BackendPayloadValidationError,
     build_backend_job_payload,
     build_backend_jobs_body,
 )
@@ -26,6 +27,7 @@ __all__ = [
     "BackendNotificationHandoffClient",
     "BackendNotificationHandoffError",
     "BackendJobPayload",
+    "BackendPayloadValidationError",
     "build_backend_job_payload",
     "build_backend_jobs_body",
 ]

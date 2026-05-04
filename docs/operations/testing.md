@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-02
+last_reviewed: 2026-05-04
 ---
 
 # Scraper Testing Strategy
@@ -144,6 +144,7 @@ PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape
 PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --limit 1 --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline verify --run-id local-e2e --env-file .env
 uv run pytest tests/smoke
 ```
 
@@ -162,6 +163,18 @@ uv run pytest tests/smoke/test_runtime_boot.py
 The smoke dry-run command reads the sanitized Dealls fixture, parses the list payload, maps one job into the canonical schema, and prints a compact JSON result.
 
 The pipeline command runs the local orchestrator with sanitized fixtures by default. It exercises scrape, normalize, enrichment staging, backend sync handoff preparation, and notification handoff preparation without external network access or production database mutation.
+
+For controlled local end-to-end validation, run execute mode with a fixed run id after migration:
+
+```bash
+PYTHONPATH=src uv run python -m cli.smoke config --env-file .env
+PYTHONPATH=src uv run python -m cli.smoke health --env-file .env
+uv run alembic upgrade head
+PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --run-id local-e2e --execute --env-file .env
+PYTHONPATH=src uv run python -m cli.pipeline verify --run-id local-e2e --env-file .env
+```
+
+The verify output must show zero duplicate raw and normalized identities. It must summarize source, keyword, sync, handoff, recency mode, recency days, requested limit, newest source timestamp, and oldest source timestamp without raw payload bodies or secrets.
 
 ## CI Verification
 
@@ -197,6 +210,7 @@ The scraper test suite covers:
 - Internal jobs API reads against a migrated isolated database.
 - Backend sync client request contract using in-memory HTTP transport.
 - OpenAI-compatible client boundary, custom base URL usage, structured output parsing, and classified provider errors.
+- AI normalization prompt contract, schema gate, and format-only repair policy against golden fixtures.
 - AI request audit logging stores request hashes and safe summaries without prompts, raw payloads, or secrets.
 - Enrichment staging upsert behavior for skills and requirements.
 - DB-backed stage queue retry, completion, and dead-letter behavior.
@@ -227,4 +241,6 @@ A scraper release is not ready until:
 - [Observability](./observability.md)
 - [Raw Payload Contract](../references/raw-payload-contract.md)
 - [Source Field Mapping Matrix](../references/source-field-mapping-matrix.md)
+- [Backend Sync Schema Map](../references/backend-sync-schema-map.md)
+- [AI Normalization Prompt Contract](../references/ai-normalization-prompt.md)
 - [Payload Redaction Policy](../standards/payload-redaction-policy.md)

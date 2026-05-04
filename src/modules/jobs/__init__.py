@@ -1,5 +1,13 @@
 """Normalized jobs module."""
 
+from modules.jobs.ai_normalization import (
+    AINormalizationContractError,
+    AINormalizationPromptInput,
+    NormalizationEndpointType,
+    build_ai_normalization_format_repair_messages,
+    build_ai_normalization_messages,
+    validate_ai_normalization_output,
+)
 from modules.jobs.dates import NormalizedPostedDate, normalize_posted_date, parse_absolute_datetime
 from modules.jobs.salary import NormalizedSalary, normalize_salary
 from modules.jobs.schemas import (
@@ -33,4 +41,10 @@ __all__ = [
     "NormalizedPostedDate",
     "normalize_posted_date",
     "parse_absolute_datetime",
+    "AINormalizationContractError",
+    "AINormalizationPromptInput",
+    "NormalizationEndpointType",
+    "build_ai_normalization_format_repair_messages",
+    "build_ai_normalization_messages",
+    "validate_ai_normalization_output",
 ]

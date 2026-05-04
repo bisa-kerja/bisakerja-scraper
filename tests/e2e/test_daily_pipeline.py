@@ -200,8 +200,14 @@ class RecordingBackendClient:
     def __init__(self) -> None:
         self.payloads: list[list[str]] = []
 
-    async def sync_normalized_jobs(self, jobs: list[NormalizedJob]) -> BackendSyncResult:
-        self.payloads.append([job.external_id for job in jobs])
+    async def sync_jobs(self, jobs: list[dict[str, Any]]) -> BackendSyncResult:
+        self.payloads.append(
+            [
+                job.get("jobListing", {}).get("externalJobId", "")
+                for job in jobs
+                if isinstance(job, dict)
+            ]
+        )
         return BackendSyncResult(
             status_code=202,
             response_summary={"statusCode": 202, "statusClass": "2xx"},

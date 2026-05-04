@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -34,7 +35,7 @@ class KalibrrListQuery:
         return KALIBRR_LIST_PATH_TEMPLATE.format(
             build_id="{build_id}",
             category=self.category,
-            keyword=self.keyword,
+            keyword=quote(self.keyword, safe=""),
         )
 
     def to_params(self) -> dict[str, Any]:

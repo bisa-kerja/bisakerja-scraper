@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from integrations.backend import BackendSyncClient, BackendSyncClientError, BackendSyncServerError
+from integrations.backend.payloads import BackendPayloadValidationError, build_backend_job_payload
 from modules.jobs.schemas import CanonicalJobStatus
 from modules.persistence import NormalizedJob, stable_payload_hash
 from modules.sync.events import SyncEventRepository, SyncFailure, SyncSuccess
@@ -87,6 +88,8 @@ class BackendSyncWorker:
         if not jobs:
             return 0, 0
 
+        sent = 0
+        failed = 0
         chunk_payload_hash = stable_payload_hash({"jobs": [job.normalized_payload for job in jobs]})
         events = []
         for job in jobs:
@@ -99,12 +102,33 @@ class BackendSyncWorker:
             )
             events.append(event)
 
-        sent = 0
-        failed = 0
+        valid_events = []
+        payload_jobs: list[dict[str, object]] = []
+        for event, job in zip(events, jobs, strict=True):
+            try:
+                payload = build_backend_job_payload(job).model_dump(mode="json", by_alias=True)
+            except BackendPayloadValidationError as exc:
+                self.events.record_failure(
+                    event,
+                    SyncFailure(
+                        category="sync_contract_validation_error",
+                        message=str(exc),
+                        response_summary={"validationErrors": exc.details[:10]},
+                    ),
+                    max_attempts=1,
+                )
+                failed += 1
+                continue
+            valid_events.append(event)
+            payload_jobs.append(payload)
+
+        if not payload_jobs:
+            return sent, failed
+
         try:
-            result = await self.client.sync_normalized_jobs(jobs)
+            result = await self.client.sync_jobs(payload_jobs)
         except BackendSyncClientError as exc:
-            for event in events:
+            for event in valid_events:
                 self.events.record_failure(
                     event,
                     SyncFailure(
@@ -118,7 +142,7 @@ class BackendSyncWorker:
             return sent, failed
         except BackendSyncServerError as exc:
             status_class = f"{exc.status_code // 100}xx" if exc.status_code else "transport"
-            for event in events:
+            for event in valid_events:
                 self.events.record_failure(
                     event,
                     SyncFailure(
@@ -134,7 +158,7 @@ class BackendSyncWorker:
                 failed += 1
             return sent, failed
 
-        for event in events:
+        for event in valid_events:
             self.events.record_success(event, SyncSuccess(result.response_summary))
             sent += 1
         return sent, failed

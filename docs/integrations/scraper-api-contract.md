@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-01
+last_reviewed: 2026-05-04
 ---
 
 # Scraper API Contract
@@ -17,15 +17,18 @@ The scraper contract is a data handoff contract, not a user-facing API contract.
 
 | Area | Required fields |
 | --- | --- |
-| Source identity | `sourcePlatform`, `externalJobId`, optional `sourceSlug`, `sourceUrl` |
-| Company | `name`, optional logo, industry, website |
-| Job | `title`, `description`, `employmentType`, `workType`, `experienceLevel`, `status` |
-| Location | `display`, optional city, province, country |
-| Salary | nullable min/max, currency, period, sanitized display |
-| Freshness | `postedAt`, `sourceUpdatedAt`, `lastSeenAt`, `ingestionRunId` |
-| Requirements | sanitized text rows and optional category |
-| Skills | skill names with optional confidence/source |
-| Enrichment | optional AI skills, typed requirements, confidence, warnings |
+| Source platform | `sourcePlatform.slug`, `sourcePlatform.name` |
+| Company | `company.name`, optional source/company metadata |
+| Job listing identity | `jobListing.externalJobId`, `jobListing.sourceUrl`, `jobListing.externalApplyUrl` |
+| Job listing core | `jobListing.title`, optional normalized title/category/description/requirement summary |
+| Job listing enum fields | optional `jobListing.workType`, `jobListing.employmentType`, `jobListing.experienceLevel` |
+| Job listing location | optional `jobListing.locationDisplay`, `jobListing.province`, `jobListing.city` |
+| Job listing salary | nullable `jobListing.salaryMin`, `jobListing.salaryMax`, `jobListing.salaryCurrency`, `jobListing.salaryPeriod`, `jobListing.salaryDisplay` |
+| Job listing freshness | optional `jobListing.sourcePostedAt`, optional `jobListing.sourceUpdatedAt`, required `jobListing.lastSeenAt` |
+| Job listing lifecycle | required `jobListing.status` |
+| Ingestion run | optional `ingestionRun.sourceRunId` |
+| Requirements | `requirements[].type`, `requirements[].value`, optional priority/confidence/source |
+| Skills | `skills[].name`, optional confidence/source |
 
 ## Write Contract
 
@@ -79,18 +82,30 @@ Request body:
 {
   "jobs": [
     {
-      "sourcePlatform": "dealls",
-      "externalJobId": "123",
-      "title": "Backend Engineer",
+      "sourcePlatform": {
+        "slug": "dealls",
+        "name": "Dealls"
+      },
       "company": {
         "name": "Example Company"
       },
-      "location": {
-        "display": "Jakarta"
+      "ingestionRun": {
+        "sourceRunId": "scrape-run-2026-05-04"
       },
-      "salary": null,
-      "lastSeenAt": "2026-05-02T03:00:00+00:00",
-      "status": "active"
+      "jobListing": {
+        "externalJobId": "123",
+        "title": "Backend Engineer",
+        "workType": "REMOTE",
+        "employmentType": "FULL_TIME",
+        "locationDisplay": "Jakarta",
+        "salaryCurrency": "IDR",
+        "sourceUrl": "https://dealls.com/jobs/backend-engineer-123",
+        "externalApplyUrl": "https://dealls.com/jobs/backend-engineer-123",
+        "lastSeenAt": "2026-05-02T03:00:00+00:00",
+        "status": "ACTIVE"
+      },
+      "requirements": [],
+      "skills": []
     }
   ]
 }

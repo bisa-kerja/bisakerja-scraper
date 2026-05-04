@@ -49,17 +49,18 @@ def test_backend_payload_maps_company_listing_skills_and_requirements() -> None:
         assert job is not None
         payload = build_backend_job_payload(job).model_dump(mode="json", by_alias=True)
 
-        assert payload["sourcePlatform"] == "dealls"
-        assert payload["externalJobId"] == "job-1"
+        assert payload["sourcePlatform"] == {"slug": "dealls", "name": "Dealls"}
+        assert payload["jobListing"]["externalJobId"] == "job-1"
         assert payload["company"]["name"] == "Bisakerja"
-        assert payload["employmentTypes"] == ["FULL_TIME"]
-        assert payload["workType"] == "REMOTE"
-        assert payload["status"] == "ACTIVE"
+        assert payload["jobListing"]["employmentType"] == "FULL_TIME"
+        assert payload["jobListing"]["workType"] == "REMOTE"
+        assert payload["jobListing"]["status"] == "ACTIVE"
         assert payload["skills"] == [{"name": "Python", "confidence": 0.9, "source": "ai"}]
         assert payload["requirements"] == [
             {
                 "type": "EXPERIENCE",
                 "value": "2 years experience",
+                "priority": None,
                 "confidence": 0.8,
                 "source": "ai",
             }
@@ -76,7 +77,7 @@ def test_backend_jobs_body_uses_documented_batch_shape() -> None:
         body = build_backend_jobs_body([result.normalized_job])
 
         assert set(body) == {"jobs"}
-        assert body["jobs"][0]["externalJobId"] == "job-1"
+        assert body["jobs"][0]["jobListing"]["externalJobId"] == "job-1"
 
 
 def canonical_job() -> CanonicalJobSchema:

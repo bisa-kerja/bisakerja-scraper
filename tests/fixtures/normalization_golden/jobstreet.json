@@ -1,0 +1,112 @@
+{
+  "sourcePlatform": "jobstreet",
+  "scenarios": [
+    {
+      "name": "list-relative-label-and-salary-range",
+      "endpointType": "list",
+      "rawPayloadSubset": {
+        "id": "91789576",
+        "title": "Full Stack Developer (Node.js, React.js, SQL, AWS)",
+        "salaryLabel": "Rp 8.000.000 - Rp 10.000.000 per month",
+        "listingDate": {
+          "dateTimeUtc": "2026-04-28T09:08:34.000Z",
+          "label": "3 hari yang lalu"
+        },
+        "companyName": "PT Kencana Jaya Kreasi Lestari",
+        "locations": [
+          {
+            "label": "Jakarta Barat, Jakarta Raya"
+          }
+        ],
+        "workTypes": [
+          "Full time"
+        ]
+      },
+      "aiOutput": {
+        "source": {
+          "platform": "jobstreet",
+          "external_job_id": "91789576",
+          "source_url": "https://id.jobstreet.com/id/job/91789576",
+          "external_apply_url": null,
+          "scraped_at": "2026-05-01T01:00:00+00:00",
+          "source_updated_at": "2026-04-28T09:08:34.000Z"
+        },
+        "title": "Full Stack Developer (Node.js, React.js, SQL, AWS)",
+        "company": {
+          "name": "PT Kencana Jaya Kreasi Lestari"
+        },
+        "location": {
+          "display": "Jakarta Barat, Jakarta Raya"
+        },
+        "salary": {
+          "min_amount": null,
+          "max_amount": null,
+          "currency": null,
+          "period": null,
+          "display": "Rp 8.000.000 - Rp 10.000.000 per month"
+        },
+        "employment_types": [
+          "full_time"
+        ],
+        "work_type": "unknown",
+        "description": "Build full-stack apps (React.js/Node.js).",
+        "requirements": "Accelerated Growth",
+        "skills": [],
+        "posted_at": "2026-04-28T09:08:34.000Z",
+        "last_seen_at": "2026-05-01T01:00:00+00:00",
+        "status": "active",
+        "presentation": {
+          "posted_label": "3 hari yang lalu"
+        }
+      }
+    },
+    {
+      "name": "detail-html-and-uncertain-salary",
+      "endpointType": "detail",
+      "rawPayloadSubset": {
+        "id": "91788065",
+        "title": "PROGRAMMER / DEVELEPOR MADYA",
+        "content": "<p><strong>PROGRAMMER /DEVELOPER MADYA</strong></p><ul><li><p>Minimal 10 tahun pengalaman</p></li></ul>",
+        "salaryLabel": "Competitive salary",
+        "listedAt": {
+          "dateTimeUtc": "2026-04-28T08:15:06.755Z",
+          "label": "3 hari yang lalu"
+        }
+      },
+      "aiOutput": {
+        "source": {
+          "platform": "jobstreet",
+          "external_job_id": "91788065",
+          "source_url": "https://id.jobstreet.com/id/job/91788065",
+          "external_apply_url": "https://id.jobstreet.com/id/job/91788065",
+          "scraped_at": "2026-05-01T01:00:00+00:00",
+          "source_updated_at": "2026-04-28T08:15:06.755Z"
+        },
+        "title": "PROGRAMMER / DEVELEPOR MADYA",
+        "company": {
+          "name": "Gamma Persada"
+        },
+        "location": {
+          "display": "Jakarta Selatan, Jakarta Raya"
+        },
+        "salary": {
+          "min_amount": null,
+          "max_amount": null,
+          "currency": null,
+          "period": null,
+          "display": "Competitive salary"
+        },
+        "employment_types": [
+          "full_time"
+        ],
+        "work_type": "onsite",
+        "description": "<p><strong>PROGRAMMER /DEVELOPER MADYA</strong></p><ul><li><p>Minimal 10 tahun pengalaman</p></li></ul>",
+        "requirements": null,
+        "skills": [],
+        "posted_at": "2026-04-28T08:15:06.755Z",
+        "last_seen_at": "2026-05-01T01:00:00+00:00",
+        "status": "active"
+      }
+    }
+  ]
+}

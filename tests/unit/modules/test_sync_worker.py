@@ -140,7 +140,7 @@ async def test_sync_worker_resume_skips_sent_and_dead_letter_events() -> None:
 
 
 class RejectingClient:
-    async def sync_normalized_jobs(self, jobs: list[Any]) -> BackendSyncResult:
+    async def sync_jobs(self, jobs: list[Any]) -> BackendSyncResult:
         raise BackendSyncClientError("validation failed", status_code=400)
 
 
@@ -148,8 +148,8 @@ class RecordingClient:
     def __init__(self) -> None:
         self.external_ids: list[str] = []
 
-    async def sync_normalized_jobs(self, jobs: list[Any]) -> BackendSyncResult:
-        self.external_ids.extend(job.external_id for job in jobs)
+    async def sync_jobs(self, jobs: list[Any]) -> BackendSyncResult:
+        self.external_ids.extend(item["jobListing"]["externalJobId"] for item in jobs)
         return BackendSyncResult(
             status_code=202,
             response_summary={"statusCode": 202, "statusClass": "2xx"},
@@ -160,8 +160,8 @@ class FailsFirstChunkClient:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
 
-    async def sync_normalized_jobs(self, jobs: list[Any]) -> BackendSyncResult:
-        external_ids = [job.external_id for job in jobs]
+    async def sync_jobs(self, jobs: list[Any]) -> BackendSyncResult:
+        external_ids = [item["jobListing"]["externalJobId"] for item in jobs]
         self.calls.append(external_ids)
         if len(self.calls) == 1:
             raise BackendSyncServerError("backend unavailable", status_code=503)

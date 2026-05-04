@@ -182,7 +182,7 @@ class PipelineOrchestrator:
         )
         stage_events: list[str] = []
         source_results: list[SourcePipelineResult] = []
-        for source in self.sources:
+        for source in unique_sources_by_platform(self.sources):
             source_results.append(await self._normalize_source(source, run.id, stage_events))
         return self._finish_stage_run(
             run=run,
@@ -280,11 +280,13 @@ class PipelineOrchestrator:
         stage_events: list[str],
     ) -> SourcePipelineResult:
         result = SourcePipelineResult(source_platform=source.source_platform, status="started")
+        raw_jobs_statement = select(RawJob).where(RawJob.source_platform == source.source_platform)
+        scrape_run_id = scrape_run_id_for_normalize_run(run_id)
+        if scrape_run_id is not None:
+            raw_jobs_statement = raw_jobs_statement.where(RawJob.scrape_run_id == scrape_run_id)
         raw_jobs = list(
             self.persistence.session.scalars(
-                select(RawJob)
-                .where(RawJob.source_platform == source.source_platform)
-                .order_by(RawJob.scraped_at.asc(), RawJob.id.asc())
+                raw_jobs_statement.order_by(RawJob.scraped_at.asc(), RawJob.id.asc())
             ).all()
         )
         result.counts.fetched = len(raw_jobs)
@@ -463,6 +465,23 @@ def source_pipeline_result_from(source: PipelineSource) -> SourcePipelineResult:
         recency_mode=getattr(source, "recency_mode", None),
         recency_days=getattr(source, "recency_days", None),
     )
+
+
+def unique_sources_by_platform(sources: Sequence[PipelineSource]) -> list[PipelineSource]:
+    selected: list[PipelineSource] = []
+    seen: set[str] = set()
+    for source in sources:
+        if source.source_platform in seen:
+            continue
+        seen.add(source.source_platform)
+        selected.append(source)
+    return selected
+
+
+def scrape_run_id_for_normalize_run(run_id: str) -> str | None:
+    if run_id.endswith("-normalize"):
+        return f"{run_id[: -len('-normalize')]}-scrape"
+    return None
 
 
 def sorted_by_source_timestamp(raw_jobs: list[Any]) -> list[Any]:
