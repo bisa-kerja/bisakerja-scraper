@@ -79,6 +79,14 @@ PYTHONPATH=src uv run python -m cli.pipeline staging-report \
   - `duplicateRawIdentities`
   - `duplicateNormalizedIdentities`
   - `activeMissingLastSeenAt`
+- `partialData`
+  - `totalPartial`
+  - `totalNormalized`
+  - `bySource.{source}.total`
+  - `bySource.{source}.partial`
+  - `bySource.{source}.complete`
+  - `bySource.{source}.unknown`
+  - `bySource.{source}.partialRate`
 - `backendDatabaseConsistency`
   - duplicate `(source_platform_id, external_job_id)` rows
   - orphan `company_id`, `skill_id`, and `job_listing_id` checks
@@ -88,6 +96,7 @@ PYTHONPATH=src uv run python -m cli.pipeline staging-report \
   - `GET /api/v1/jobs/:jobId` sample detail per source
 - `gates`
   - pass/fail entries for consistency and thresholds
+  - `glintsPartialRate` gate for list-only partial data drift
 
 ## Pass Criteria
 

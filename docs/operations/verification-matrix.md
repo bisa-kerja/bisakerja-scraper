@@ -21,6 +21,7 @@ This matrix defines the minimum evidence needed before scraper docs, code, or op
 | Source HTTP client | Per-source limiter spaces requests and retry classifier marks `429` and transient `5xx` retryable | Circuit breaker opens for repeated retryable failures without blocking unrelated sources | Unit test result |
 | Dealls adapter | REST list and detail fixtures fetched and merged | Missing detail keeps list record valid | Contract test result |
 | Glints adapter | GraphQL list fixture parsed | Missing detail endpoint uses list fallback | Contract test result |
+| Glints partial metrics | Partial rows are counted per source in staging report | Partial-rate drift gate flags abnormal Glints ratio | Smoke test result |
 | JobStreet adapter | GraphQL list and detail fixtures parsed without real auth | Missing bearer token is classified as config error and request bodies omit auth/session captures | Contract test result |
 | Kalibrr adapter | Next.js build id is resolved and cached from page data | Stale `buildId` 404 refreshes and retries data request | Unit test result |
 | Raw store | Redacted payload metadata stored | Unsafe header cannot be persisted | Redaction test |

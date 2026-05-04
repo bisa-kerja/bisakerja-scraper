@@ -53,7 +53,23 @@ def test_map_glints_fixture_to_canonical_job_without_detail() -> None:
     assert mapped.job.location.display == "Semarang Tengah"
     assert mapped.job.work_type is WorkType.ONSITE
     assert "jQuery" in mapped.job.skills
+    assert mapped.job.source.external_apply_url == mapped.job.source.source_url
+    assert mapped.job.requirements is not None
+    assert "Experience: 1-3 years." in mapped.job.requirements
+    assert "Skills: jQuery, MySQL." in mapped.job.requirements
     assert mapped.job.presentation.source_labels["detailCoverage"] == "unavailable"
+    assert mapped.job.presentation.source_labels["detailCompleteness"] == "partial"
+
+
+def test_map_glints_visibility_defaults_status_to_active_for_unknown_state() -> None:
+    list_result = parse_glints_list_payload(load_fixture("tests/fixtures/raw/glints/sample.json"))
+    raw_job = list_result.raw_jobs[0].model_copy(
+        update={"raw_payload": {**list_result.raw_jobs[0].raw_payload, "status": "UNMAPPED"}}
+    )
+
+    mapped = map_glints_job(raw_job, scraped_at=SCRAPED_AT)
+
+    assert mapped.job.status.value == "active"
 
 
 def test_map_jobstreet_detail_fixture_to_canonical_job() -> None:

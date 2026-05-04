@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-01
+last_reviewed: 2026-05-04
 ---
 
 # Job Sources
@@ -43,6 +43,7 @@ Every adapter should produce:
 | Case | Rule |
 | --- | --- |
 | Detail endpoint unavailable | Use list payload as source of truth and store public source URL for user/apply navigation |
+| Glints detail unavailable | Keep `description` `null`, allow safe requirement summary from list fields only, and mark detail completeness as partial |
 | Detail record missing | Keep list payload, mark detail coverage, and avoid failing the source batch |
 | Salary missing or empty | Store `null` numeric salary fields and optional sanitized display label |
 | Relative posted label only | Keep label as display-only; do not compute exact timestamp without capture time and parser rule |

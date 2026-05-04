@@ -116,6 +116,8 @@ Behavior rules:
 - `2xx` responses mark the sync event as sent.
 - `4xx` responses are treated as rejected payloads and are not retried automatically.
 - `429` and `5xx` responses may be retried up to the configured limit.
+- For list-only sources such as current Glints capture, `description` may stay `null` and `requirementSummary` may stay `null` or safe list-derived summary text.
+- `externalApplyUrl` must be present; when source apply URL is unavailable, fallback to `sourceUrl`.
 - Foreign-key, missing source platform, and company resolution mismatches are recorded as sync failures with safe response summaries.
 - Service tokens, raw payloads, cookies, and request headers are never stored in sync event summaries.
 - Response summaries store only safe status class, status code, message, and stable error code.

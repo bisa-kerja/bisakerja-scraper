@@ -497,6 +497,120 @@ def test_pipeline_staging_report_validates_counts_consistency_and_backend_checks
     assert "must-not-print" not in output_text
 
 
+def test_pipeline_staging_report_tracks_glints_partial_data_rate(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    apply_env(monkeypatch)
+    scraper_path = tmp_path / "scraper-glints.db"
+    scraper_url = f"sqlite:///{scraper_path}"
+    now = datetime(2026, 5, 4, 2, 0, tzinfo=UTC)
+
+    scraper_engine = create_engine(scraper_url)
+    Base.metadata.create_all(scraper_engine)
+    with Session(scraper_engine) as session:
+        session.add_all(
+            [
+                ScrapeRun(
+                    id="phase86-scrape",
+                    source_platform="all",
+                    stage="scrape",
+                    status="completed",
+                    started_at=now,
+                    finished_at=now,
+                ),
+                ScrapeRun(
+                    id="phase86-normalize",
+                    source_platform="all",
+                    stage="normalize",
+                    status="completed",
+                    started_at=now,
+                    finished_at=now,
+                ),
+                ScrapeRun(
+                    id="phase86-enrich",
+                    source_platform="all",
+                    stage="enrich",
+                    status="completed",
+                    started_at=now,
+                    finished_at=now,
+                ),
+                ScrapeRun(
+                    id="phase86-sync",
+                    source_platform="all",
+                    stage="sync",
+                    status="completed",
+                    started_at=now,
+                    finished_at=now,
+                ),
+                ScrapeRun(
+                    id="phase86-notify",
+                    source_platform="all",
+                    stage="notify-handoff",
+                    status="completed",
+                    started_at=now,
+                    finished_at=now,
+                ),
+            ]
+        )
+        session.flush()
+        raw = RawJob(
+            scrape_run_id="phase86-scrape",
+            source_platform="glints",
+            external_id="glints-1",
+            source_url="https://glints.com/id/opportunities/jobs/glints-1",
+            raw_payload={"title": "Glints Role"},
+        )
+        session.add(raw)
+        session.flush()
+        session.add(
+            NormalizedJob(
+                raw_job_id=raw.id,
+                source_platform="glints",
+                external_id="glints-1",
+                title="Glints Role",
+                company_name="Glints Company",
+                source_url="https://glints.com/id/opportunities/jobs/glints-1",
+                apply_url="https://glints.com/id/opportunities/jobs/glints-1",
+                status="ACTIVE",
+                normalized_payload={
+                    "presentation": {
+                        "source_labels": {
+                            "detailCoverage": "unavailable",
+                            "detailCompleteness": "partial",
+                        }
+                    }
+                },
+                last_seen_at=now,
+            )
+        )
+        session.commit()
+
+    assert (
+        main(
+            [
+                "staging-report",
+                "--run-id",
+                "phase86",
+                "--scraper-database-url",
+                scraper_url,
+            ]
+        )
+        == 0
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    glints_partial = output["partialData"]["bySource"]["glints"]
+    assert glints_partial["total"] == 1
+    assert glints_partial["partial"] == 1
+    assert glints_partial["partialRate"] == 1.0
+    glints_gate = next(
+        check for check in output["gates"]["checks"] if check["name"] == "glintsPartialRate"
+    )
+    assert glints_gate["passed"] is True
+
+
 def apply_env(monkeypatch) -> None:  # noqa: ANN001
     for key, value in valid_env().items():
         monkeypatch.setenv(key, str(value))

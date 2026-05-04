@@ -112,9 +112,12 @@ def test_glints_detail_fallback_keeps_job_valid_with_list_provenance() -> None:
     fallback = build_glints_detail_fallback(result.raw_jobs[0])
 
     assert fallback.detail_coverage == "unavailable"
+    assert fallback.detail_completeness == "partial"
     assert fallback.source_url.endswith("/aaed8a7f-de12-479c-8df8-56f26b35bed9")
+    assert fallback.external_apply_url == fallback.source_url
     assert fallback.field_provenance["title"] == "list.title"
     assert fallback.field_provenance["description"] == "unavailable"
+    assert fallback.field_provenance["external_apply_url"] == "source_url_fallback"
     assert fallback.raw_payload["title"] == "Full Stack Developer"
 
 

@@ -79,6 +79,7 @@ Source contract tests must verify:
 - Relative labels are not used as canonical timestamps when timestamps exist.
 - UI/noise fields do not reach Backend API-facing output.
 - Glints list-first behavior works when no captured detail endpoint exists.
+- Glints list-first behavior keeps `description` null, allows safe list-derived requirement summary, and marks detail completeness as partial.
 - Kalibrr `buildId` drift is handled as source fetch behavior, not mapper behavior.
 
 Normalized contract tests must verify:
@@ -179,6 +180,7 @@ PYTHONPATH=src uv run python -m cli.pipeline staging-report --run-id local-e2e -
 The verify output must show zero duplicate raw and normalized identities. It must summarize source, keyword, sync, handoff, recency mode, recency days, requested limit, newest source timestamp, and oldest source timestamp without raw payload bodies or secrets.
 
 The staging-report output must include stage counts, latency percentiles, retry totals, quarantine summary, duplicate identity checks, backend relation consistency checks, and backend list/detail read checks without exposing secrets.
+It must also include partial-data metrics per source and the Glints partial-rate gate result.
 
 ## CI Verification
 

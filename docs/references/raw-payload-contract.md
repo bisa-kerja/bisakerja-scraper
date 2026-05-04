@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-01
+last_reviewed: 2026-05-04
 ---
 
 # Raw Payload Contract
@@ -41,6 +41,7 @@ Rows without required raw identity must be quarantined.
 | Company metadata | Logo, rank, industry, website can be absent | Keep company name fallback; optional metadata nullable |
 | Location | City/province can be partial | Preserve display; normalize best-effort |
 | Description | Glints list may lack full detail; JobStreet and Kalibrr detail can contain HTML | Missing detail allowed; HTML sanitized before display, enrichment, or model input |
+| Requirement summary | Glints list exposes bounded experience, category, and skill hints | `requirements` may be `null` or summary from explicit list fields only; no inferred detail text |
 | Dates | JobStreet includes timestamp plus relative label; other sources expose source timestamps | Prefer timestamp; labels are display-only |
 | Skills | Present in Dealls/Glints; may be absent elsewhere | Optional; enrichment can fill later |
 
@@ -55,6 +56,7 @@ A mapper must produce:
 - Last seen timestamp.
 - Safe normalized text for any HTML/text fields.
 - Detail coverage metadata when a source has no captured detail endpoint or a detail fetch misses.
+- Detail completeness metadata for list-only records, especially Glints partial records.
 
 Mappers should not fail the whole run for optional salary, logo, category, or skill gaps.
 

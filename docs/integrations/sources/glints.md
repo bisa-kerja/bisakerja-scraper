@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-01
+last_reviewed: 2026-05-04
 ---
 
 # Glints Source Contract
@@ -74,13 +74,19 @@ The parser reads jobs from `data.searchJobsV3.jobsInPage` and pagination continu
 | `salaries[].CurrencyCode` | `salary.currency` | Preserve |
 | `salaries[].salaryMode` | `salary.period` | Preserve/mapped |
 | `skills[].skill.name` | `skills[]` | Preserve `mustHave` when useful |
+| `minYearsOfExperience`, `maxYearsOfExperience`, `hierarchicalJobCategory.name`, `skills[]` | `requirementSummary` | Build safe partial summary only from explicit list fields |
 
 ## Fallback
 
 - Since no detail endpoint is captured, use list data as MVP source.
 - Store public Glints job URL as `https://glints.com/id/opportunities/jobs/{id}` when no slug is captured.
+- Use the same public URL as `externalApplyUrl` when no source apply URL is available.
+- Treat list visibility as active lifecycle unless source explicitly marks stale/closed/expired.
 - Mark detail coverage as `unavailable`.
+- Mark detail completeness as `partial`.
 - Record field provenance for list-derived values such as title, company, location, salary, skills, and public URL.
+- `description` must remain `null` when detail text is unavailable.
+- `requirements` may be `null` or a safe summary built from explicit list fields (experience, category, skills).
 - Missing description/requirements should not block list visibility if minimum fields exist.
 
 ## Error Behavior

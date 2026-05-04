@@ -159,6 +159,16 @@ def build_parser() -> argparse.ArgumentParser:
     staging_parser.add_argument("--ai-p95-threshold-ms", type=positive_metric_value, default=None)
     staging_parser.add_argument("--sync-p95-threshold-ms", type=positive_metric_value, default=None)
     staging_parser.add_argument("--retry-threshold", type=non_negative_metric_value, default=None)
+    staging_parser.add_argument(
+        "--glints-partial-min-rate",
+        type=ratio_0_to_1,
+        default=0.95,
+    )
+    staging_parser.add_argument(
+        "--glints-partial-max-rate",
+        type=ratio_0_to_1,
+        default=1.0,
+    )
     staging_parser.set_defaults(command_handler=run_staging_report)
     return parser
 
@@ -302,6 +312,8 @@ async def run_staging_report(args: argparse.Namespace) -> dict[str, Any]:
         ai_p95_threshold_ms=args.ai_p95_threshold_ms,
         sync_p95_threshold_ms=args.sync_p95_threshold_ms,
         retry_threshold=args.retry_threshold,
+        glints_partial_min_rate=args.glints_partial_min_rate,
+        glints_partial_max_rate=args.glints_partial_max_rate,
     )
     report["status"] = "ok" if report["gates"]["failed"] == 0 else "fail"
     return report
@@ -454,6 +466,7 @@ def build_staging_report(
     queue_backlog = Counter(job.status for job in stage_jobs)
     quarantine_by_reason = Counter(row.error_category for row in quarantine_rows)
     source_targets = source_targets_from_sync(sync_sent, sample_per_source=sample_per_source)
+    partial_data = partial_data_summary(normalized_jobs)
 
     return {
         "check": "staging-report",
@@ -502,6 +515,7 @@ def build_staging_report(
                 else "fail"
             ),
         },
+        "partialData": partial_data,
         "sourceTargets": source_targets,
     }
 
@@ -656,6 +670,8 @@ def evaluate_staging_gates(
     ai_p95_threshold_ms: int | None,
     sync_p95_threshold_ms: int | None,
     retry_threshold: int | None,
+    glints_partial_min_rate: float,
+    glints_partial_max_rate: float,
 ) -> dict[str, Any]:
     checks: list[dict[str, Any]] = []
     stage_p95 = report.get("latency", {}).get("stageP95Ms")
@@ -685,6 +701,13 @@ def evaluate_staging_gates(
             passed=report.get("backendApiReadCheck", {}).get("status") in {"ok", "skipped"},
             actual=report.get("backendApiReadCheck", {}).get("status"),
             expected="list and detail read paths succeed for each source sample",
+        )
+    )
+    checks.append(
+        glints_partial_gate(
+            report,
+            min_rate=glints_partial_min_rate,
+            max_rate=glints_partial_max_rate,
         )
     )
 
@@ -732,6 +755,46 @@ def evaluate_staging_gates(
 
 def gate_entry(*, name: str, passed: bool, actual: Any, expected: Any) -> dict[str, Any]:
     return {"name": name, "passed": passed, "actual": actual, "expected": expected}
+
+
+def glints_partial_gate(
+    report: dict[str, Any],
+    *,
+    min_rate: float,
+    max_rate: float,
+) -> dict[str, Any]:
+    by_source = report.get("partialData", {}).get("bySource", {})
+    if not isinstance(by_source, dict):
+        return gate_entry(
+            name="glintsPartialRate",
+            passed=True,
+            actual="missing",
+            expected=f"between {min_rate} and {max_rate} when glints data exists",
+        )
+    glints = by_source.get("glints")
+    if not isinstance(glints, dict):
+        return gate_entry(
+            name="glintsPartialRate",
+            passed=True,
+            actual="skipped",
+            expected=f"between {min_rate} and {max_rate} when glints data exists",
+        )
+    total = glints.get("total")
+    rate = glints.get("partialRate")
+    if not isinstance(total, int) or total <= 0:
+        return gate_entry(
+            name="glintsPartialRate",
+            passed=True,
+            actual="skipped",
+            expected=f"between {min_rate} and {max_rate} when glints data exists",
+        )
+    passed = isinstance(rate, float) and min_rate <= rate <= max_rate
+    return gate_entry(
+        name="glintsPartialRate",
+        passed=passed,
+        actual=rate,
+        expected=f"between {min_rate} and {max_rate}",
+    )
 
 
 def stage_id_map_from(run_ids: list[str]) -> dict[str, str]:
@@ -783,6 +846,68 @@ def source_targets_from_sync(
         }
         for source, count in sorted(counts.items())
     ]
+
+
+def partial_data_summary(normalized_jobs: Sequence[NormalizedJob]) -> dict[str, Any]:
+    by_source: dict[str, dict[str, float | int]] = {}
+    total_partial = 0
+    for job in normalized_jobs:
+        source = job.source_platform
+        state = detail_completeness_state(job)
+        source_entry = by_source.setdefault(
+            source,
+            {
+                "total": 0,
+                "partial": 0,
+                "complete": 0,
+                "unknown": 0,
+                "partialRate": 0.0,
+            },
+        )
+        source_entry["total"] += 1
+        if state == "partial":
+            source_entry["partial"] += 1
+            total_partial += 1
+        elif state == "complete":
+            source_entry["complete"] += 1
+        else:
+            source_entry["unknown"] += 1
+
+    for source_entry in by_source.values():
+        total = int(source_entry["total"])
+        partial = int(source_entry["partial"])
+        source_entry["partialRate"] = round(partial / total, 4) if total else 0.0
+
+    return {
+        "totalPartial": total_partial,
+        "totalNormalized": len(normalized_jobs),
+        "bySource": {source: by_source[source] for source in sorted(by_source)},
+    }
+
+
+def detail_completeness_state(job: NormalizedJob) -> str:
+    payload = job.normalized_payload if isinstance(job.normalized_payload, dict) else {}
+    presentation = payload.get("presentation")
+    if not isinstance(presentation, dict):
+        return "unknown"
+    source_labels = presentation.get("source_labels")
+    if not isinstance(source_labels, dict):
+        return "unknown"
+
+    explicit = source_labels.get("detailCompleteness")
+    if isinstance(explicit, str):
+        normalized = explicit.strip().lower()
+        if normalized in {"partial", "complete", "unknown"}:
+            return normalized
+
+    coverage = source_labels.get("detailCoverage")
+    if isinstance(coverage, str):
+        normalized = coverage.strip().lower()
+        if normalized in {"unavailable", "list-only"}:
+            return "partial"
+        if normalized in {"embedded", "available", "full"}:
+            return "complete"
+    return "unknown"
 
 
 def run_summary_value(run: ScrapeRun, key: str) -> int:
@@ -1707,6 +1832,13 @@ def non_negative_metric_value(value: str) -> int:
     parsed = int(value)
     if parsed < 0:
         raise argparse.ArgumentTypeError("must be greater than or equal to zero")
+    return parsed
+
+
+def ratio_0_to_1(value: str) -> float:
+    parsed = float(value)
+    if parsed < 0 or parsed > 1:
+        raise argparse.ArgumentTypeError("must be between 0 and 1")
     return parsed
 
 

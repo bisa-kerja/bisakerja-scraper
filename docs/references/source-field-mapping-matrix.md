@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-01
+last_reviewed: 2026-05-04
 ---
 
 # Source Field Mapping Matrix
@@ -33,7 +33,7 @@ This matrix keeps mapper work tied to observed payload fields.
 | `salary.period` | configured/monthly when source semantics confirm | `salaries[].salaryMode` | parse label only if reliable | `salaryInterval` |
 | `salary.display` | derived safe label or null | derived safe label or null | `salaryLabel` | derived safe label or null |
 | `description` | detail `description` if fetched | not available from captured detail | detail `job.content` clean text or list `teaser` | `description` HTML clean text |
-| `requirements` | detail `requirements` if fetched | not available from captured detail | detail `job.products.bullets` or list `bulletPoints[]` | `qualifications` HTML clean text |
+| `requirements` | detail `requirements` if fetched | safe summary from list `minYearsOfExperience`, `maxYearsOfExperience`, `hierarchicalJobCategory.name`, `skills[].skill.name` when available | detail `job.products.bullets` or list `bulletPoints[]` | `qualifications` HTML clean text |
 | `skills` | `skills[].name` | `skills[].skill.name` | enrichment or tags only if mapped | enrichment or detail-derived |
 | `postedAt` | `publishedAt` | `createdAt` | `listingDate.dateTimeUtc` | `activationDate` or `createdAt` |
 | `sourceUpdatedAt` | source update field if present | `updatedAt` | source update field if present | `activationDate` |
@@ -56,6 +56,7 @@ This matrix keeps mapper work tied to observed payload fields.
 - Strip or sanitize HTML before model/display use.
 - Keep mapper field provenance outside the canonical job object.
 - Ignore UI-only fields unless a product contract explicitly adopts them.
+- For Glints list-only records, mark `presentation.source_labels.detailCompleteness = partial`.
 
 ## Dedup Matrix
 

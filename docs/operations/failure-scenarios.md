@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-01
+last_reviewed: 2026-05-04
 ---
 
 # Scraper Failure Scenarios
@@ -172,7 +172,19 @@ Handoff triage rules:
 
 Never expire all jobs from a source after a failed or partial source run.
 
-## Scenario 10: Raw Artifact Safety Failure
+## Scenario 10: Glints Partial Data Rate Drift
+
+| Area | Detail |
+| --- | --- |
+| Indicators | `partialData.bySource.glints.partialRate` drops below expected list-only baseline or changes sharply across daily runs |
+| Impact | Glints records may be over-filled with unsupported detail or under-produced due mapper drift |
+| First checks | `presentation.source_labels.detailCompleteness`, source list payload fields, requirement summary mapping, and recent mapper changes |
+| Isolation | Re-run Glints fixture contract and staging report for one controlled run id |
+| Owner | Data ingestion owner |
+
+When Glints remains list-only, most normalized rows should stay marked partial. Sudden rate shifts require contract review before promoting changes.
+
+## Scenario 11: Raw Artifact Safety Failure
 
 | Area | Detail |
 | --- | --- |

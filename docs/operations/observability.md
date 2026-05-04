@@ -116,6 +116,7 @@ Error logs should include the category, stage, source platform, external job id 
 | `raw_records_fetched` | Source, page | Confirm source coverage |
 | `normalized_records_written` | Source | Confirm mapper output volume |
 | `quarantined_records` | Source, reason | Track invalid identity or unsafe fields |
+| `partial_data_rate` | Source, detail completeness | Track list-only partial records, especially for Glints |
 | `enrichment_failure_rate` | Batch, model/task | Detect AI enrichment degradation |
 | `ai_request_latency_ms` | Provider, model, status | Detect model/provider latency regressions |
 | `stage_queue_depth` | Job type, status | Detect blocked stage workers |
@@ -158,6 +159,7 @@ Production alerting should start with these conditions:
 - Readiness fails for the scraper database.
 - Any source has repeated fetch failures.
 - Parse failure rate spikes for one source.
+- Glints partial-data rate moves outside expected range for list-only ingestion.
 - Dedup ratio changes sharply from baseline.
 - Sync latency or sync failure blocks backend handoff.
 - Stage queue dead-letter count rises.
