@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-02
+last_reviewed: 2026-05-04
 ---
 
 # Scraper Stage Queue Operations
@@ -39,9 +39,11 @@ The first queue backend is the scraper database table `stage_jobs`. This avoids 
 
 ## Retry Policy
 
-Each job stores `attempt_count` and `max_attempts`. A failed job increments `attempt_count`. If attempts remain, the job becomes `failed` and can be claimed again after `available_at`. If the limit is reached, the job becomes `dead-letter`.
+Each job stores `attempt_count` and `max_attempts`. A failed claim increments `attempt_count` exactly once. If attempts remain, the job becomes `failed` and can be claimed again after `available_at`. If the limit is reached, the job becomes `dead-letter`.
 
 Use short retry delays for transient database/provider failures. Use no blind retry for invalid payloads, auth failures, or schema mismatches unless the underlying cause has been corrected.
+
+Worker handlers should raise errors to the queue worker and let the queue worker own the fail transition, so attempt accounting stays consistent.
 
 ## Idempotency
 

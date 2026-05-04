@@ -1020,18 +1020,30 @@ def verify_database_state(session: Session, *, run_id: str) -> dict[str, Any]:
 
 def stage_run_ids(run_id: str) -> list[str]:
     suffixes = ("scrape", "normalize", "enrich", "sync", "notify")
-    if any(run_id.endswith(f"-{suffix}") for suffix in suffixes):
-        base_run_id = run_id.rsplit("-", 1)[0]
-        return [f"{base_run_id}-{suffix}" for suffix in suffixes]
-    return [f"{run_id}-{suffix}" for suffix in suffixes]
+    base_run_id = base_run_id_without_stage_suffix(run_id)
+    return [f"{base_run_id}-{suffix}" for suffix in suffixes]
 
 
 def scrape_run_id_from_stage_run_id(run_id: str) -> str | None:
-    for suffix in ("normalize", "enrich", "sync", "notify"):
+    base_run_id = base_run_id_without_stage_suffix(run_id)
+    if base_run_id != run_id:
+        return f"{base_run_id}-scrape"
+    return None
+
+
+def base_run_id_without_stage_suffix(run_id: str) -> str:
+    for suffix in (
+        "notify-handoff",
+        "notify",
+        "normalize",
+        "enrich",
+        "scrape",
+        "sync",
+    ):
         marker = f"-{suffix}"
         if run_id.endswith(marker):
-            return f"{run_id[: -len(marker)]}-scrape"
-    return None
+            return run_id[: -len(marker)]
+    return run_id
 
 
 def duplicate_count(counts: Counter[tuple[str, str]]) -> int:
@@ -1230,10 +1242,17 @@ class ManualPipelineRunner:
             "notify": notify.run_id,
         }
         statuses = {scrape.status, normalize.status, enrich.status, sync.status, notify.status}
+        status = (
+            "failed"
+            if "failed" in statuses
+            else "partial"
+            if "partial" in statuses
+            else "completed"
+        )
         return PipelineResult(
             run_id=scrape.run_id,
             correlation_id=scrape.correlation_id,
-            status="partial" if "partial" in statuses else "completed",
+            status=status,
             counts=RunCounts(
                 fetched=scrape.counts.fetched,
                 parsed=normalize.counts.parsed,

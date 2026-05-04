@@ -56,3 +56,32 @@ def test_retry_classifier_matches_transient_status_policy() -> None:
     assert is_retriable_status(400) is False
     assert is_retriable_status(401) is False
     assert is_retriable_status(404) is False
+
+
+@pytest.mark.asyncio
+async def test_source_limiter_circuit_recovers_after_cooldown() -> None:
+    now = 0.0
+
+    async def sleeper(_seconds: float) -> None:
+        return None
+
+    limiter = SourceRateLimiter(
+        SourceRateLimitConfig(
+            source_platform="dealls",
+            requests_per_minute=60,
+            circuit_breaker_failure_threshold=1,
+            circuit_breaker_cooldown_seconds=5.0,
+        ),
+        sleeper=sleeper,
+        monotonic=lambda: now,
+    )
+
+    limiter.record_failure()
+
+    with pytest.raises(FetchError):
+        await limiter.wait_before_request()
+
+    now = 5.0
+    await limiter.wait_before_request()
+    assert limiter.circuit_open is False
+    assert limiter.failure_count == 0

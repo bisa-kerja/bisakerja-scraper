@@ -7,8 +7,10 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from cli.pipeline import live_platforms, main, to_sync_url
+from cli.pipeline import ManualPipelineRunner, live_platforms, main, stage_run_ids, to_sync_url
+from jobs.pipeline import PipelineResult, SourcePipelineResult
 from modules.persistence import Base, NormalizedJob, RawJob, ScrapeRun, SyncEvent
+from modules.runs import RunCounts
 from tests.integration.helpers import valid_env
 
 
@@ -169,6 +171,87 @@ def test_live_all_respects_jobstreet_enabled_flag() -> None:
     settings = valid_env(JOBSTREET_ENABLED="false")
 
     assert live_platforms("all", settings_from_env(settings)) == ("dealls", "glints", "kalibrr")
+
+
+def test_stage_run_ids_accept_notify_handoff_suffix() -> None:
+    assert stage_run_ids("manual-run-notify-handoff") == [
+        "manual-run-scrape",
+        "manual-run-normalize",
+        "manual-run-enrich",
+        "manual-run-sync",
+        "manual-run-notify",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_manual_full_run_marks_failed_when_any_stage_failed() -> None:
+    runner = ManualPipelineRunner(
+        session=None,
+        settings=None,
+        stage="full",
+        source="all",
+        keywords=("developer",),
+        fixture_root=None,
+        limit=1,
+        recency_mode="latest",
+        recency_days=7,
+        execute=False,
+        run_id=None,
+    )
+
+    class FakeOrchestrator:
+        async def run_scrape(self, run_id=None):  # noqa: ANN001, ANN201
+            return PipelineResult(
+                run_id="run-scrape",
+                correlation_id="corr",
+                status="completed",
+                counts=RunCounts(fetched=1),
+                source_results=[SourcePipelineResult(source_platform="dealls", status="completed")],
+                stage_events=["dealls:scrape"],
+            )
+
+        async def run_normalize(self, run_id=None):  # noqa: ANN001, ANN201
+            return PipelineResult(
+                run_id="run-normalize",
+                correlation_id="corr",
+                status="completed",
+                counts=RunCounts(parsed=1, normalized=1),
+                source_results=[],
+                stage_events=["dealls:normalize"],
+            )
+
+        async def run_enrich(self, run_id=None):  # noqa: ANN001, ANN201
+            return PipelineResult(
+                run_id="run-enrich",
+                correlation_id="corr",
+                status="completed",
+                counts=RunCounts(),
+                source_results=[],
+                stage_events=["enrich"],
+            )
+
+        async def run_sync(self, run_id=None):  # noqa: ANN001, ANN201
+            return PipelineResult(
+                run_id="run-sync",
+                correlation_id="corr",
+                status="failed",
+                counts=RunCounts(skipped=1),
+                source_results=[],
+                stage_events=["sync"],
+            )
+
+        async def run_notify_handoff(self, run_id=None):  # noqa: ANN001, ANN201
+            return PipelineResult(
+                run_id="run-notify",
+                correlation_id="corr",
+                status="completed",
+                counts=RunCounts(),
+                source_results=[],
+                stage_events=["notify-handoff"],
+            )
+
+    result = await runner.run_full(FakeOrchestrator(), run_id_prefix=None)
+    assert result.status == "failed"
 
 
 def test_pipeline_status_reads_run(monkeypatch, tmp_path, capsys) -> None:

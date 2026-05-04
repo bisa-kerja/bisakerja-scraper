@@ -18,7 +18,7 @@ This matrix defines the minimum evidence needed before scraper docs, code, or op
 | Area | Happy-path verification | Critical-failure verification | Evidence |
 | --- | --- | --- | --- |
 | Scheduler | Run starts inside configured window | Duplicate active run is skipped or rejected | Run record with `runId` |
-| Source HTTP client | Per-source limiter spaces requests and retry classifier marks `429` and transient `5xx` retryable | Circuit breaker opens for repeated retryable failures without blocking unrelated sources | Unit test result |
+| Source HTTP client | Per-source limiter spaces requests and retry classifier marks `429` and transient `5xx` retryable | Circuit breaker opens for repeated retryable failures, auto-recovers after cooldown, and does not block unrelated sources | Unit test result |
 | Dealls adapter | REST list and detail fixtures fetched and merged | Missing detail keeps list record valid | Contract test result |
 | Glints adapter | GraphQL list fixture parsed | Missing detail endpoint uses list fallback | Contract test result |
 | Glints partial metrics | Partial rows are counted per source in staging report | Partial-rate drift gate flags abnormal Glints ratio | Smoke test result |
@@ -34,7 +34,7 @@ This matrix defines the minimum evidence needed before scraper docs, code, or op
 | Sync | Main DB shape receives upsert-ready rows | Sync failure keeps staging recoverable | Sync dry-run/test |
 | Notification handoff | Sent sync events become job candidate events | Failed handoff remains retryable and never reads backend user tables | Handoff unit or E2E test |
 | AI audit | Sanitized request metadata and summaries are stored | API key, raw prompt, raw payload, headers, and tokens are not persisted | Unit test result |
-| Stage queue | Eligible jobs are claimed and completed | Failed jobs retry then dead-letter after max attempts | Queue unit test result |
+| Stage queue | Eligible jobs are claimed and completed | One failed claim increments attempt once, retries until max attempts, then dead-letter | Queue unit test result |
 | Docs sync | Bundle manifest maps docs deterministically | Path escape or missing metadata rejects bundle | Docs check result |
 
 ## Source Coverage Matrix

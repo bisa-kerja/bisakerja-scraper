@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from modules.enrichment.worker import run_enrichment_stage_job
 from modules.persistence import Base
 from modules.queue import (
     QueueFailure,
@@ -85,6 +86,40 @@ async def test_worker_entrypoint_completes_successful_job() -> None:
         assert job is not None
         assert job.status == StageJobStatus.COMPLETED.value
         assert handled == ["corr-1"]
+
+
+@pytest.mark.asyncio
+async def test_enrichment_stage_failure_increments_attempt_once() -> None:
+    with session_scope() as session:
+        repository = StageJobRepository(session)
+        repository.enqueue(
+            QueueJobInput(
+                job_type=StageJobType.ENRICH_BATCH,
+                correlation_id="corr-2",
+                scrape_run_id="run-1",
+            )
+        )
+
+        class FailingWorker:
+            async def run_batch(self, *, scrape_run_id: str | None = None):  # noqa: ANN201
+                raise RuntimeError(f"boom:{scrape_run_id}")
+
+        async def handler(job) -> None:  # noqa: ANN001
+            await run_enrichment_stage_job(
+                queue=repository,
+                worker=FailingWorker(),
+                job_id=job.id,
+            )
+
+        job = await process_next_stage_job(
+            repository=repository,
+            job_type=StageJobType.ENRICH_BATCH,
+            handlers={StageJobType.ENRICH_BATCH: handler},
+        )
+
+        assert job is not None
+        assert job.status == StageJobStatus.FAILED.value
+        assert job.attempt_count == 1
 
 
 def session_scope() -> Session:

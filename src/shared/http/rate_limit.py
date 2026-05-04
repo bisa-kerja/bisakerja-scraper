@@ -17,6 +17,7 @@ class SourceRateLimitConfig:
     initial_backoff_seconds: float = 0.2
     max_backoff_seconds: float = 30.0
     circuit_breaker_failure_threshold: int = 3
+    circuit_breaker_cooldown_seconds: float = 30.0
 
     def __post_init__(self) -> None:
         if not self.source_platform:
@@ -29,6 +30,8 @@ class SourceRateLimitConfig:
             raise ValueError("max_backoff_seconds must be greater than or equal to initial backoff")
         if self.circuit_breaker_failure_threshold <= 0:
             raise ValueError("circuit_breaker_failure_threshold must be greater than zero")
+        if self.circuit_breaker_cooldown_seconds <= 0:
+            raise ValueError("circuit_breaker_cooldown_seconds must be greater than zero")
 
 
 class SourceRateLimiter:
@@ -46,6 +49,7 @@ class SourceRateLimiter:
         self._next_available_at = 0.0
         self._failure_count = 0
         self._circuit_open = False
+        self._circuit_opened_at: float | None = None
 
     @property
     def failure_count(self) -> int:
@@ -57,15 +61,32 @@ class SourceRateLimiter:
 
     async def wait_before_request(self) -> None:
         async with self._lock:
-            if self._circuit_open:
-                raise FetchError(
-                    "source circuit breaker is open",
-                    source_platform=self.config.source_platform,
-                    details={"failureCount": self._failure_count},
-                    retryable=True,
-                )
-
             now = self._monotonic()
+            if self._circuit_open:
+                opened_at = self._circuit_opened_at
+                if (
+                    opened_at is not None
+                    and now - opened_at >= self.config.circuit_breaker_cooldown_seconds
+                ):
+                    # Enter half-open by resetting counters and allowing one new request.
+                    self._failure_count = 0
+                    self._circuit_open = False
+                    self._circuit_opened_at = None
+                else:
+                    retry_after = max(
+                        self.config.circuit_breaker_cooldown_seconds
+                        - (0 if opened_at is None else now - opened_at),
+                        0.0,
+                    )
+                    raise FetchError(
+                        "source circuit breaker is open",
+                        source_platform=self.config.source_platform,
+                        details={
+                            "failureCount": self._failure_count,
+                            "retryAfterSeconds": round(retry_after, 3),
+                        },
+                        retryable=True,
+                    )
             wait_seconds = max(self._next_available_at - now, 0.0)
             scheduled_at = max(now, self._next_available_at)
             self._next_available_at = scheduled_at + (60.0 / self.config.requests_per_minute)
@@ -81,11 +102,13 @@ class SourceRateLimiter:
     def record_success(self) -> None:
         self._failure_count = 0
         self._circuit_open = False
+        self._circuit_opened_at = None
 
     def record_failure(self) -> None:
         self._failure_count += 1
         if self._failure_count >= self.config.circuit_breaker_failure_threshold:
             self._circuit_open = True
+            self._circuit_opened_at = self._monotonic()
 
     def backoff_delay(self, failure_count: int) -> float:
         if failure_count <= 0:

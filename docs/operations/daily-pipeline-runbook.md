@@ -80,10 +80,13 @@ Pipeline command rules:
 - `--recency-days` must be between `1` and `365`; when absent, the command uses `SCRAPER_RECENCY_DAYS`.
 - Dry-run output is compact JSON and must not print service tokens, bearer tokens, cookies, raw headers, database passwords, or raw payload bodies.
 - Dry-run output includes source and keyword summaries with requested limit and newest/oldest source timestamps when available.
+- Full-stage run status is `completed`, `partial`, or `failed`; treat `failed` as hard failure even when prior stages succeeded.
 - Manual runs share the scheduler guard so only one in-process operator run is accepted at a time.
 - `--execute` uses the configured scraper database and should only run after migration and readiness checks pass in a controlled non-production environment.
 - `verify` summarizes run rows, raw and normalized counts, source/keyword counts, sync and handoff counts, duplicate identity counts, and latest metadata without printing raw payloads or secrets.
 - `staging-report` adds staging evidence checks for latency percentiles, retries, quarantine distribution, backend relation consistency, and backend read-path sampling.
+- Stage run-id derivation accepts base IDs and stage-suffixed IDs, including `-notify` and `-notify-handoff`.
+- Source HTTP circuit breaker is retryable and auto-recovers after cooldown; if still open after repeated cooldown windows, treat as active incident and escalate.
 
 The HTTP trigger route is still not exposed. Operators should use the CLI until the internal run API is implemented.
 
