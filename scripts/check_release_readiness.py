@@ -14,6 +14,30 @@ REQUIRED_FRONTMATTER_FIELDS = (
     "last_reviewed",
 )
 
+REQUIRED_OPERATION_DOCS = (
+    "release-readiness.md",
+    "daily-pipeline-runbook.md",
+    "verification-matrix.md",
+    "observability.md",
+    "production-readiness-gate.md",
+)
+
+REQUIRED_PRODUCTION_GATE_SECTIONS = (
+    "## Final Gates",
+    "## Go/No-Go Thresholds",
+    "## Decision Record",
+    "## Approval Record",
+    "## First Production Run Procedure",
+    "## Known Limitations and Accepted Risks",
+)
+
+REQUIRED_PRODUCTION_GATE_PHRASES = (
+    "retry failed source",
+    "quarantine review",
+    "disable one source",
+    "rollback sync",
+)
+
 SECRET_PATTERNS = (
     re.compile(
         r"\bBearer\s+(?!<[^>]+>|replace-with)[A-Za-z0-9_-]{10,}\.[A-Za-z0-9._~+/=-]+",
@@ -99,6 +123,37 @@ def check_secret_patterns(path: Path) -> list[Finding]:
     return findings
 
 
+def check_operation_docs(root: Path) -> list[Finding]:
+    operations_dir = root / "docs" / "operations"
+    if not operations_dir.is_dir():
+        return []
+
+    findings: list[Finding] = []
+    for filename in REQUIRED_OPERATION_DOCS:
+        path = operations_dir / filename
+        if not path.is_file():
+            findings.append(Finding(path, "missing required operations document"))
+
+    gate_doc = operations_dir / "production-readiness-gate.md"
+    if gate_doc.is_file():
+        findings.extend(check_production_gate_content(gate_doc))
+    return findings
+
+
+def check_production_gate_content(path: Path) -> list[Finding]:
+    text = path.read_text(encoding="utf-8")
+    findings: list[Finding] = []
+    for section in REQUIRED_PRODUCTION_GATE_SECTIONS:
+        if section not in text:
+            findings.append(Finding(path, f"missing production gate section: {section}"))
+
+    lowered = text.lower()
+    for phrase in REQUIRED_PRODUCTION_GATE_PHRASES:
+        if phrase not in lowered:
+            findings.append(Finding(path, f"missing production gate phrase: {phrase}"))
+    return findings
+
+
 def check_deploy_determinism(root: Path) -> list[Finding]:
     findings: list[Finding] = []
     deploy_workflow = root / ".github/workflows/deploy.yml"
@@ -162,6 +217,7 @@ def run_checks(root: Path) -> list[Finding]:
         findings.extend(check_markdown_links(path, root))
     for path in secret_scan_files:
         findings.extend(check_secret_patterns(path))
+    findings.extend(check_operation_docs(root))
     findings.extend(check_deploy_determinism(root))
     return findings
 

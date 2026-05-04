@@ -29,6 +29,7 @@ Operational docs for this repository should cover scraper runtime behavior only.
 - [Documentation Sync](./documentation-sync.md)
 - [Documentation Release Checklist](./documentation-release-checklist.md)
 - [Release Readiness](./release-readiness.md)
+- [Production Readiness Gate](./production-readiness-gate.md)
 
 ## Baseline Run Order
 

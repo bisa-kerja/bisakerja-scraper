@@ -52,6 +52,8 @@ The scraper is release-ready when its automated gates pass, documentation matche
 - Do not release if migration behavior changed without an isolated upgrade and downgrade check.
 - Do not release if a source is degraded unless the degraded source is documented, isolated, and freshness expiration is safe.
 
+Use [Production Readiness Gate](./production-readiness-gate.md) for final go/no-go thresholds, decision record, approval record, and first-run execution procedure.
+
 ## Future Improvements
 
 | Backlog item | Reason | Owner |
@@ -70,3 +72,4 @@ The scraper is release-ready when its automated gates pass, documentation matche
 - [Testing Strategy](./testing.md)
 - [Security](./security.md)
 - [Failure Scenarios](./failure-scenarios.md)
+- [Production Readiness Gate](./production-readiness-gate.md)

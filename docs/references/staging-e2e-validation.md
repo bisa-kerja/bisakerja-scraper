@@ -108,6 +108,18 @@ Treat run as valid when:
 - backend list and detail checks succeed for sampled sources
 - configured latency and retry thresholds pass
 
+## Release Evidence Mapping
+
+Use the staging report output as the evidence bundle input for production go/no-go decision:
+
+- `stageCounts`, `latency`, `retries`, `queue`, and `quarantine` support runtime and recovery checks.
+- `consistency` and `backendDatabaseConsistency` support duplicate/orphan threshold checks.
+- `backendApiReadCheck` supports backend list/detail read-path verification.
+- `partialData` and `gates.glintsPartialRate` support list-only partial-data drift checks.
+- `gates` summary supports pass/fail decision aggregation.
+
+Final decision and approval records are documented in [Production Readiness Gate](../operations/production-readiness-gate.md).
+
 ## Safety Rules
 
 - Do not print raw source payload bodies.
