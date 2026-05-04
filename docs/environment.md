@@ -106,11 +106,11 @@ Latest mode requests newest listings first when a source supports it. If a sourc
 | `FRESHNESS_STALE_AFTER_HOURS` | Yes | Positive threshold for stale listings |
 | `FRESHNESS_EXPIRED_AFTER_HOURS` | Yes | Positive threshold greater than stale threshold |
 
-## AI Enrichment Variables
+## AI Provider Variables
 
 | Variable | Required | Rule |
 | --- | --- | --- |
-| `AI_ENRICHMENT_ENABLED` | Yes | Explicit `true` or `false` |
+| `AI_ENRICHMENT_ENABLED` | Yes | Explicit `true` or `false`; enables OpenAI provider usage for enrichment and AI-assisted normalization in execute mode |
 | `OPENAI_API_KEY` | Yes when AI enrichment is enabled | Secret store only |
 | `OPENAI_BASE_URL` | Yes when AI enrichment is enabled | Absolute OpenAI-compatible API base URL |
 | `OPENAI_MODEL` | Yes when AI enrichment is enabled | Model name supported by the configured provider |
@@ -119,6 +119,8 @@ Latest mode requests newest listings first when a source supports it. If a sourc
 | `OPENAI_BATCH_SIZE` | Yes | Positive batch size; baseline is `10` jobs |
 
 AI enrichment uses an OpenAI-compatible client boundary. The base URL supports the official OpenAI API and compatible providers that expose the same request shape. Logs must not include API keys. If the base URL contains tenant, account, or deployment-specific identifiers, treat it as sensitive operational metadata and redact it from logs.
+
+Normalize stage in execute mode can also use the same OpenAI-compatible provider for AI-assisted normalization. The prompt contract is standalone and embedded in code, so runtime does not depend on external reference repositories.
 
 Only safe normalized job fields may be sent to the provider: title, clean description, clean requirements, company name, and source platform. Raw source payloads, source request headers, bearer tokens, cookies, session ids, visitor ids, device ids, backend service credentials, and database URLs must never be included in AI requests.
 

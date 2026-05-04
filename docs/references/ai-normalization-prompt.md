@@ -22,6 +22,9 @@ Each normalization request includes:
 - `rawPayloadSubset`: minimal source payload fragment used as evidence.
 - `targetSchema`: canonical output contract name.
 - `targetJsonSchema`: JSON schema generated from `CanonicalJobSchema`.
+- `backendSchemaContext`: embedded backend schema alignment rules.
+- `standaloneSchemaBlueprint`: standalone canonical blueprint (type, required fields, defaults, constraints).
+- `normalizationOutputExamples`: valid list/detail output examples.
 
 ## System Prompt Rules
 
@@ -35,6 +38,7 @@ The normalization system prompt enforces:
 - Unknown values remain `null`.
 - Glints list data must stay partial when detail fields are absent.
 - `external_apply_url` falls back to `source_url` when unavailable.
+- Contract is standalone and must not depend on external repositories or runtime file reads.
 
 Implementation source: `src/modules/jobs/ai_normalization.py`.
 
@@ -52,6 +56,14 @@ AI output is accepted only when:
    - Glints list payloads without detail evidence must not contain `description` or `requirements`.
 
 Rejected output raises `AINormalizationContractError`.
+
+## Pipeline Integration
+
+- `PipelineOrchestrator` uses source mapper output as baseline.
+- When an AI normalization client is configured, orchestrator requests AI normalization per job.
+- Success path: AI result replaces baseline mapper result.
+- Failure path (default): fail-open fallback to mapper output.
+- Optional fail-closed mode quarantines normalization failures.
 
 ## Format Repair Policy
 

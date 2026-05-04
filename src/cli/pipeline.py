@@ -18,6 +18,7 @@ from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from config.settings import Settings
+from integrations.ai import OpenAINormalizationClient
 from integrations.backend import BackendSyncResult
 from integrations.sources.dealls.list import (
     DeallsListAdapter,
@@ -1123,6 +1124,10 @@ class ManualPipelineRunner:
 
     def build_orchestrator(self) -> PipelineOrchestrator:
         sync_run_id: dict[str, str] = {}
+        ai_normalization_client = build_ai_normalization_client(
+            self.settings,
+            execute=self.execute,
+        )
 
         async def enrich_hook(run_id: str, correlation_id: str) -> RunCounts:
             jobs = self.normalized_jobs_for_stage(run_id)
@@ -1184,6 +1189,7 @@ class ManualPipelineRunner:
                 RunStage.NOTIFY_HANDOFF.value: handoff_hook,
             },
             correlation_id_factory=lambda: "manual-pipeline",
+            ai_normalization_client=ai_normalization_client,
         )
 
     def normalized_jobs_for_stage(self, run_id: str) -> list[NormalizedJob]:
@@ -1725,6 +1731,30 @@ def fixture_sources(
 
 def source_count(source: str) -> int:
     return len(SOURCE_CHOICES) - 1 if source == "all" else 1
+
+
+def build_ai_normalization_client(
+    settings: Settings,
+    *,
+    execute: bool,
+) -> OpenAINormalizationClient | None:
+    if not execute:
+        return None
+    if not settings.ai_enrichment_enabled:
+        return None
+    if (
+        settings.openai_api_key is None
+        or settings.openai_base_url is None
+        or settings.openai_model is None
+    ):
+        return None
+    return OpenAINormalizationClient(
+        api_key=settings.openai_api_key.get_secret_value(),
+        base_url=str(settings.openai_base_url),
+        model=settings.openai_model,
+        timeout_seconds=settings.openai_timeout_seconds,
+        max_retries=settings.openai_max_retries,
+    )
 
 
 def output_from_result(

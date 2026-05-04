@@ -8,6 +8,13 @@ from integrations.ai.openai_client import (
     OpenAIEnrichmentProviderUnavailableError,
     OpenAIEnrichmentRateLimitError,
     OpenAIEnrichmentTimeoutError,
+    OpenAINormalizationAuthError,
+    OpenAINormalizationClient,
+    OpenAINormalizationError,
+    OpenAINormalizationInvalidResponseError,
+    OpenAINormalizationProviderUnavailableError,
+    OpenAINormalizationRateLimitError,
+    OpenAINormalizationTimeoutError,
 )
 
 __all__ = [
@@ -18,4 +25,11 @@ __all__ = [
     "OpenAIEnrichmentProviderUnavailableError",
     "OpenAIEnrichmentRateLimitError",
     "OpenAIEnrichmentTimeoutError",
+    "OpenAINormalizationAuthError",
+    "OpenAINormalizationClient",
+    "OpenAINormalizationError",
+    "OpenAINormalizationInvalidResponseError",
+    "OpenAINormalizationProviderUnavailableError",
+    "OpenAINormalizationRateLimitError",
+    "OpenAINormalizationTimeoutError",
 ]

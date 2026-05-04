@@ -100,6 +100,7 @@ def test_prompt_contract_includes_schema_and_strict_rules() -> None:
     assert messages[0]["role"] == "system"
     assert "strict job data normalizer" in messages[0]["content"].lower()
     assert "output json only" in messages[0]["content"].lower()
+    assert "backendschemacontext" in messages[0]["content"].lower()
 
     payload = json.loads(messages[1]["content"])
     assert payload["sourcePlatform"] == "dealls"
@@ -107,6 +108,30 @@ def test_prompt_contract_includes_schema_and_strict_rules() -> None:
     assert payload["targetSchema"] == "CanonicalJobSchema"
     assert "targetJsonSchema" in payload
     assert "rawPayloadSubset" in payload
+    assert "backendSchemaContext" in payload
+    assert "normalizationObjectives" in payload
+    assert "standaloneSchemaBlueprint" in payload
+    assert "normalizationOutputExamples" in payload
+    assert "backend-references/prisma/schema.prisma" not in json.dumps(payload)
+    assert (
+        payload["backendSchemaContext"]["reference"]["source"]
+        == "standalone embedded backend schema contract snapshot"
+    )
+    assert payload["backendSchemaContext"]["reference"]["externalDependencyAllowed"] is False
+    assert (
+        payload["standaloneSchemaBlueprint"]["canonicalOutputModel"]["source"][
+            "external_apply_url"
+        ]["defaultRule"]
+        == "fallback_to_source_url_when_missing"
+    )
+    assert payload["normalizationOutputExamples"]["detailRecordExample"]["source"][
+        "external_apply_url"
+    ]
+    assert payload["backendSchemaContext"]["targetModels"]["JobListing"]["defaultPolicy"] == {
+        "salaryCurrency": "IDR",
+        "status": "ACTIVE",
+        "externalApplyUrlFallback": "sourceUrl",
+    }
 
 
 def test_repair_prompt_only_targets_format_errors() -> None:
@@ -129,3 +154,6 @@ def test_repair_prompt_only_targets_format_errors() -> None:
     assert payload["sourcePlatform"] == "jobstreet"
     assert payload["endpointType"] == "list"
     assert payload["validationErrors"][0]["loc"] == ["source"]
+    assert "backend-references/prisma/schema.prisma" not in json.dumps(payload)
+    assert "standaloneSchemaBlueprint" in payload
+    assert payload["backendSchemaContext"]["targetModels"]["Company"]["required"] == ["name"]

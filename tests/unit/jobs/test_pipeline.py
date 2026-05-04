@@ -13,6 +13,7 @@ from integrations.sources.mapper_utils import SourceMapperResult
 from jobs.pipeline import PipelineConfig, PipelineOrchestrator
 from modules.jobs.schemas import (
     CanonicalJobSchema,
+    CanonicalJobStatus,
     CompanySchema,
     LocationSchema,
     SourceMetadataSchema,
@@ -123,6 +124,90 @@ async def test_normalize_stage_quarantines_malformed_raw_job() -> None:
         assert result.counts.skipped == 1
         assert quarantine is not None
         assert quarantine.error_category == "NORMALIZE_ERROR"
+        assert session.scalars(select(NormalizedJob)).all() == []
+
+
+@pytest.mark.asyncio
+async def test_normalize_stage_uses_ai_normalization_when_client_available() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        repository.upsert_raw_job(raw_input("run-scrape", "ai-1"))
+        session.commit()
+        source = FakeSource("dealls", [])
+        client = FakeAINormalizationClient(title="AI Normalized Title")
+        orchestrator = PipelineOrchestrator(
+            sources=[source],
+            persistence=repository,
+            run_tracker=RunStateTracker(session),
+            correlation_id_factory=lambda: "corr-1",
+            ai_normalization_client=client,
+        )
+
+        result = await orchestrator.run_normalize(run_id="run-normalize")
+
+        normalized = session.scalar(
+            select(NormalizedJob).where(NormalizedJob.external_id == "ai-1")
+        )
+        assert result.status == "completed"
+        assert normalized is not None
+        assert normalized.title == "AI Normalized Title"
+        assert client.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_normalize_stage_falls_back_to_mapper_on_ai_failure_when_fail_open() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        repository.upsert_raw_job(raw_input("run-scrape", "ai-fallback-1"))[0]
+        session.commit()
+        source = FakeSource("dealls", [])
+        client = FailingAINormalizationClient()
+        orchestrator = PipelineOrchestrator(
+            sources=[source],
+            persistence=repository,
+            run_tracker=RunStateTracker(session),
+            correlation_id_factory=lambda: "corr-1",
+            ai_normalization_client=client,
+        )
+
+        result = await orchestrator.run_normalize(run_id="run-normalize")
+
+        normalized = session.scalar(
+            select(NormalizedJob).where(NormalizedJob.external_id == "ai-fallback-1")
+        )
+        assert result.status == "completed"
+        assert normalized is not None
+        assert normalized.title == "Backend Engineer"
+
+
+@pytest.mark.asyncio
+async def test_normalize_stage_quarantines_on_ai_failure_when_fail_closed() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        raw = repository.upsert_raw_job(raw_input("run-scrape", "ai-fail-closed-1"))[0]
+        session.commit()
+        source = FakeSource("dealls", [])
+        client = FailingAINormalizationClient()
+        orchestrator = PipelineOrchestrator(
+            sources=[source],
+            persistence=repository,
+            run_tracker=RunStateTracker(session),
+            quarantine=QuarantineRepository(session),
+            config=PipelineConfig(ai_normalization_fail_open=False),
+            correlation_id_factory=lambda: "corr-1",
+            ai_normalization_client=client,
+        )
+
+        result = await orchestrator.run_normalize(run_id="run-normalize")
+
+        quarantine = session.scalar(
+            select(NormalizationQuarantine).where(NormalizationQuarantine.raw_job_id == raw.id)
+        )
+        assert result.status == "partial"
+        assert result.counts.skipped == 1
+        assert quarantine is not None
+        assert quarantine.error_category == "NORMALIZE_ERROR"
+        assert quarantine.retryable is True
         assert session.scalars(select(NormalizedJob)).all() == []
 
 
@@ -238,6 +323,40 @@ class MalformedSource(FakeSource):
             source_platform=self.source_platform,
             external_id=raw_job.external_id,
             details={"source_field_path": "id"},
+        )
+
+
+class FakeAINormalizationClient:
+    def __init__(self, *, title: str) -> None:
+        self.title = title
+        self.calls = 0
+
+    async def normalize_job(self, prompt_input):  # noqa: ANN001, ANN201
+        self.calls += 1
+        return CanonicalJobSchema(
+            source=SourceMetadataSchema(
+                platform=SourcePlatform.DEALLS,
+                external_job_id="ai-1",
+                source_url="https://dealls.com/jobs/ai-1",
+                external_apply_url="https://dealls.com/jobs/ai-1",
+                scraped_at=datetime.now(UTC),
+            ),
+            title=self.title,
+            company=CompanySchema(name="Bisakerja AI"),
+            location=LocationSchema(display="Jakarta"),
+            last_seen_at=datetime.now(UTC),
+            status=CanonicalJobStatus.ACTIVE,
+        )
+
+
+class FailingAINormalizationClient:
+    async def normalize_job(self, prompt_input):  # noqa: ANN001, ANN201
+        raise NormalizeError(
+            "provider timeout",
+            source_platform="dealls",
+            external_id="ai-error",
+            retryable=True,
+            details={"source_field_path": "raw_payload"},
         )
 
 

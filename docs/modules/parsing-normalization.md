@@ -13,6 +13,13 @@ last_reviewed: 2026-05-04
 
 The parsing and normalization module converts source-specific payloads into canonical staging records.
 
+Normalization execution path:
+
+- Source mapper always produces baseline canonical output.
+- When OpenAI provider is enabled in execute mode, pipeline also runs AI-assisted normalization using an embedded standalone prompt contract.
+- AI failure policy is fail-open by default in pipeline config, so mapper output remains available when provider calls fail.
+- Pipeline can be configured fail-closed to quarantine records when AI normalization fails.
+
 ## Responsibility
 
 | Area | Rule |

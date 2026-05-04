@@ -14,6 +14,8 @@ from integrations.ai import (
     OpenAIEnrichmentProviderUnavailableError,
     OpenAIEnrichmentRateLimitError,
     OpenAIEnrichmentTimeoutError,
+    OpenAINormalizationClient,
+    OpenAINormalizationInvalidResponseError,
 )
 from modules.enrichment import (
     EnrichedRequirement,
@@ -22,6 +24,7 @@ from modules.enrichment import (
     EnrichmentOutput,
     RequirementType,
 )
+from modules.jobs import AINormalizationPromptInput, CanonicalJobSchema, NormalizationEndpointType
 
 
 def test_openai_client_uses_custom_base_url_timeout_and_retry_config() -> None:
@@ -105,8 +108,45 @@ async def test_openai_client_rejects_hallucinated_output() -> None:
         await client.enrich_job(make_job_input())
 
 
+@pytest.mark.asyncio
+async def test_openai_client_returns_structured_normalization_output() -> None:
+    parser = FakeParser(parsed=make_normalization_output())
+    client = make_normalization_client(parser)
+
+    output = await client.normalize_job(make_normalization_prompt_input())
+
+    assert output.source.platform.value == "dealls"
+    assert output.source.external_apply_url == output.source.source_url
+    assert parser.calls[0]["response_format"] is CanonicalJobSchema
+    assert parser.calls[0]["temperature"] == 0
+    payload = parser.calls[0]["messages"][1]["content"]
+    assert "backendSchemaContext" in payload
+    assert "standaloneSchemaBlueprint" in payload
+    assert "normalizationOutputExamples" in payload
+    assert "backend-references/prisma/schema.prisma" not in payload
+
+
+@pytest.mark.asyncio
+async def test_openai_client_rejects_invalid_normalization_response() -> None:
+    client = make_normalization_client(FakeParser(parsed={"title": "missing-required-fields"}))
+
+    with pytest.raises(OpenAINormalizationInvalidResponseError):
+        await client.normalize_job(make_normalization_prompt_input())
+
+
 def make_client(parser: FakeParser) -> OpenAIEnrichmentClient:
     return OpenAIEnrichmentClient(
+        api_key="test-key",
+        base_url="https://api.openai.com/v1",
+        model="gpt-4o-mini",
+        timeout_seconds=10,
+        max_retries=2,
+        parser=parser,
+    )
+
+
+def make_normalization_client(parser: FakeParser) -> OpenAINormalizationClient:
+    return OpenAINormalizationClient(
         api_key="test-key",
         base_url="https://api.openai.com/v1",
         model="gpt-4o-mini",
@@ -126,6 +166,19 @@ def make_job_input() -> EnrichmentJobInput:
     )
 
 
+def make_normalization_prompt_input() -> AINormalizationPromptInput:
+    return AINormalizationPromptInput(
+        source_platform="dealls",
+        endpoint_type=NormalizationEndpointType.DETAIL,
+        raw_payload_subset={
+            "id": "job-1",
+            "title": "Backend Engineer",
+            "company": {"name": "Bisakerja"},
+            "url": "https://example.test/jobs/job-1",
+        },
+    )
+
+
 def make_output() -> EnrichmentOutput:
     return EnrichmentOutput(
         skills=[EnrichedSkill(name="Python", confidence=0.9)],
@@ -141,6 +194,49 @@ def make_output() -> EnrichmentOutput:
     )
 
 
+def make_normalization_output() -> dict[str, Any]:
+    return {
+        "source": {
+            "platform": "dealls",
+            "external_job_id": "job-1",
+            "source_url": "https://example.test/jobs/job-1",
+            "external_apply_url": None,
+            "scraped_at": "2026-05-04T09:00:00Z",
+            "source_updated_at": None,
+        },
+        "title": "Backend Engineer",
+        "company": {
+            "name": "Bisakerja",
+            "logo_url": None,
+            "industry": None,
+            "source_company_id": None,
+            "source_slug": None,
+        },
+        "location": {
+            "display": "Jakarta, DKI Jakarta, Indonesia",
+            "city": "Jakarta",
+            "region": "DKI Jakarta",
+            "country": "Indonesia",
+            "is_remote": False,
+        },
+        "salary": None,
+        "employment_types": ["full_time"],
+        "work_type": "remote",
+        "description": "Build APIs.",
+        "requirements": "3 years backend experience.",
+        "skills": ["Python", "PostgreSQL"],
+        "posted_at": None,
+        "last_seen_at": "2026-05-04T09:00:00Z",
+        "status": "active",
+        "presentation": {
+            "posted_label": None,
+            "salary_label": None,
+            "badges": [],
+            "source_labels": {},
+        },
+    }
+
+
 def openai_status_error(error_cls, status_code: int):  # noqa: ANN001, ANN201
     request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
     response = httpx.Response(status_code, request=request)
@@ -150,7 +246,7 @@ def openai_status_error(error_cls, status_code: int):  # noqa: ANN001, ANN201
 class FakeParser:
     def __init__(
         self,
-        output: EnrichmentOutput | None = None,
+        output: Any | None = None,
         *,
         parsed: Any | None = None,
         exc: Exception | None = None,

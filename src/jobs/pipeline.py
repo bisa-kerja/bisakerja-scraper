@@ -9,8 +9,14 @@ from uuid import uuid4
 
 from sqlalchemy import select
 
-from core.errors import ScraperError
+from core.errors import NormalizeError, ScraperError
 from integrations.sources.mapper_utils import SourceMapperResult
+from modules.jobs import (
+    AINormalizationPromptInput,
+    CanonicalJobSchema,
+    NormalizationEndpointType,
+    SourcePlatform,
+)
 from modules.persistence import JobPersistenceRepository, RawJob, RawJobInput
 from modules.quarantine import QuarantineRepository
 from modules.runs import RunCounts, RunErrorSummary, RunStage, RunStateTracker
@@ -27,14 +33,28 @@ class PipelineSource(Protocol):
         """Map one raw job to canonical job."""
 
 
+class AINormalizationClient(Protocol):
+    async def normalize_job(self, prompt_input: AINormalizationPromptInput) -> CanonicalJobSchema:
+        """Return canonical normalized job output from AI."""
+
+
 SyncHook = Callable[[list[SourceMapperResult], str, str], Awaitable[None]]
 StageHook = Callable[[str, str], Awaitable[RunCounts | None]]
+
+_DETAIL_HINT_KEYS = {
+    "description",
+    "responsibilities",
+    "requirements",
+    "qualifications",
+    "content",
+}
 
 
 @dataclass(frozen=True)
 class PipelineConfig:
     max_concurrency_per_source: int = 4
     allow_partial: bool = True
+    ai_normalization_fail_open: bool = True
 
     def __post_init__(self) -> None:
         if self.max_concurrency_per_source <= 0:
@@ -78,6 +98,7 @@ class PipelineOrchestrator:
         quarantine: QuarantineRepository | None = None,
         stage_hooks: Mapping[str, StageHook] | None = None,
         correlation_id_factory: Callable[[], str] | None = None,
+        ai_normalization_client: AINormalizationClient | None = None,
     ) -> None:
         self.sources = list(sources)
         self.persistence = persistence
@@ -87,6 +108,7 @@ class PipelineOrchestrator:
         self.quarantine = quarantine
         self.stage_hooks = dict(stage_hooks or {})
         self.correlation_id_factory = correlation_id_factory or (lambda: str(uuid4()))
+        self.ai_normalization_client = ai_normalization_client
 
     async def run(self, *, run_id: str | None = None) -> PipelineResult:
         correlation_id = self.correlation_id_factory()
@@ -323,7 +345,8 @@ class PipelineOrchestrator:
         semaphore: asyncio.Semaphore,
     ) -> SourceMapperResult:
         async with semaphore:
-            return source.map_raw_job(raw_job, scraped_at=utc_now())
+            mapped = source.map_raw_job(raw_job, scraped_at=utc_now())
+            return await self._apply_ai_normalization(source, raw_job, mapped)
 
     async def _map_stored_raw_job(
         self,
@@ -332,7 +355,41 @@ class PipelineOrchestrator:
         semaphore: asyncio.Semaphore,
     ) -> SourceMapperResult:
         async with semaphore:
-            return source.map_raw_job(raw_job_stub_from(raw_job), scraped_at=raw_job.scraped_at)
+            mapped = source.map_raw_job(raw_job_stub_from(raw_job), scraped_at=raw_job.scraped_at)
+            return await self._apply_ai_normalization(source, raw_job, mapped)
+
+    async def _apply_ai_normalization(
+        self,
+        source: PipelineSource,
+        raw_job: Any,
+        mapped: SourceMapperResult,
+    ) -> SourceMapperResult:
+        if self.ai_normalization_client is None:
+            return mapped
+
+        external_id = external_id_from(raw_job)
+        prompt_input = prompt_input_from_raw_job(
+            raw_job,
+            source_platform=source.source_platform,
+            external_id=external_id,
+        )
+        if prompt_input is None:
+            return mapped
+
+        try:
+            normalized_job = await self.ai_normalization_client.normalize_job(prompt_input)
+        except Exception as exc:  # noqa: BLE001
+            if self.config.ai_normalization_fail_open:
+                return mapped
+            raise normalize_error_from_ai_exception(
+                exc,
+                source_platform=source.source_platform,
+                external_id=external_id,
+            ) from exc
+
+        provenance = dict(mapped.field_provenance)
+        provenance["normalization"] = "ai"
+        return SourceMapperResult(job=normalized_job, field_provenance=provenance)
 
     async def _run_hook_stage(
         self,
@@ -429,6 +486,87 @@ def raw_job_stub_from(raw_job: RawJob) -> RawJob:
     return raw_job
 
 
+def external_id_from(raw_job: Any) -> str | None:
+    value = getattr(raw_job, "external_id", None)
+    return value if isinstance(value, str) else None
+
+
+def prompt_input_from_raw_job(
+    raw_job: Any,
+    *,
+    source_platform: str,
+    external_id: str | None,
+) -> AINormalizationPromptInput | None:
+    raw_payload = getattr(raw_job, "raw_payload", None)
+    if not isinstance(raw_payload, dict) or not raw_payload:
+        return None
+
+    source_url = getattr(raw_job, "source_url", None)
+    payload_subset = {
+        "sourcePlatform": source_platform,
+        "externalId": external_id,
+        "sourceUrl": source_url if isinstance(source_url, str) else None,
+        "payload": raw_payload,
+    }
+    return AINormalizationPromptInput(
+        source_platform=source_platform_enum(source_platform, external_id=external_id),
+        endpoint_type=endpoint_type_from_payload(raw_payload),
+        raw_payload_subset=payload_subset,
+    )
+
+
+def source_platform_enum(value: str, *, external_id: str | None) -> SourcePlatform:
+    try:
+        return SourcePlatform(value)
+    except ValueError as exc:
+        raise NormalizeError(
+            "unsupported source platform for AI normalization",
+            source_platform=value,
+            external_id=external_id,
+            retryable=False,
+            details={"source_field_path": "source_platform"},
+        ) from exc
+
+
+def endpoint_type_from_payload(raw_payload: dict[str, Any]) -> NormalizationEndpointType:
+    return (
+        NormalizationEndpointType.DETAIL
+        if has_detail_coverage(raw_payload)
+        else NormalizationEndpointType.LIST
+    )
+
+
+def has_detail_coverage(value: Any) -> bool:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in _DETAIL_HINT_KEYS and isinstance(item, str) and item.strip():
+                return True
+            if has_detail_coverage(item):
+                return True
+        return False
+    if isinstance(value, list):
+        return any(has_detail_coverage(item) for item in value)
+    return False
+
+
+def normalize_error_from_ai_exception(
+    exc: Exception,
+    *,
+    source_platform: str,
+    external_id: str | None,
+) -> NormalizeError:
+    return NormalizeError(
+        "AI normalization failed",
+        source_platform=source_platform,
+        external_id=external_id,
+        retryable=bool(getattr(exc, "retryable", False)),
+        details={
+            "error": str(getattr(exc, "code", exc.__class__.__name__)),
+            "source_field_path": "raw_payload",
+        },
+    )
+
+
 def source_field_path_from(exc: Exception) -> str | None:
     if isinstance(exc, ScraperError):
         value = exc.details.get("source_field_path") or exc.details.get("field")
@@ -437,7 +575,9 @@ def source_field_path_from(exc: Exception) -> str | None:
 
 
 def retryable_from(exc: Exception) -> bool:
-    return exc.retryable if isinstance(exc, ScraperError) else False
+    if isinstance(exc, ScraperError):
+        return exc.retryable
+    return bool(getattr(exc, "retryable", False))
 
 
 def merge_source_results(results: Sequence[SourcePipelineResult]) -> RunSummary:
