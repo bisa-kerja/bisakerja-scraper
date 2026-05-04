@@ -33,6 +33,16 @@ services:
       - path: ${RUNTIME_ENV_FILE:-.env.production}
         required: false
     command: ["python", "-m", "cli.daemon"]
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import pathlib, sys; cmdline = pathlib.Path('/proc/1/cmdline').read_text(); sys.exit(0 if 'cli.daemon' in cmdline else 1)\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     depends_on:
       app:
         condition: service_started
