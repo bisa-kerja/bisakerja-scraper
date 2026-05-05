@@ -79,6 +79,20 @@ PYTHONPATH=src uv run python -m cli.pipeline staging-report \
   - `duplicateRawIdentities`
   - `duplicateNormalizedIdentities`
   - `activeMissingLastSeenAt`
+- `stageStatuses`
+  - stage-level `runId`, `status`, safe error summary, and recorded counts
+- `syncOutcome`
+  - `attempted`
+  - `sent`
+  - `failed`
+  - `zeroSentReason`
+- `notifyOutcome`
+  - `attempted`
+  - `sent`
+  - `failed`
+  - `zeroSentReason`
+- `invariants`
+  - strict checks for stage-row completeness, normalize gap evidence, quarantine safety, failed-stage error evidence, and zero-sent reason coverage
 - `partialData`
   - `totalPartial`
   - `totalNormalized`
@@ -107,6 +121,7 @@ Treat run as valid when:
 - active jobs include `lastSeenAt`
 - backend list and detail checks succeed for sampled sources
 - configured latency and retry thresholds pass
+- strict invariant checks pass
 
 ## Release Evidence Mapping
 

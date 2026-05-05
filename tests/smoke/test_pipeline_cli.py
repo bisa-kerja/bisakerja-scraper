@@ -21,7 +21,14 @@ from cli.pipeline import (
 )
 from integrations.backend import BackendNotificationHandoffClient, BackendSyncClient
 from jobs.pipeline import PipelineResult, SourcePipelineResult
-from modules.persistence import Base, NormalizedJob, RawJob, ScrapeRun, SyncEvent
+from modules.persistence import (
+    Base,
+    NormalizedJob,
+    NotificationHandoffEvent,
+    RawJob,
+    ScrapeRun,
+    SyncEvent,
+)
 from modules.runs import RunCounts
 from tests.integration.helpers import valid_env
 
@@ -57,6 +64,18 @@ def test_pipeline_full_dry_run_uses_fixture_flow(monkeypatch, capsys) -> None:
     assert output["recencyMode"] == "latest"
     assert output["recencyDays"] == 7
     assert output["counts"]["persisted"] == 4
+    assert output["stageStatuses"] == {
+        "scrape": "completed",
+        "normalize": "completed",
+        "enrich": "completed",
+        "sync": "completed",
+        "notify-handoff": "completed",
+    }
+    assert output["countBreakdown"]["rawPersisted"] == 4
+    assert output["countBreakdown"]["normalizedPersisted"] == 4
+    assert output["countBreakdown"]["enrichmentPersisted"] == 4
+    assert output["countBreakdown"]["syncSent"] == 4
+    assert output["countBreakdown"]["notifyHandoffSent"] == 4
     assert output["requestedSources"] == ["dealls", "glints", "jobstreet", "kalibrr"]
     assert output["executedSources"] == ["dealls", "glints", "jobstreet", "kalibrr"]
     assert output["skippedSources"] == []
@@ -645,24 +664,89 @@ def test_pipeline_verify_summarizes_database_without_raw_payload(
                     stage="normalize",
                     status="completed",
                     normalized_records_count=1,
+                    metadata_json={"summary": {"counts": {"normalized": 1, "persisted": 1}}},
+                ),
+                ScrapeRun(
+                    id="phase82-enrich",
+                    source_platform="all",
+                    stage="enrich",
+                    status="completed",
+                    metadata_json={"summary": {"counts": {"fetched": 1, "persisted": 1}}},
+                ),
+                ScrapeRun(
+                    id="phase82-sync",
+                    source_platform="all",
+                    stage="sync",
+                    status="completed",
+                    metadata_json={"summary": {"counts": {"fetched": 1, "persisted": 1}}},
+                ),
+                ScrapeRun(
+                    id="phase82-notify",
+                    source_platform="all",
+                    stage="notify-handoff",
+                    status="completed",
+                    metadata_json={"summary": {"counts": {"fetched": 1, "persisted": 1}}},
                 ),
             ]
         )
         session.flush()
+        raw = RawJob(
+            scrape_run_id="phase82-scrape",
+            source_platform="dealls",
+            external_id="job-1",
+            source_url="https://example.test/job-1",
+            raw_payload={"secret": "must-not-print"},
+            metadata_json={
+                "keyword": "developer",
+                "recencyMode": "latest",
+                "recencyDays": 7,
+                "requestedLimit": 50,
+                "sourceTimestamp": "2026-05-03T01:00:00+00:00",
+            },
+        )
+        session.add(raw)
+        session.flush()
+        normalized = NormalizedJob(
+            raw_job_id=raw.id,
+            source_platform="dealls",
+            external_id="job-1",
+            title="Backend Engineer",
+            company_name="Example",
+            source_url="https://example.test/job-1",
+            status="ACTIVE",
+            normalized_payload={"title": "Backend Engineer"},
+            last_seen_at=datetime(2026, 5, 3, tzinfo=UTC),
+        )
+        session.add(normalized)
+        session.flush()
+        sync_event = SyncEvent(
+            scrape_run_id="phase82-sync",
+            normalized_job_id=normalized.id,
+            source_platform="dealls",
+            external_id="job-1",
+            status="sent",
+            target="backend",
+            payload_hash="hash-verify-1",
+            attempt_count=1,
+            attempted_at=datetime(2026, 5, 3, tzinfo=UTC),
+            completed_at=datetime(2026, 5, 3, tzinfo=UTC),
+            response_summary={"statusCode": 202},
+        )
+        session.add(sync_event)
+        session.flush()
         session.add(
-            RawJob(
-                scrape_run_id="phase82-scrape",
+            NotificationHandoffEvent(
+                scrape_run_id="phase82-notify",
+                normalized_job_id=normalized.id,
+                sync_event_id=sync_event.id,
                 source_platform="dealls",
                 external_id="job-1",
-                source_url="https://example.test/job-1",
-                raw_payload={"secret": "must-not-print"},
-                metadata_json={
-                    "keyword": "developer",
-                    "recencyMode": "latest",
-                    "recencyDays": 7,
-                    "requestedLimit": 50,
-                    "sourceTimestamp": "2026-05-03T01:00:00+00:00",
-                },
+                status="sent",
+                payload_hash="hash-notify-verify-1",
+                attempt_count=1,
+                payload_json={"jobId": normalized.id},
+                attempted_at=datetime(2026, 5, 3, tzinfo=UTC),
+                completed_at=datetime(2026, 5, 3, tzinfo=UTC),
             )
         )
         session.commit()
@@ -676,7 +760,35 @@ def test_pipeline_verify_summarizes_database_without_raw_payload(
     assert output["rawBySourceKeyword"] == {"dealls:developer": 1}
     assert output["duplicateRawIdentities"] == 0
     assert output["latestMetadata"]["requestedLimit"] == 50
+    assert output["invariants"]["failed"] == 0
     assert "must-not-print" not in output_text
+
+
+def test_pipeline_verify_fails_when_stage_rows_missing(monkeypatch, tmp_path, capsys) -> None:
+    apply_env(monkeypatch)
+    database_path = tmp_path / "verify-missing.db"
+    database_url = f"sqlite:///{database_path}"
+    engine = create_engine(database_url)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.add(
+            ScrapeRun(
+                id="phase90-scrape",
+                source_platform="all",
+                stage="scrape",
+                status="completed",
+            )
+        )
+        session.commit()
+
+    assert main(["verify", "--run-id", "phase90", "--database-url", database_url]) == 1
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "fail"
+    stage_row_check = next(
+        check for check in output["invariants"]["checks"] if check["name"] == "stageRowsPresent"
+    )
+    assert stage_row_check["passed"] is False
 
 
 def test_pipeline_staging_report_validates_counts_consistency_and_backend_checks(
@@ -770,20 +882,35 @@ def test_pipeline_staging_report_validates_counts_consistency_and_backend_checks
         )
         session.add(normalized)
         session.flush()
+        sync_event = SyncEvent(
+            scrape_run_id="phase85-sync",
+            normalized_job_id=normalized.id,
+            source_platform="dealls",
+            external_id="dealls-1",
+            status="sent",
+            target="backend",
+            payload_hash="hash-1",
+            attempt_count=1,
+            attempted_at=now,
+            completed_at=now,
+            response_summary={"statusCode": 202, "statusClass": "2xx"},
+            metadata_json={"chunkId": "phase85-sync:1"},
+        )
+        session.add(sync_event)
+        session.flush()
         session.add(
-            SyncEvent(
-                scrape_run_id="phase85-sync",
+            NotificationHandoffEvent(
+                scrape_run_id="phase85-notify",
                 normalized_job_id=normalized.id,
+                sync_event_id=sync_event.id,
                 source_platform="dealls",
                 external_id="dealls-1",
                 status="sent",
-                target="backend",
-                payload_hash="hash-1",
+                payload_hash="hash-notify-1",
                 attempt_count=1,
+                payload_json={"jobId": normalized.id},
                 attempted_at=now,
                 completed_at=now,
-                response_summary={"statusCode": 202, "statusClass": "2xx"},
-                metadata_json={"chunkId": "phase85-sync:1"},
             )
         )
         session.commit()
@@ -1025,6 +1152,116 @@ def test_pipeline_staging_report_tracks_glints_partial_data_rate(
         check for check in output["gates"]["checks"] if check["name"] == "glintsPartialRate"
     )
     assert glints_gate["passed"] is True
+
+
+def test_pipeline_staging_report_sets_reason_when_sync_completed_zero_sent(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    apply_env(monkeypatch)
+    scraper_path = tmp_path / "scraper-zero-sync.db"
+    scraper_url = f"sqlite:///{scraper_path}"
+    now = datetime(2026, 5, 4, 2, 0, tzinfo=UTC)
+
+    scraper_engine = create_engine(scraper_url)
+    Base.metadata.create_all(scraper_engine)
+    with Session(scraper_engine) as session:
+        session.add_all(
+            [
+                ScrapeRun(
+                    id="phase90-scrape",
+                    source_platform="all",
+                    stage="scrape",
+                    status="completed",
+                    started_at=now,
+                    finished_at=now,
+                    metadata_json={"summary": {"counts": {"fetched": 1}}},
+                ),
+                ScrapeRun(
+                    id="phase90-normalize",
+                    source_platform="all",
+                    stage="normalize",
+                    status="completed",
+                    started_at=now,
+                    finished_at=now,
+                    metadata_json={"summary": {"counts": {"normalized": 1, "persisted": 1}}},
+                ),
+                ScrapeRun(
+                    id="phase90-enrich",
+                    source_platform="all",
+                    stage="enrich",
+                    status="completed",
+                    started_at=now,
+                    finished_at=now,
+                    metadata_json={"summary": {"counts": {"fetched": 1, "persisted": 0}}},
+                ),
+                ScrapeRun(
+                    id="phase90-sync",
+                    source_platform="all",
+                    stage="sync",
+                    status="completed",
+                    started_at=now,
+                    finished_at=now,
+                    metadata_json={"summary": {"counts": {"fetched": 0, "persisted": 0}}},
+                ),
+                ScrapeRun(
+                    id="phase90-notify",
+                    source_platform="all",
+                    stage="notify-handoff",
+                    status="completed",
+                    started_at=now,
+                    finished_at=now,
+                    metadata_json={"summary": {"counts": {"fetched": 0, "persisted": 0}}},
+                ),
+            ]
+        )
+        session.flush()
+        raw = RawJob(
+            scrape_run_id="phase90-scrape",
+            source_platform="dealls",
+            external_id="dealls-zero-sync",
+            source_url="https://example.test/dealls-zero-sync",
+            raw_payload={"title": "Backend Engineer"},
+        )
+        session.add(raw)
+        session.flush()
+        session.add(
+            NormalizedJob(
+                raw_job_id=raw.id,
+                source_platform="dealls",
+                external_id="dealls-zero-sync",
+                title="Backend Engineer",
+                company_name="Example Tech",
+                source_url="https://example.test/dealls-zero-sync",
+                status="ACTIVE",
+                normalized_payload={"title": "Backend Engineer"},
+                last_seen_at=now,
+            )
+        )
+        session.commit()
+
+    assert (
+        main(
+            [
+                "staging-report",
+                "--run-id",
+                "phase90",
+                "--scraper-database-url",
+                scraper_url,
+            ]
+        )
+        == 0
+    )
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "ok"
+    assert output["syncOutcome"]["zeroSentReason"] == "no eligible jobs for sync"
+    sync_check = next(
+        check
+        for check in output["invariants"]["checks"]
+        if check["name"] == "syncZeroSentHasReason"
+    )
+    assert sync_check["passed"] is True
 
 
 def apply_env(monkeypatch) -> None:  # noqa: ANN001

@@ -36,6 +36,8 @@ This matrix defines the minimum evidence needed before scraper docs, code, or op
 | AI audit | Sanitized request metadata and summaries are stored | API key, raw prompt, raw payload, headers, and tokens are not persisted | Unit test result |
 | Stage queue | Eligible jobs are claimed and completed | One failed claim increments attempt once, retries until max attempts, then dead-letter | Queue unit test result |
 | Operator wizard | Interactive operator flow builds valid run/status/verify/staging inputs | Non-TTY rejects risky execution and execute mode requires explicit `YES` confirmation | Smoke test result |
+| Verify command | Returns stage summaries, source counts, and strict invariants | Fails when stage rows are missing, failure evidence is absent, or zero-sent stages lack reason | Smoke test result |
+| Staging report | Returns stage counts, latency, retries, consistency, and backend checks | Includes strict invariants and explicit zero-sent reasons for sync and notify-handoff | Smoke test result |
 | Docs sync | Bundle manifest maps docs deterministically | Path escape or missing metadata rejects bundle | Docs check result |
 
 ## Source Coverage Matrix

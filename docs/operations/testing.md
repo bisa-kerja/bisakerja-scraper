@@ -106,6 +106,8 @@ Minimum smoke checks:
 | Startup env validation | Missing required config fails fast |
 | Fixture pipeline | One fixture batch reaches normalized staging |
 | Operator wizard | Interactive dry-run works with scripted input and non-TTY safe dry-run uses `--yes` |
+| Verify invariants | `verify` reports strict invariant checks and fails when stage rows are missing or failure evidence is incomplete |
+| Staging zero-sent diagnostics | `staging-report` includes explicit `zeroSentReason` for sync and notify-handoff when completed with zero sent rows |
 | Source health | Adapter health reports safe status without credentials |
 | Sync dry-run | Sync validates shape without mutating production DB |
 | Redaction | Logs and artifacts contain no token/cookie/session strings |
@@ -191,9 +193,11 @@ Execute sync semantics:
 - Reuse of the same execute run id causes stage-row primary-key collisions; use a unique run id per run.
 
 The verify output must show zero duplicate raw and normalized identities. It must summarize source, keyword, sync, handoff, recency mode, recency days, requested limit, newest source timestamp, and oldest source timestamp without raw payload bodies or secrets.
+It must also include strict invariant checks and set overall status to fail when invariants fail.
 
 The staging-report output must include stage counts, latency percentiles, retry totals, quarantine summary, duplicate identity checks, backend relation consistency checks, and backend list/detail read checks without exposing secrets.
 It must also include partial-data metrics per source and the Glints partial-rate gate result.
+It must also include stage status summaries, strict invariant checks, and explicit sync/notify zero-sent reasons.
 
 ## CI Verification
 

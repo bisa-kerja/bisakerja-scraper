@@ -990,7 +990,8 @@ async def run_staging_report(args: argparse.Namespace) -> dict[str, Any]:
         glints_partial_min_rate=args.glints_partial_min_rate,
         glints_partial_max_rate=args.glints_partial_max_rate,
     )
-    report["status"] = "ok" if report["gates"]["failed"] == 0 else "fail"
+    invariant_failed = report.get("invariants", {}).get("failed", 0)
+    report["status"] = "ok" if report["gates"]["failed"] == 0 and invariant_failed == 0 else "fail"
     return report
 
 
@@ -1142,11 +1143,35 @@ def build_staging_report(
     quarantine_by_reason = Counter(row.error_category for row in quarantine_rows)
     source_targets = source_targets_from_sync(sync_sent, sample_per_source=sample_per_source)
     partial_data = partial_data_summary(normalized_jobs)
+    stage_runs = stage_runs_by_name(run_by_id=run_by_id, stage_id_map=stage_id_map)
+    sync_reason = infer_sync_zero_sent_reason(
+        sync_run=stage_runs.get("sync"),
+        enrich_run=stage_runs.get("enrich"),
+        normalized_count=len(normalized_jobs),
+        sync_events=sync_events,
+    )
+    notify_reason = infer_notify_zero_sent_reason(
+        notify_run=stage_runs.get("notify"),
+        sync_sent_count=len(sync_sent),
+        handoff_events=handoff_events,
+    )
+    invariants = build_strict_invariant_checks(
+        stage_runs=stage_runs,
+        raw_jobs=raw_jobs,
+        normalized_jobs=normalized_jobs,
+        quarantine_rows=quarantine_rows,
+        ai_logs=ai_logs,
+        sync_events=sync_events,
+        handoff_events=handoff_events,
+        sync_zero_sent_reason=sync_reason,
+        notify_zero_sent_reason=notify_reason,
+    )
 
     return {
         "check": "staging-report",
         "runId": run_id,
         "stageRunIds": stage_id_map,
+        "stageStatuses": stage_status_summary(stage_runs),
         "runRowsFound": len(runs),
         "stageCounts": {
             "fetched": len(raw_jobs),
@@ -1190,6 +1215,19 @@ def build_staging_report(
                 else "fail"
             ),
         },
+        "syncOutcome": {
+            "attempted": len(sync_events),
+            "sent": len(sync_sent),
+            "failed": len(sync_failed),
+            "zeroSentReason": sync_reason,
+        },
+        "notifyOutcome": {
+            "attempted": len(handoff_events),
+            "sent": len(handoff_events) - len(handoff_failed),
+            "failed": len(handoff_failed),
+            "zeroSentReason": notify_reason,
+        },
+        "invariants": invariants,
         "partialData": partial_data,
         "sourceTargets": source_targets,
     }
@@ -1472,6 +1510,284 @@ def glints_partial_gate(
     )
 
 
+def stage_runs_by_name(
+    *,
+    run_by_id: dict[str, ScrapeRun],
+    stage_id_map: dict[str, str],
+) -> dict[str, ScrapeRun | None]:
+    return {stage: run_by_id.get(run_id) for stage, run_id in stage_id_map.items()}
+
+
+def run_summary_counts(run: ScrapeRun | None) -> dict[str, int]:
+    if run is None:
+        return {}
+    metadata = run.metadata_json if isinstance(run.metadata_json, dict) else {}
+    summary = metadata.get("summary") if isinstance(metadata.get("summary"), dict) else {}
+    counts = summary.get("counts") if isinstance(summary.get("counts"), dict) else {}
+    result: dict[str, int] = {}
+    for key in ("fetched", "parsed", "normalized", "persisted", "skipped"):
+        value = counts.get(key)
+        if isinstance(value, int):
+            result[key] = value
+    return result
+
+
+def stage_status_summary(stage_runs: dict[str, ScrapeRun | None]) -> dict[str, dict[str, Any]]:
+    summary: dict[str, dict[str, Any]] = {}
+    for stage_name, run in stage_runs.items():
+        if run is None:
+            summary[stage_name] = {"runId": None, "status": "missing"}
+            continue
+        summary[stage_name] = {
+            "runId": run.id,
+            "status": run.status,
+            "errorCategory": run.error_category,
+            "errorMessage": redact_text(run.error_message or "") if run.error_message else None,
+            "counts": run_summary_counts(run),
+        }
+    return summary
+
+
+def contains_sensitive_fragment(value: str | None) -> bool:
+    if not value:
+        return False
+    lowered = value.lower()
+    if "postgresql://" in lowered or "postgresql+asyncpg://" in lowered:
+        return True
+    if "cookie" in lowered and "=" in lowered:
+        return True
+    if "authorization" in lowered and "bearer" in lowered:
+        return True
+    redacted = redact_text(value)
+    return redacted != value
+
+
+def infer_sync_zero_sent_reason(
+    *,
+    sync_run: ScrapeRun | None,
+    enrich_run: ScrapeRun | None,
+    normalized_count: int,
+    sync_events: Sequence[SyncEvent],
+) -> str | None:
+    sync_sent = sum(1 for event in sync_events if event.status == "sent")
+    if sync_sent > 0:
+        return None
+    if sync_run is None:
+        return "sync stage row missing"
+    if sync_run.status != "completed":
+        if sync_run.error_category:
+            return f"sync stage {sync_run.status}: {sync_run.error_category}"
+        return f"sync stage {sync_run.status}"
+
+    sync_counts = run_summary_counts(sync_run)
+    enrich_counts = run_summary_counts(enrich_run)
+    sync_attempted = sync_counts.get("fetched", 0)
+    sync_failed = sync_counts.get("skipped", 0)
+    sync_persisted = sync_counts.get("persisted", 0)
+    enrich_persisted = enrich_counts.get("persisted", 0)
+    enrich_failed = enrich_counts.get("skipped", 0)
+
+    if sync_persisted > 0:
+        return None
+    if sync_failed > 0:
+        return "all sync attempts failed"
+    if normalized_count == 0:
+        return "no normalized rows available for sync"
+    if enrich_failed > 0 and enrich_persisted == 0:
+        return "all enrichment items failed"
+    if sync_attempted == 0:
+        return "no eligible jobs for sync"
+    return None
+
+
+def infer_notify_zero_sent_reason(
+    *,
+    notify_run: ScrapeRun | None,
+    sync_sent_count: int,
+    handoff_events: Sequence[NotificationHandoffEvent],
+) -> str | None:
+    handoff_sent = sum(1 for event in handoff_events if event.status == "sent")
+    if handoff_sent > 0:
+        return None
+    if notify_run is None:
+        return "notify-handoff stage row missing"
+    if notify_run.status != "completed":
+        if notify_run.error_category:
+            return f"notify-handoff stage {notify_run.status}: {notify_run.error_category}"
+        return f"notify-handoff stage {notify_run.status}"
+
+    notify_counts = run_summary_counts(notify_run)
+    notify_attempted = notify_counts.get("fetched", 0)
+    notify_failed = notify_counts.get("skipped", 0)
+    notify_persisted = notify_counts.get("persisted", 0)
+
+    if notify_persisted > 0:
+        return None
+    if notify_failed > 0:
+        return "all notify-handoff attempts failed"
+    if sync_sent_count == 0:
+        return "no sent sync events available for handoff"
+    if notify_attempted == 0:
+        return "no eligible handoff events"
+    return None
+
+
+def build_strict_invariant_checks(
+    *,
+    stage_runs: dict[str, ScrapeRun | None],
+    raw_jobs: Sequence[RawJob],
+    normalized_jobs: Sequence[NormalizedJob],
+    quarantine_rows: Sequence[NormalizationQuarantine],
+    ai_logs: Sequence[AIRequestLog],
+    sync_events: Sequence[SyncEvent],
+    handoff_events: Sequence[NotificationHandoffEvent],
+    sync_zero_sent_reason: str | None,
+    notify_zero_sent_reason: str | None,
+) -> dict[str, Any]:
+    checks: list[dict[str, Any]] = []
+    missing_stage_rows = [stage for stage, run in stage_runs.items() if run is None]
+    checks.append(
+        gate_entry(
+            name="stageRowsPresent",
+            passed=not missing_stage_rows,
+            actual=missing_stage_rows,
+            expected="scrape, normalize, enrich, sync, and notify stage rows exist",
+        )
+    )
+
+    raw_count = len(raw_jobs)
+    normalized_count = len(normalized_jobs)
+    quarantine_count = len(quarantine_rows)
+    normalize_run = stage_runs.get("normalize")
+    normalize_skipped = run_summary_counts(normalize_run).get("skipped", 0)
+    raw_gap = raw_count - normalized_count
+    normalize_gap_has_reason = raw_gap <= 0 or quarantine_count > 0 or normalize_skipped > 0
+    checks.append(
+        gate_entry(
+            name="normalizeCountInvariant",
+            passed=raw_gap >= 0 and normalize_gap_has_reason,
+            actual={
+                "rawRows": raw_count,
+                "normalizedRows": normalized_count,
+                "quarantineRows": quarantine_count,
+                "normalizeSkipped": normalize_skipped,
+                "gap": raw_gap,
+            },
+            expected="rawRows >= normalizedRows and any gap has quarantine or skipped evidence",
+        )
+    )
+
+    unsafe_quarantine_rows = [
+        row.id
+        for row in quarantine_rows
+        if not row.error_category
+        or not row.error_message
+        or contains_sensitive_fragment(row.error_message)
+    ]
+    checks.append(
+        gate_entry(
+            name="quarantineSafeErrorEvidence",
+            passed=not unsafe_quarantine_rows,
+            actual={"unsafeRowIds": unsafe_quarantine_rows, "total": len(quarantine_rows)},
+            expected="quarantine rows have safe category and redacted message",
+        )
+    )
+
+    enrich_run = stage_runs.get("enrich")
+    enrich_failed_or_partial = enrich_run is not None and enrich_run.status in {"failed", "partial"}
+    ai_failed = [log for log in ai_logs if log.status != "succeeded"]
+    enrich_failure_has_evidence = not enrich_failed_or_partial or bool(ai_failed)
+    checks.append(
+        gate_entry(
+            name="enrichFailureHasAiEvidence",
+            passed=enrich_failure_has_evidence,
+            actual={
+                "enrichStatus": enrich_run.status if enrich_run is not None else "missing",
+                "failedAiLogs": len(ai_failed),
+            },
+            expected="failed or partial enrich stage includes failed AI request evidence",
+        )
+    )
+
+    sync_run = stage_runs.get("sync")
+    sync_completed_zero_sent_without_reason = (
+        sync_run is not None
+        and sync_run.status == "completed"
+        and sum(1 for event in sync_events if event.status == "sent") == 0
+        and sync_zero_sent_reason is None
+    )
+    checks.append(
+        gate_entry(
+            name="syncZeroSentHasReason",
+            passed=not sync_completed_zero_sent_without_reason,
+            actual={
+                "syncStatus": sync_run.status if sync_run is not None else "missing",
+                "sent": sum(1 for event in sync_events if event.status == "sent"),
+                "reason": sync_zero_sent_reason,
+            },
+            expected="completed sync with zero sent has explicit reason",
+        )
+    )
+
+    notify_run = stage_runs.get("notify")
+    notify_completed_zero_sent_without_reason = (
+        notify_run is not None
+        and notify_run.status == "completed"
+        and sum(1 for event in handoff_events if event.status == "sent") == 0
+        and notify_zero_sent_reason is None
+    )
+    checks.append(
+        gate_entry(
+            name="notifyZeroSentHasReason",
+            passed=not notify_completed_zero_sent_without_reason,
+            actual={
+                "notifyStatus": notify_run.status if notify_run is not None else "missing",
+                "sent": sum(1 for event in handoff_events if event.status == "sent"),
+                "reason": notify_zero_sent_reason,
+            },
+            expected="completed notify-handoff with zero sent has explicit reason",
+        )
+    )
+
+    failed_stage_without_error = []
+    for stage_name, run in stage_runs.items():
+        if run is None or run.status not in {"failed", "partial"}:
+            continue
+        summary_errors = run_summary_errors(run)
+        has_row_error = bool(run.error_category or run.error_message)
+        if not has_row_error and not summary_errors:
+            failed_stage_without_error.append(stage_name)
+    checks.append(
+        gate_entry(
+            name="failedStageHasErrorEvidence",
+            passed=not failed_stage_without_error,
+            actual=failed_stage_without_error,
+            expected="failed or partial stage rows expose safe error evidence",
+        )
+    )
+
+    passed = sum(1 for check in checks if check["passed"])
+    failed = len(checks) - passed
+    return {"checks": checks, "passed": passed, "failed": failed}
+
+
+def run_summary_errors(run: ScrapeRun) -> list[dict[str, Any]]:
+    metadata = run.metadata_json if isinstance(run.metadata_json, dict) else {}
+    summary = metadata.get("summary") if isinstance(metadata.get("summary"), dict) else {}
+    errors = summary.get("errors")
+    if not isinstance(errors, list):
+        return []
+    safe_errors: list[dict[str, Any]] = []
+    for item in errors:
+        if not isinstance(item, dict):
+            continue
+        message = item.get("message")
+        if isinstance(message, str):
+            item = {**item, "message": redact_text(message)}
+        safe_errors.append(item)
+    return safe_errors
+
+
 def stage_id_map_from(run_ids: list[str]) -> dict[str, str]:
     stages = ("scrape", "normalize", "enrich", "sync", "notify")
     return {stage: run_id for stage, run_id in zip(stages, run_ids, strict=True)}
@@ -1632,6 +1948,21 @@ def verify_database_state(session: Session, *, run_id: str) -> dict[str, Any]:
                 select(NormalizedJob).where(NormalizedJob.raw_job_id.in_(raw_job_ids))
             ).all()
         )
+    normalized_job_ids = [job.id for job in normalized_jobs]
+    quarantine_rows = list(
+        session.scalars(
+            select(NormalizationQuarantine).where(
+                NormalizationQuarantine.scrape_run_id.in_(run_ids)
+            )
+        ).all()
+    )
+    ai_logs: list[AIRequestLog] = []
+    if normalized_job_ids:
+        ai_logs = list(
+            session.scalars(
+                select(AIRequestLog).where(AIRequestLog.normalized_job_id.in_(normalized_job_ids))
+            ).all()
+        )
     sync_events = list(
         session.scalars(select(SyncEvent).where(SyncEvent.scrape_run_id.in_(run_ids))).all()
     )
@@ -1657,12 +1988,40 @@ def verify_database_state(session: Session, *, run_id: str) -> dict[str, Any]:
     normalized_source_counts = Counter(job.source_platform for job in normalized_jobs)
     sync_status_counts = Counter(event.status for event in sync_events)
     handoff_status_counts = Counter(event.status for event in handoff_events)
+    run_by_id = {run.id: run for run in runs}
+    stage_id_map = stage_id_map_from(run_ids)
+    stage_runs = stage_runs_by_name(run_by_id=run_by_id, stage_id_map=stage_id_map)
+    sync_sent_count = sum(1 for event in sync_events if event.status == "sent")
+    sync_zero_sent_reason = infer_sync_zero_sent_reason(
+        sync_run=stage_runs.get("sync"),
+        enrich_run=stage_runs.get("enrich"),
+        normalized_count=len(normalized_jobs),
+        sync_events=sync_events,
+    )
+    notify_zero_sent_reason = infer_notify_zero_sent_reason(
+        notify_run=stage_runs.get("notify"),
+        sync_sent_count=sync_sent_count,
+        handoff_events=handoff_events,
+    )
+    invariants = build_strict_invariant_checks(
+        stage_runs=stage_runs,
+        raw_jobs=raw_jobs,
+        normalized_jobs=normalized_jobs,
+        quarantine_rows=quarantine_rows,
+        ai_logs=ai_logs,
+        sync_events=sync_events,
+        handoff_events=handoff_events,
+        sync_zero_sent_reason=sync_zero_sent_reason,
+        notify_zero_sent_reason=notify_zero_sent_reason,
+    )
+    status = "ok" if runs and invariants["failed"] == 0 else "fail"
 
     return {
         "check": "pipeline-verify",
-        "status": "ok" if runs else "fail",
+        "status": status,
         "runId": run_id,
         "stageRunIds": run_ids,
+        "stageStatuses": stage_status_summary(stage_runs),
         "runs": [
             {
                 "runId": run.id,
@@ -1676,6 +2035,8 @@ def verify_database_state(session: Session, *, run_id: str) -> dict[str, Any]:
         ],
         "rawRows": len(raw_jobs),
         "normalizedRows": len(normalized_jobs),
+        "quarantineRows": len(quarantine_rows),
+        "aiRequestLogs": len(ai_logs),
         "syncEvents": len(sync_events),
         "handoffEvents": len(handoff_events),
         "rawBySource": dict(sorted(raw_source_counts.items())),
@@ -1688,6 +2049,15 @@ def verify_database_state(session: Session, *, run_id: str) -> dict[str, Any]:
         "handoffByStatus": dict(sorted(handoff_status_counts.items())),
         "duplicateRawIdentities": duplicate_count(raw_identity_counts),
         "duplicateNormalizedIdentities": duplicate_count(normalized_identity_counts),
+        "syncOutcome": {
+            "sent": sync_sent_count,
+            "zeroSentReason": sync_zero_sent_reason,
+        },
+        "notifyOutcome": {
+            "sent": sum(1 for event in handoff_events if event.status == "sent"),
+            "zeroSentReason": notify_zero_sent_reason,
+        },
+        "invariants": invariants,
         "latestMetadata": latest_metadata_summary(raw_jobs),
     }
 
@@ -1783,6 +2153,8 @@ class ManualPipelineRunner:
         self.source_selection = source_selection
         self.output: dict[str, Any] | None = None
         self.stage_run_ids: dict[str, str] = {}
+        self.stage_statuses: dict[str, str] = {}
+        self.stage_count_breakdown: dict[str, dict[str, int]] = {}
 
     def emit_progress(self, message: str) -> None:
         if not self.execute:
@@ -1812,6 +2184,8 @@ class ManualPipelineRunner:
                 f"stage={stage_value} status={result.status} "
                 f"counts={result.counts.model_dump()}"
             )
+            self.stage_statuses = {stage_value: result.status}
+            self.stage_count_breakdown = {stage_value: result.counts.model_dump()}
         self.output = output_from_result(
             result,
             stage=stage_value,
@@ -1822,6 +2196,8 @@ class ManualPipelineRunner:
             recency_mode=self.recency_mode,
             recency_days=self.recency_days,
             stage_run_ids=self.stage_run_ids,
+            stage_statuses=self.stage_statuses,
+            stage_count_breakdown=self.stage_count_breakdown,
             source_selection=self.source_selection,
         )
 
@@ -2038,6 +2414,20 @@ class ManualPipelineRunner:
             "enrich": enrich.run_id,
             "sync": sync.run_id,
             "notify": notify.run_id,
+        }
+        self.stage_statuses = {
+            "scrape": scrape.status,
+            "normalize": normalize.status,
+            "enrich": enrich.status,
+            "sync": sync.status,
+            "notify-handoff": notify.status,
+        }
+        self.stage_count_breakdown = {
+            "scrape": scrape.counts.model_dump(),
+            "normalize": normalize.counts.model_dump(),
+            "enrich": enrich.counts.model_dump(),
+            "sync": sync.counts.model_dump(),
+            "notify-handoff": notify.counts.model_dump(),
         }
         statuses = {scrape.status, normalize.status, enrich.status, sync.status, notify.status}
         status = (
@@ -2737,11 +3127,21 @@ def output_from_result(
     recency_mode: str,
     recency_days: int,
     stage_run_ids: dict[str, str] | None = None,
+    stage_statuses: dict[str, str] | None = None,
+    stage_count_breakdown: dict[str, dict[str, int]] | None = None,
     source_selection: SourceSelection | None = None,
 ) -> dict[str, Any]:
     requested_sources = list(source_selection.requested) if source_selection else []
     executed_sources = list(source_selection.executed) if source_selection else []
     skipped_sources = list(source_selection.skipped) if source_selection else []
+    breakdown = stage_count_breakdown or {}
+    count_breakdown = {
+        "rawPersisted": breakdown.get("scrape", {}).get("persisted", 0),
+        "normalizedPersisted": breakdown.get("normalize", {}).get("persisted", 0),
+        "enrichmentPersisted": breakdown.get("enrich", {}).get("persisted", 0),
+        "syncSent": breakdown.get("sync", {}).get("persisted", 0),
+        "notifyHandoffSent": breakdown.get("notify-handoff", {}).get("persisted", 0),
+    }
     return {
         "check": "pipeline-run",
         "status": "ok" if result.status in {"completed", "partial"} else "fail",
@@ -2751,6 +3151,7 @@ def output_from_result(
         "keywords": list(keywords),
         "runId": result.run_id,
         "stageRunIds": stage_run_ids or {},
+        "stageStatuses": stage_statuses or {},
         "runStatus": result.status,
         "correlationId": result.correlation_id,
         "limit": limit,
@@ -2760,6 +3161,7 @@ def output_from_result(
         "executedSources": executed_sources,
         "skippedSources": skipped_sources,
         "counts": result.counts.model_dump(),
+        "countBreakdown": count_breakdown,
         "sources": [
             {
                 "source": source_result.source_platform,

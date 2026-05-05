@@ -108,13 +108,15 @@ Pipeline command rules:
 - Dry-run output includes `requestedSources`, `executedSources`, and `skippedSources` so operators can see disabled-source skips explicitly.
 - `preflight` validates env loading, migration target head, source enablement, fixture availability, backend sync mode, and redacted evidence preview before an operator run.
 - Dry-run output includes source and keyword summaries with requested limit and newest/oldest source timestamps when available.
+- Run output includes `stageStatuses` and `countBreakdown` so `rawPersisted`, `normalizedPersisted`, `enrichmentPersisted`, `syncSent`, and `notifyHandoffSent` are explicit.
 - Full-stage run status is `completed`, `partial`, or `failed`; treat `failed` as hard failure even when prior stages succeeded.
 - Manual runs share the scheduler guard so only one in-process operator run is accepted at a time.
 - `--execute` uses the configured scraper database and should only run after migration and readiness checks pass in a controlled non-production environment.
 - `--run-id` must be unique per execute run. For `--stage full`, stage rows use deterministic ids (`<run-id>-scrape`, `<run-id>-normalize`, `<run-id>-enrich`, `<run-id>-sync`, `<run-id>-notify`), so reusing the same run id will fail on primary-key collisions.
 - Deployed scheduler stage runs use deterministic day-based ids (`scheduled-YYYYMMDD-<stage>`). Completed day-stage rows are skipped; failed or partial rows run with retry ids (`scheduled-YYYYMMDD-<stage>-retry-XX`).
 - `verify` summarizes run rows, raw and normalized counts, source/keyword counts, sync and handoff counts, duplicate identity counts, and latest metadata without printing raw payloads or secrets.
-- `staging-report` adds staging evidence checks for latency percentiles, retries, quarantine distribution, backend relation consistency, and backend read-path sampling.
+- `verify` also runs strict invariants for stage-row completeness, normalize gap evidence, quarantine error safety, failed-stage evidence, and zero-sent reason checks for sync and notification handoff.
+- `staging-report` adds staging evidence checks for latency percentiles, retries, quarantine distribution, backend relation consistency, backend read-path sampling, strict invariants, and explicit `syncOutcome`/`notifyOutcome` zero-sent reasons.
 - Normalize stage AI processing is serial per batch (`OPENAI_NORMALIZATION_BATCH_SIZE`) and always waits fixed inter-batch delay (`OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS`).
 - Normalize and enrich stages use per-item partial handling; one failed item does not stop the whole stage.
 - Execute mode streams progress logs to `stderr`; machine-readable final JSON stays on `stdout`.
