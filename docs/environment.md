@@ -36,7 +36,7 @@ The repository includes `.env.example` for local development and `.env.productio
 | `APP_NAME` | Yes | `bisakerja-scraper` | Service name in logs/health |
 | `APP_ENV` | Yes | `local` | `local`, `test`, `staging`, `production` |
 | `PORT` | If HTTP exposed | `8000` | Internal API port |
-| `APP_PORT` | If Compose exposes HTTP | `8000` | Host port used by Docker Compose and deploy health checks |
+| `APP_PORT` | If Compose exposes HTTP | `3003` | Host port used by Docker Compose and deploy health checks |
 | `API_PREFIX` | If HTTP exposed | `/api/v1` | Versioned internal API prefix |
 
 ## Database Variables

@@ -139,7 +139,7 @@ Use a unique `--run-id` for each execute run. A repeated run id causes primary-k
 Start the API:
 
 ```bash
-PYTHONPATH=src uv run uvicorn api.app:create_app --factory --host 0.0.0.0 --port 8000
+PYTHONPATH=src uv run uvicorn api.app:create_app --factory --host 0.0.0.0 --port 3003
 ```
 
 Default local API:
@@ -232,7 +232,7 @@ Database-backed tests must use isolated local or CI database targets. Never poin
 For local runtime boot checks without Docker:
 
 ```bash
-PYTHONPATH=src uv run uvicorn api.app:create_app --factory --host 127.0.0.1 --port 8000
+PYTHONPATH=src uv run uvicorn api.app:create_app --factory --host 127.0.0.1 --port 3003
 ```
 
 ## Container Runtime

@@ -20,7 +20,7 @@ env:
   CONTAINER_REGISTRY: ghcr.io
   COMPOSE_FILE: docker-compose.yml
   RUNTIME_ENV_FILE: .env.production
-  DEFAULT_APP_PORT: "8000"
+  DEFAULT_APP_PORT: "3003"
   DEPLOY_TARGET: staging
   EXPECTED_APP_ENV: staging
   COMPOSE_PROJECT_NAME: bisakerja-scraper

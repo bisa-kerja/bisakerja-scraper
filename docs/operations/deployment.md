@@ -132,7 +132,7 @@ Remote prerequisites:
 - The deploy user can run `docker compose`.
 - `git`, `docker`, Docker Compose, and `curl` are installed.
 - Runtime `APP_ENV` matches the workflow target, currently `staging`.
-- Runtime `PORT` is the container port and optional `APP_PORT` is the host port.
+- Runtime `PORT` defaults to `3003` for aaPanel reverse proxy deployment; optional `APP_PORT` is the host port.
 
 ## Normal Deploy Runbook
 
@@ -208,7 +208,7 @@ Safe validation sequence:
 python scripts/deploy/db_preflight.py --from-env
 uv run alembic upgrade head
 PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.production
-curl --fail http://127.0.0.1:${APP_PORT:-8000}/health/ready
+curl --fail http://127.0.0.1:${APP_PORT:-3003}/health/ready
 ```
 
 Neon compatibility notes for runtime and deploy checks:

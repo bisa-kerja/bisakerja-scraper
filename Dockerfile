@@ -25,7 +25,7 @@ FROM python:3.12-slim AS runtime
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app/src" \
     PYTHONUNBUFFERED=1 \
-    PORT=8000
+    PORT=3003
 
 WORKDIR /app
 
@@ -36,9 +36,9 @@ COPY --from=builder --chown=scraper:scraper /app /app
 
 USER scraper
 
-EXPOSE 8000
+EXPOSE 3003
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD python -c "import os, urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\", \"8000\")}/health/live', timeout=3).read()" || exit 1
+    CMD python -c "import os, urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\", \"3003\")}/health/live', timeout=3).read()" || exit 1
 
-CMD ["sh", "-c", "uvicorn api.app:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "uvicorn api.app:create_app --factory --host 0.0.0.0 --port ${PORT:-3003}"]
