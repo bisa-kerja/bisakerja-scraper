@@ -56,13 +56,28 @@ def _normalize_neon_query(url: URL, *, sync: bool) -> URL:
     lowered_map = {key.lower(): key for key in query}
 
     if not sync:
-        # asyncpg does not support libpq's channel_binding URL parameter.
+        # SQLAlchemy passes URL query keys to asyncpg.connect as kwargs.
+        # asyncpg accepts ssl, but not libpq-style channel_binding/sslmode kwargs.
         _drop_query_key(query, lowered_map, "channel_binding")
+        _translate_asyncpg_sslmode(query, lowered_map)
+        return url.set(query=query)
 
     if "sslmode" not in lowered_map:
         query["sslmode"] = "require"
 
     return url.set(query=query)
+
+
+def _translate_asyncpg_sslmode(query: dict[str, Any], lowered_map: Mapping[str, str]) -> None:
+    sslmode_key = lowered_map.get("sslmode")
+    if sslmode_key is None:
+        query.setdefault("ssl", "require")
+        return
+
+    sslmode_value = query.pop(sslmode_key)
+    ssl_key = lowered_map.get("ssl")
+    if ssl_key is None:
+        query["ssl"] = sslmode_value
 
 
 def _drop_query_key(

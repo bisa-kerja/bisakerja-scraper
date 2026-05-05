@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import make_url
 
 from api.readiness import DatabaseReadinessChecker, ReadinessError, to_async_url
 
@@ -12,13 +13,13 @@ def test_to_async_url_normalizes_sync_postgres_driver() -> None:
     )
 
 
-def test_to_async_url_drops_neon_channel_binding_for_asyncpg() -> None:
+def test_to_async_url_uses_asyncpg_ssl_parameter_for_neon() -> None:
     assert (
         to_async_url(
             "postgresql://scraper_user:secret@ep-cool-darkness-123456-pooler.us-east-2.aws.neon.tech/neondb"
             "?channel_binding=require&sslmode=require"
         )
-        == "postgresql+asyncpg://scraper_user:secret@ep-cool-darkness-123456-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require"
+        == "postgresql+asyncpg://scraper_user:secret@ep-cool-darkness-123456-pooler.us-east-2.aws.neon.tech/neondb?ssl=require"
     )
 
 
@@ -72,3 +73,18 @@ async def test_database_readiness_checker_uses_async_url(monkeypatch) -> None:
     await checker()
 
     assert captured["url"] == "postgresql+asyncpg://scraper_user:secret@db.example/scraper"
+
+
+def test_to_async_url_does_not_pass_unsupported_asyncpg_kwargs() -> None:
+    from sqlalchemy.dialects.postgresql.asyncpg import PGDialect_asyncpg
+
+    url = to_async_url(
+        "postgresql://scraper_user:secret@ep-cool-darkness-123456-pooler.us-east-2.aws.neon.tech/neondb"
+        "?channel_binding=require&sslmode=require"
+    )
+
+    _, kwargs = PGDialect_asyncpg().create_connect_args(make_url(url))
+
+    assert "channel_binding" not in kwargs
+    assert "sslmode" not in kwargs
+    assert kwargs["ssl"] == "require"
