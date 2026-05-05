@@ -7,12 +7,16 @@ from typing import Any
 import pytest
 
 from modules.jobs import (
+    AINormalizationBatchPromptInput,
+    AINormalizationBatchPromptItem,
     AINormalizationContractError,
     AINormalizationPromptInput,
     NormalizationEndpointType,
     SourcePlatform,
+    build_ai_normalization_batch_messages,
     build_ai_normalization_format_repair_messages,
     build_ai_normalization_messages,
+    validate_ai_normalization_batch_output,
     validate_ai_normalization_output,
 )
 
@@ -157,3 +161,80 @@ def test_repair_prompt_only_targets_format_errors() -> None:
     assert "backend-references/prisma/schema.prisma" not in json.dumps(payload)
     assert "standaloneSchemaBlueprint" in payload
     assert payload["backendSchemaContext"]["targetModels"]["Company"]["required"] == ["name"]
+
+
+def test_batch_prompt_contract_includes_array_shape_and_identity_rules() -> None:
+    prompt_input = AINormalizationBatchPromptInput(
+        items=[
+            AINormalizationBatchPromptItem(
+                item_id="item-1",
+                source_platform=SourcePlatform.DEALLS,
+                endpoint_type=NormalizationEndpointType.DETAIL,
+                raw_payload_subset={"id": "job-1", "title": "Backend Engineer"},
+            )
+        ]
+    )
+
+    messages = build_ai_normalization_batch_messages(prompt_input)
+    assert len(messages) == 2
+    assert messages[0]["role"] == "system"
+    assert "batch processing" in messages[0]["content"].lower()
+    payload = json.loads(messages[1]["content"])
+    assert payload["inputItems"][0]["itemId"] == "item-1"
+    assert payload["batchOutputPolicy"]["ordering"] == "must preserve inputItems order"
+    assert "batchOutputJsonSchema" in payload
+
+
+def test_batch_output_rejects_item_order_mismatch() -> None:
+    prompt_input = AINormalizationBatchPromptInput(
+        items=[
+            AINormalizationBatchPromptItem(
+                item_id="item-1",
+                source_platform=SourcePlatform.DEALLS,
+                endpoint_type=NormalizationEndpointType.DETAIL,
+                raw_payload_subset={"id": "job-1", "title": "Backend Engineer"},
+            )
+        ]
+    )
+
+    with pytest.raises(AINormalizationContractError, match="preserve input item order"):
+        validate_ai_normalization_batch_output(
+            {
+                "results": [
+                    {
+                        "itemId": "item-x",
+                        "normalizedJob": {
+                            "source": {
+                                "platform": "dealls",
+                                "external_job_id": "job-1",
+                                "source_url": "https://example.test/job-1",
+                                "external_apply_url": "https://example.test/job-1",
+                                "scraped_at": "2026-05-05T00:00:00Z",
+                                "source_updated_at": None,
+                            },
+                            "title": "Backend Engineer",
+                            "company": {"name": "Bisakerja"},
+                            "location": {"display": "Jakarta"},
+                            "salary": None,
+                            "employment_types": [],
+                            "work_type": "unknown",
+                            "description": None,
+                            "requirements": None,
+                            "skills": [],
+                            "posted_at": None,
+                            "last_seen_at": "2026-05-05T00:00:00Z",
+                            "status": "active",
+                            "presentation": {
+                                "posted_label": None,
+                                "salary_label": None,
+                                "badges": [],
+                                "source_labels": {},
+                            },
+                        },
+                        "errorCode": None,
+                        "errorMessage": None,
+                    }
+                ]
+            },
+            prompt_input=prompt_input,
+        )

@@ -24,7 +24,13 @@ from modules.enrichment import (
     EnrichmentOutput,
     RequirementType,
 )
-from modules.jobs import AINormalizationPromptInput, CanonicalJobSchema, NormalizationEndpointType
+from modules.jobs import (
+    AINormalizationBatchPromptInput,
+    AINormalizationBatchPromptItem,
+    AINormalizationPromptInput,
+    CanonicalJobSchema,
+    NormalizationEndpointType,
+)
 
 
 def test_openai_client_uses_custom_base_url_timeout_and_retry_config() -> None:
@@ -134,6 +140,51 @@ async def test_openai_client_rejects_invalid_normalization_response() -> None:
         await client.normalize_job(make_normalization_prompt_input())
 
 
+@pytest.mark.asyncio
+async def test_openai_client_returns_structured_batch_normalization_output() -> None:
+    parser = FakeParser(
+        parsed={
+            "results": [
+                {
+                    "itemId": "item-1",
+                    "normalizedJob": make_normalization_output(),
+                    "errorCode": None,
+                    "errorMessage": None,
+                }
+            ]
+        }
+    )
+    client = make_normalization_client(parser)
+
+    output = await client.normalize_jobs(make_normalization_batch_prompt_input())
+
+    assert len(output) == 1
+    assert output[0].item_id == "item-1"
+    assert output[0].normalized_job is not None
+    assert output[0].normalized_job.source.platform.value == "dealls"
+    assert parser.calls[0]["response_format"].__name__ == "AINormalizationBatchOutput"
+
+
+@pytest.mark.asyncio
+async def test_openai_client_rejects_batch_output_with_order_mismatch() -> None:
+    parser = FakeParser(
+        parsed={
+            "results": [
+                {
+                    "itemId": "wrong-id",
+                    "normalizedJob": make_normalization_output(),
+                    "errorCode": None,
+                    "errorMessage": None,
+                }
+            ]
+        }
+    )
+    client = make_normalization_client(parser)
+
+    with pytest.raises(OpenAINormalizationInvalidResponseError):
+        await client.normalize_jobs(make_normalization_batch_prompt_input())
+
+
 def make_client(parser: FakeParser) -> OpenAIEnrichmentClient:
     return OpenAIEnrichmentClient(
         api_key="test-key",
@@ -176,6 +227,24 @@ def make_normalization_prompt_input() -> AINormalizationPromptInput:
             "company": {"name": "Bisakerja"},
             "url": "https://example.test/jobs/job-1",
         },
+    )
+
+
+def make_normalization_batch_prompt_input() -> AINormalizationBatchPromptInput:
+    return AINormalizationBatchPromptInput(
+        items=[
+            AINormalizationBatchPromptItem(
+                item_id="item-1",
+                source_platform="dealls",
+                endpoint_type=NormalizationEndpointType.DETAIL,
+                raw_payload_subset={
+                    "id": "job-1",
+                    "title": "Backend Engineer",
+                    "company": {"name": "Bisakerja"},
+                    "url": "https://example.test/jobs/job-1",
+                },
+            )
+        ]
     )
 
 

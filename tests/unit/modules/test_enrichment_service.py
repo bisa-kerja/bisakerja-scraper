@@ -42,7 +42,7 @@ class FakeClient:
 async def test_enrichment_batch_uses_default_ten_limit_and_writes_staging() -> None:
     with session_scope() as session:
         for index in range(12):
-            session.add(normalized_job(f"job-{index}"))
+            session.add(normalized_job(f"job-{index}", description="Build Python API"))
         session.flush()
         output = EnrichmentOutput(
             skills=[EnrichedSkill(name="Python", confidence=0.9)],
@@ -71,7 +71,12 @@ async def test_enrichment_batch_uses_default_ten_limit_and_writes_staging() -> N
 @pytest.mark.asyncio
 async def test_enrichment_partial_failure_continues_batch() -> None:
     with session_scope() as session:
-        session.add_all([normalized_job("job-1"), normalized_job("job-2")])
+        session.add_all(
+            [
+                normalized_job("job-1", description="Build Python API"),
+                normalized_job("job-2", description="Build Python API"),
+            ]
+        )
         session.flush()
         output = EnrichmentOutput(
             skills=[EnrichedSkill(name="Python", confidence=0.9)],
@@ -96,7 +101,7 @@ async def test_enrichment_partial_failure_continues_batch() -> None:
 @pytest.mark.asyncio
 async def test_enrichment_retries_retryable_error() -> None:
     with session_scope() as session:
-        session.add(normalized_job("job-1"))
+        session.add(normalized_job("job-1", description="Build Python API"))
         session.flush()
         output = EnrichmentOutput(
             skills=[EnrichedSkill(name="Python", confidence=0.9)],
@@ -122,7 +127,7 @@ async def test_enrichment_retries_retryable_error() -> None:
 @pytest.mark.asyncio
 async def test_enrichment_rerun_is_idempotent() -> None:
     with session_scope() as session:
-        session.add(normalized_job("job-1"))
+        session.add(normalized_job("job-1", description="Build Python API"))
         session.flush()
         output = EnrichmentOutput(
             skills=[EnrichedSkill(name="Python", confidence=0.9)],
@@ -143,13 +148,44 @@ async def test_enrichment_rerun_is_idempotent() -> None:
         assert len(session.scalars(select(JobSkillStaging)).all()) == 1
 
 
+@pytest.mark.asyncio
+async def test_enrichment_invalid_input_is_failed_per_item_without_crashing_batch() -> None:
+    with session_scope() as session:
+        session.add_all(
+            [
+                normalized_job("bad-job", description="raw_payload token=abc123"),
+                normalized_job("good-job", description="Build Python API"),
+            ]
+        )
+        session.flush()
+        output = EnrichmentOutput(
+            skills=[EnrichedSkill(name="Python", confidence=0.9)],
+            requirements=[],
+            confidence=0.9,
+        )
+        client = FakeClient([output])
+        service = EnrichmentService(
+            session=session,
+            client=client,
+            config=EnrichmentServiceConfig(model="gpt-test", batch_size=2),
+        )
+
+        result = await service.enrich_pending_batch(scrape_run_id="run-enrich")
+
+        assert result.processed == 2
+        assert result.succeeded == 1
+        assert result.failed == 1
+        assert len(client.calls) == 1
+        assert len(session.scalars(select(AIRequestLog)).all()) == 2
+
+
 def session_scope() -> Session:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     return Session(engine)
 
 
-def normalized_job(job_id: str) -> NormalizedJob:
+def normalized_job(job_id: str, *, description: str) -> NormalizedJob:
     now = datetime(2026, 5, 2, tzinfo=UTC)
     return NormalizedJob(
         id=job_id,
@@ -161,7 +197,7 @@ def normalized_job(job_id: str) -> NormalizedJob:
         status="active",
         normalized_payload={
             "company": {"name": "Bisakerja"},
-            "description": "Build Python API",
+            "description": description,
             "requirements": "Python",
             "source": {"platform": "dealls"},
         },

@@ -12,6 +12,8 @@ from sqlalchemy import select
 from core.errors import NormalizeError, ScraperError
 from integrations.sources.mapper_utils import SourceMapperResult
 from modules.jobs import (
+    AINormalizationBatchPromptInput,
+    AINormalizationBatchPromptItem,
     AINormalizationPromptInput,
     CanonicalJobSchema,
     NormalizationEndpointType,
@@ -40,6 +42,7 @@ class AINormalizationClient(Protocol):
 
 SyncHook = Callable[[list[SourceMapperResult], str, str], Awaitable[None]]
 StageHook = Callable[[str, str], Awaitable[RunCounts | None]]
+ProgressHook = Callable[[str], None]
 
 _DETAIL_HINT_KEYS = {
     "description",
@@ -55,10 +58,17 @@ class PipelineConfig:
     max_concurrency_per_source: int = 4
     allow_partial: bool = True
     ai_normalization_fail_open: bool = True
+    ai_normalization_batch_size: int = 5
+    ai_normalization_inter_batch_delay_ms: int = 0
+    progress_hook: ProgressHook | None = None
 
     def __post_init__(self) -> None:
         if self.max_concurrency_per_source <= 0:
             raise ValueError("max_concurrency_per_source must be greater than zero")
+        if self.ai_normalization_batch_size <= 0:
+            raise ValueError("ai_normalization_batch_size must be greater than zero")
+        if self.ai_normalization_inter_batch_delay_ms < 0:
+            raise ValueError("ai_normalization_inter_batch_delay_ms must be zero or greater")
 
 
 @dataclass
@@ -313,30 +323,231 @@ class PipelineOrchestrator:
         )
         result.counts.fetched = len(raw_jobs)
         stage_events.append(f"{source.source_platform}:normalize")
-        semaphore = asyncio.Semaphore(self.config.max_concurrency_per_source)
-        for raw_job in raw_jobs:
+        if self.ai_normalization_client is None:
+            semaphore = asyncio.Semaphore(self.config.max_concurrency_per_source)
+            for raw_job in raw_jobs:
+                try:
+                    mapped = await self._map_stored_raw_job(source, raw_job, semaphore)
+                    self.persistence.upsert_normalized_job(mapped.job, raw_job_id=raw_job.id)
+                    if self.quarantine is not None:
+                        self.quarantine.resolve_for_raw_job(raw_job.id)
+                    result.counts.normalized += 1
+                    result.counts.persisted += 1
+                except Exception as exc:
+                    result.errors.append(error_summary(source.source_platform, exc))
+                    result.counts.skipped += 1
+                    if self.quarantine is not None:
+                        self.quarantine.record_raw_job_failure(
+                            raw_job,
+                            error_category=error_summary(source.source_platform, exc).category,
+                            error_message=error_summary(source.source_platform, exc).message,
+                            source_field_path=source_field_path_from(exc),
+                            retryable=retryable_from(exc),
+                        )
+        else:
+            await self._normalize_source_with_ai_batch(source, raw_jobs, result)
+        self.persistence.session.commit()
+        result.counts.parsed = result.counts.normalized
+        result.status = "failed" if result.errors else "completed"
+        return result
+
+    async def _normalize_source_with_ai_batch(
+        self,
+        source: PipelineSource,
+        raw_jobs: Sequence[RawJob],
+        result: SourcePipelineResult,
+    ) -> None:
+        total_batches = chunk_count(len(raw_jobs), self.config.ai_normalization_batch_size)
+        for batch_index, raw_batch in enumerate(
+            chunked(raw_jobs, self.config.ai_normalization_batch_size),
+            start=1,
+        ):
+            self._emit_progress(
+                "[normalize] "
+                f"source={source.source_platform} "
+                f"batch={batch_index}/{total_batches} size={len(raw_batch)}"
+            )
+            await self._normalize_batch(source, raw_batch, result)
+            if (
+                self.config.ai_normalization_inter_batch_delay_ms > 0
+                and batch_index < total_batches
+            ):
+                delay_ms = self.config.ai_normalization_inter_batch_delay_ms
+                self._emit_progress(
+                    f"[normalize] source={source.source_platform} wait_ms={delay_ms}"
+                )
+                await asyncio.sleep(delay_ms / 1000)
+
+    async def _normalize_batch(
+        self,
+        source: PipelineSource,
+        raw_batch: Sequence[RawJob],
+        result: SourcePipelineResult,
+    ) -> None:
+        mapped_by_item_id: dict[str, SourceMapperResult] = {}
+        raw_by_item_id: dict[str, RawJob] = {}
+        prompt_items: list[AINormalizationBatchPromptItem] = []
+
+        for raw_job in raw_batch:
+            item_id = raw_job.id
             try:
-                mapped = await self._map_stored_raw_job(source, raw_job, semaphore)
+                mapped = source.map_raw_job(
+                    raw_job_stub_from(raw_job),
+                    scraped_at=raw_job.scraped_at,
+                )
+            except Exception as exc:
+                self._record_normalize_failure(source.source_platform, raw_job, exc, result)
+                continue
+
+            prompt_input = prompt_input_from_raw_job(
+                raw_job,
+                source_platform=source.source_platform,
+                external_id=raw_job.external_id,
+            )
+            if prompt_input is None:
                 self.persistence.upsert_normalized_job(mapped.job, raw_job_id=raw_job.id)
                 if self.quarantine is not None:
                     self.quarantine.resolve_for_raw_job(raw_job.id)
                 result.counts.normalized += 1
                 result.counts.persisted += 1
+                continue
+
+            mapped_by_item_id[item_id] = mapped
+            raw_by_item_id[item_id] = raw_job
+            prompt_items.append(
+                AINormalizationBatchPromptItem(
+                    item_id=item_id,
+                    source_platform=prompt_input.source_platform,
+                    endpoint_type=prompt_input.endpoint_type,
+                    raw_payload_subset=prompt_input.raw_payload_subset,
+                )
+            )
+
+        if not prompt_items:
+            return
+
+        normalize_jobs = getattr(self.ai_normalization_client, "normalize_jobs", None)
+        if not callable(normalize_jobs):
+            await self._normalize_batch_with_single_requests(
+                source=source,
+                prompt_items=prompt_items,
+                mapped_by_item_id=mapped_by_item_id,
+                raw_by_item_id=raw_by_item_id,
+                result=result,
+            )
+            return
+
+        try:
+            batch_results = await normalize_jobs(
+                AINormalizationBatchPromptInput(items=prompt_items)
+            )
+        except Exception as exc:  # noqa: BLE001
+            for item_id in [item.item_id for item in prompt_items]:
+                raw_job = raw_by_item_id[item_id]
+                mapped = mapped_by_item_id[item_id]
+                if self.config.ai_normalization_fail_open:
+                    self.persistence.upsert_normalized_job(mapped.job, raw_job_id=raw_job.id)
+                    if self.quarantine is not None:
+                        self.quarantine.resolve_for_raw_job(raw_job.id)
+                    result.counts.normalized += 1
+                    result.counts.persisted += 1
+                    continue
+                self._record_normalize_failure(
+                    source.source_platform,
+                    raw_job,
+                    normalize_error_from_ai_exception(
+                        exc,
+                        source_platform=source.source_platform,
+                        external_id=raw_job.external_id,
+                    ),
+                    result,
+                )
+            return
+
+        for item in batch_results:
+            raw_job = raw_by_item_id[item.item_id]
+            if item.normalized_job is None:
+                if self.config.ai_normalization_fail_open:
+                    mapped = mapped_by_item_id[item.item_id]
+                    self.persistence.upsert_normalized_job(mapped.job, raw_job_id=raw_job.id)
+                    if self.quarantine is not None:
+                        self.quarantine.resolve_for_raw_job(raw_job.id)
+                    result.counts.normalized += 1
+                    result.counts.persisted += 1
+                    continue
+                self._record_normalize_failure(
+                    source.source_platform,
+                    raw_job,
+                    normalize_error_from_batch_item(
+                        source_platform=source.source_platform,
+                        external_id=raw_job.external_id,
+                        error_code=item.error_code,
+                        error_message=item.error_message,
+                    ),
+                    result,
+                )
+                continue
+            self.persistence.upsert_normalized_job(item.normalized_job, raw_job_id=raw_job.id)
+            if self.quarantine is not None:
+                self.quarantine.resolve_for_raw_job(raw_job.id)
+            result.counts.normalized += 1
+            result.counts.persisted += 1
+
+    async def _normalize_batch_with_single_requests(
+        self,
+        *,
+        source: PipelineSource,
+        prompt_items: Sequence[AINormalizationBatchPromptItem],
+        mapped_by_item_id: Mapping[str, SourceMapperResult],
+        raw_by_item_id: Mapping[str, RawJob],
+        result: SourcePipelineResult,
+    ) -> None:
+        semaphore = asyncio.Semaphore(self.config.max_concurrency_per_source)
+        for item in prompt_items:
+            raw_job = raw_by_item_id[item.item_id]
+            mapped = mapped_by_item_id[item.item_id]
+            try:
+                normalized = await self._map_stored_raw_job(source, raw_job, semaphore)
             except Exception as exc:
-                result.errors.append(error_summary(source.source_platform, exc))
-                result.counts.skipped += 1
-                if self.quarantine is not None:
-                    self.quarantine.record_raw_job_failure(
-                        raw_job,
-                        error_category=error_summary(source.source_platform, exc).category,
-                        error_message=error_summary(source.source_platform, exc).message,
-                        source_field_path=source_field_path_from(exc),
-                        retryable=retryable_from(exc),
-                    )
-        self.persistence.session.commit()
-        result.counts.parsed = result.counts.normalized
-        result.status = "failed" if result.errors else "completed"
-        return result
+                if self.config.ai_normalization_fail_open:
+                    self.persistence.upsert_normalized_job(mapped.job, raw_job_id=raw_job.id)
+                    if self.quarantine is not None:
+                        self.quarantine.resolve_for_raw_job(raw_job.id)
+                    result.counts.normalized += 1
+                    result.counts.persisted += 1
+                    continue
+                self._record_normalize_failure(source.source_platform, raw_job, exc, result)
+                continue
+
+            self.persistence.upsert_normalized_job(normalized.job, raw_job_id=raw_job.id)
+            if self.quarantine is not None:
+                self.quarantine.resolve_for_raw_job(raw_job.id)
+            result.counts.normalized += 1
+            result.counts.persisted += 1
+
+    def _record_normalize_failure(
+        self,
+        source_platform: str,
+        raw_job: RawJob,
+        exc: Exception,
+        result: SourcePipelineResult,
+    ) -> None:
+        summary = error_summary(source_platform, exc)
+        result.errors.append(summary)
+        result.counts.skipped += 1
+        if self.quarantine is not None:
+            self.quarantine.record_raw_job_failure(
+                raw_job,
+                error_category=summary.category,
+                error_message=summary.message,
+                source_field_path=source_field_path_from(exc),
+                retryable=retryable_from(exc),
+            )
+
+    def _emit_progress(self, message: str) -> None:
+        if self.config.progress_hook is None:
+            return
+        self.config.progress_hook(message)
 
     async def _map_one(
         self,
@@ -567,6 +778,27 @@ def normalize_error_from_ai_exception(
     )
 
 
+def normalize_error_from_batch_item(
+    *,
+    source_platform: str,
+    external_id: str | None,
+    error_code: str | None,
+    error_message: str | None,
+) -> NormalizeError:
+    code = error_code or "NORMALIZE_PARTIAL_ERROR"
+    message = error_message or "AI normalization batch returned partial error"
+    return NormalizeError(
+        message,
+        source_platform=source_platform,
+        external_id=external_id,
+        retryable=False,
+        details={
+            "error": code,
+            "source_field_path": "raw_payload",
+        },
+    )
+
+
 def source_field_path_from(exc: Exception) -> str | None:
     if isinstance(exc, ScraperError):
         value = exc.details.get("source_field_path") or exc.details.get("field")
@@ -663,6 +895,16 @@ def serialized_datetime(value: Any) -> str | None:
     if isinstance(value, datetime):
         return value.isoformat()
     return None
+
+
+def chunk_count(total: int, size: int) -> int:
+    if total <= 0:
+        return 0
+    return (total + size - 1) // size
+
+
+def chunked(items: Sequence[Any], size: int) -> list[list[Any]]:
+    return [list(items[index : index + size]) for index in range(0, len(items), size)]
 
 
 def error_summary(source_platform: str, exc: Exception) -> RunErrorSummary:

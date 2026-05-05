@@ -19,10 +19,15 @@ from modules.enrichment import (
     validate_enrichment_output,
 )
 from modules.jobs import (
+    AINormalizationBatchItemResult,
+    AINormalizationBatchOutput,
+    AINormalizationBatchPromptInput,
     AINormalizationContractError,
     AINormalizationPromptInput,
     CanonicalJobSchema,
+    build_ai_normalization_batch_messages,
     build_ai_normalization_messages,
+    validate_ai_normalization_batch_output,
     validate_ai_normalization_output,
 )
 
@@ -195,6 +200,40 @@ class OpenAINormalizationClient:
         except AINormalizationContractError as exc:
             raise OpenAINormalizationInvalidResponseError(str(exc)) from exc
 
+    async def normalize_jobs(
+        self,
+        prompt_input: AINormalizationBatchPromptInput,
+    ) -> list[AINormalizationBatchItemResult]:
+        try:
+            response = await self._parser.parse(
+                model=self.model,
+                messages=build_ai_normalization_batch_messages(prompt_input),
+                response_format=AINormalizationBatchOutput,
+                temperature=0,
+            )
+        except AuthenticationError as exc:
+            raise OpenAINormalizationAuthError("OpenAI authentication failed") from exc
+        except APITimeoutError as exc:
+            raise OpenAINormalizationTimeoutError("OpenAI request timed out") from exc
+        except RateLimitError as exc:
+            raise OpenAINormalizationRateLimitError("OpenAI rate limit exceeded") from exc
+        except APIConnectionError as exc:
+            raise OpenAINormalizationProviderUnavailableError(
+                "OpenAI provider connection failed"
+            ) from exc
+        except APIStatusError as exc:
+            if exc.status_code >= 500:
+                raise OpenAINormalizationProviderUnavailableError(
+                    "OpenAI provider unavailable"
+                ) from exc
+            raise OpenAINormalizationInvalidResponseError("OpenAI request failed") from exc
+
+        output = parse_normalization_batch_response(response)
+        try:
+            return validate_ai_normalization_batch_output(output, prompt_input=prompt_input)
+        except AINormalizationContractError as exc:
+            raise OpenAINormalizationInvalidResponseError(str(exc)) from exc
+
 
 def parse_enrichment_response(response: Any) -> EnrichmentOutput:
     try:
@@ -230,3 +269,25 @@ def parse_normalization_response(response: Any) -> dict[str, Any] | str:
     if isinstance(parsed, dict):
         return parsed
     raise OpenAINormalizationInvalidResponseError("OpenAI response did not match schema")
+
+
+def parse_normalization_batch_response(
+    response: Any,
+) -> AINormalizationBatchOutput | dict[str, Any] | str:
+    try:
+        message = response.choices[0].message
+    except (AttributeError, IndexError) as exc:
+        raise OpenAINormalizationInvalidResponseError("OpenAI response missing message") from exc
+
+    refusal = getattr(message, "refusal", None)
+    if refusal:
+        raise OpenAINormalizationInvalidResponseError(
+            "OpenAI response refused normalization request"
+        )
+
+    parsed = getattr(message, "parsed", None)
+    if isinstance(parsed, AINormalizationBatchOutput):
+        return parsed
+    if isinstance(parsed, dict):
+        return parsed
+    raise OpenAINormalizationInvalidResponseError("OpenAI response did not match batch schema")

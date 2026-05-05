@@ -212,6 +212,140 @@ def test_pipeline_requires_explicit_mode(monkeypatch, capsys) -> None:
     assert output["check"] == "pipeline-cli"
 
 
+def test_wizard_non_tty_requires_yes(monkeypatch, capsys) -> None:
+    apply_env(monkeypatch)
+    monkeypatch.setattr("cli.pipeline.wizard_tty_available", lambda: False)
+
+    assert main(["wizard", "--dry-run", "--env-file", ".env.example"]) == 1
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "fail"
+    assert output["check"] == "pipeline-wizard"
+    assert "--yes" in output["reason"]
+
+
+def test_wizard_non_tty_safe_dry_run_with_yes(monkeypatch, capsys) -> None:
+    apply_env(monkeypatch)
+    monkeypatch.setattr("cli.pipeline.wizard_tty_available", lambda: False)
+
+    assert (
+        main(
+            [
+                "wizard",
+                "--dry-run",
+                "--source",
+                "dealls",
+                "--stage",
+                "scrape",
+                "--limit",
+                "1",
+                "--env-file",
+                ".env.example",
+                "--yes",
+            ]
+        )
+        == 0
+    )
+    output_text = capsys.readouterr().out
+    output = json.loads(output_text)
+    assert output["check"] == "pipeline-wizard"
+    assert output["status"] == "ok"
+    assert output["mode"] == "dry-run"
+    assert output["result"]["executedSources"] == ["dealls"]
+    assert output["friendly"]["verifyCommand"] is not None
+    assert "service-token" not in output_text
+    assert "bearer" not in output_text.lower()
+
+
+def test_wizard_non_tty_blocks_risky_env(monkeypatch, capsys) -> None:
+    for key in valid_env():
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr("cli.pipeline.wizard_tty_available", lambda: False)
+
+    assert (
+        main(
+            [
+                "wizard",
+                "--dry-run",
+                "--source",
+                "dealls",
+                "--stage",
+                "scrape",
+                "--limit",
+                "1",
+                "--env-file",
+                ".env.production.example",
+                "--yes",
+            ]
+        )
+        == 1
+    )
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "fail"
+    assert "cannot bypass" in output["reason"]
+
+
+def test_wizard_interactive_dry_run_scripted_input(monkeypatch, capsys) -> None:
+    apply_env(monkeypatch)
+    monkeypatch.setattr("cli.pipeline.wizard_tty_available", lambda: True)
+    scripted = iter(
+        [
+            "1",  # mode dry-run
+            "",  # use preset env file list (yes)
+            "1",  # .env.example
+            "2",  # stage scrape
+            "2",  # source dealls
+            "1",  # limit
+            "7",  # recency days
+            "",  # use env keyword preset
+            "",  # set custom run id? no
+        ]
+    )
+    monkeypatch.setattr("builtins.input", lambda: next(scripted))
+
+    assert main(["wizard"]) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "ok"
+    assert output["mode"] == "dry-run"
+    assert output["result"]["stage"] == "scrape"
+    assert output["result"]["source"] == "dealls"
+
+
+def test_wizard_execute_requires_explicit_yes_confirmation(monkeypatch, capsys) -> None:
+    apply_env(monkeypatch)
+    monkeypatch.setattr("cli.pipeline.wizard_tty_available", lambda: True)
+    scripted = iter(
+        [
+            "2",  # mode execute
+            "",  # use preset env file list
+            "1",  # .env.example
+            "2",  # stage scrape
+            "2",  # source dealls
+            "1",  # limit
+            "7",  # recency days
+            "",  # use env keyword preset
+            "",  # set custom run id? no
+            "",  # confirm gate (must be YES)
+        ]
+    )
+    monkeypatch.setattr("builtins.input", lambda: next(scripted))
+
+    assert main(["wizard"]) == 1
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "fail"
+    assert "confirmation rejected" in output["reason"]
+
+
+def test_quick_dry_run_runs_safe_defaults(monkeypatch, capsys) -> None:
+    apply_env(monkeypatch)
+
+    assert main(["quick-dry-run", "--source", "dealls", "--stage", "scrape"]) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["check"] == "pipeline-run"
+    assert output["mode"] == "dry-run"
+    assert output["source"] == "dealls"
+    assert output["stage"] == "scrape"
+
+
 def test_pipeline_execute_jobstreet_disabled_returns_json_failure(monkeypatch, capsys) -> None:
     apply_env(monkeypatch)
 
@@ -407,6 +541,50 @@ async def test_manual_full_run_marks_failed_when_any_stage_failed() -> None:
 
     result = await runner.run_full(FakeOrchestrator(), run_id_prefix=None)
     assert result.status == "failed"
+
+
+def test_manual_runner_emit_progress_only_in_execute_mode(capsys) -> None:
+    runner_execute = ManualPipelineRunner(
+        session=None,
+        settings=None,
+        stage="scrape",
+        source="dealls",
+        keywords=("developer",),
+        fixture_root=None,
+        limit=1,
+        recency_mode="latest",
+        recency_days=7,
+        execute=True,
+        run_id=None,
+        source_selection=SourceSelection(
+            requested=("dealls",),
+            executed=("dealls",),
+            skipped=(),
+        ),
+    )
+    runner_execute.emit_progress("progress-check")
+    assert "progress-check" in capsys.readouterr().err
+
+    runner_dry_run = ManualPipelineRunner(
+        session=None,
+        settings=None,
+        stage="scrape",
+        source="dealls",
+        keywords=("developer",),
+        fixture_root=None,
+        limit=1,
+        recency_mode="latest",
+        recency_days=7,
+        execute=False,
+        run_id=None,
+        source_selection=SourceSelection(
+            requested=("dealls",),
+            executed=("dealls",),
+            skipped=(),
+        ),
+    )
+    runner_dry_run.emit_progress("should-not-print")
+    assert "should-not-print" not in capsys.readouterr().err
 
 
 def test_pipeline_status_reads_run(monkeypatch, tmp_path, capsys) -> None:

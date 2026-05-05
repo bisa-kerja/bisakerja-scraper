@@ -116,11 +116,21 @@ PYTHONPATH=src uv run python -m cli.smoke dry-run --source jobstreet
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source kalibrr
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape
 PYTHONPATH=src uv run python -m cli.pipeline preflight --stage full --source all --dry-run --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline wizard --dry-run --source dealls --stage scrape --limit 1 --env-file .env.example --yes
+PYTHONPATH=src uv run python -m cli.pipeline quick-dry-run --source all --stage full --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --dry-run --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --dry-run --env-file .env.example
 ```
 
 The smoke dry-run command is fixture-backed and network-free. It validates parsing and mapping for Dealls, Glints, JobStreet, and Kalibrr fixtures. The pipeline command requires explicit mode: `--dry-run` or `--execute`.
+
+Recommended operator entrypoint is `cli.pipeline wizard`. It shows an interactive menu for mode, stage, source, keyword preset, limit, recency, env file, and optional run id. It prints a pre-run summary with command equivalent, redacted DB target, backend sync mode, expected mutation scope, and risk indicators.
+
+Wizard guard rules:
+
+- Risk confirmation gate requires exact `YES` for execute mode and other risky combinations.
+- Non-TTY wizard usage is allowed only for safe dry-run with `--yes`.
+- Non-TTY wizard must reject risky runs (`APP_ENV=staging|production`, backend sync enabled, and other flagged risks).
 
 `cli.pipeline run --execute` has two sync modes:
 
@@ -171,7 +181,7 @@ Important groups:
 - Scrape plan: `SCRAPER_KEYWORDS`, `SCRAPER_MAX_ITEMS_PER_KEYWORD`, `SCRAPER_RECENCY_MODE`, `SCRAPER_RECENCY_DAYS`
 - Sources: Dealls, Glints, JobStreet, and Kalibrr settings
 - Backend sync: base URL, service token, timeout, batch size, freshness thresholds
-- AI enrichment: OpenAI-compatible API key, base URL, model, batch settings
+- AI provider: OpenAI-compatible API key, base URL, model, enrichment batch settings, normalization batch settings, and fixed inter-batch delay
 - Security: internal token, CORS, body limit, rate limits
 - Observability: log level, request id header, health timeout
 
@@ -199,6 +209,9 @@ Do not commit real secrets, cookies, bearer tokens, source sessions, or database
 | `PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example` | Validate app liveness wiring |
 | `PYTHONPATH=src uv run python -m cli.smoke dry-run --source <dealls|glints|jobstreet|kalibrr> --stage scrape` | Run fixture-backed smoke dry-run for one source and one stage |
 | `PYTHONPATH=src uv run python -m cli.pipeline preflight --stage full --source all --dry-run --env-file .env.example` | Validate env, migration target, source enablement, fixture availability, backend sync mode, and safe redacted evidence preview |
+| `PYTHONPATH=src uv run python -m cli.pipeline wizard` | Interactive operator wizard for run/status/verify/staging-report with validation and risk confirmation |
+| `PYTHONPATH=src uv run python -m cli.pipeline wizard --dry-run --source dealls --stage scrape --limit 1 --env-file .env.example --yes` | Non-interactive safe wizard dry-run for CI-like checks |
+| `PYTHONPATH=src uv run python -m cli.pipeline quick-dry-run --source all --stage full --env-file .env.example` | Short command for default safe fixture dry-run |
 | `PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --dry-run --env-file .env.example` | Run offline fixture-backed manual pipeline |
 | `PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --dry-run --env-file .env.example` | Run multi-keyword latest scrape dry-run |
 | `PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 3 --run-id local-e2e-<timestamp> --execute --env-file .env` | Run controlled execute pipeline (real source fetch and DB writes; backend sync/handoff real only when `BACKEND_SYNC_ENABLED=true`) |
@@ -207,15 +220,17 @@ Do not commit real secrets, cookies, bearer tokens, source sessions, or database
 | `PYTHONPATH=src uv run python -m cli.pipeline staging-report --run-id <run-id-prefix> --env-file .env` | Build operational report with latency, retry, consistency, and backend-read evidence |
 | `PYTHONPATH=src uv run python -m cli.daemon --env-file .env.production` | Run scheduled stage daemon (scrape, normalize, enrich, sync, notify-handoff) |
 
-`cli.smoke dry-run` validates one source fixture path per command across all supported sources. `cli.pipeline preflight` provides a read-only local readiness check before operator runs. `cli.pipeline run` prints compact JSON without secrets or raw payload bodies and requires mode selection (`--dry-run` or `--execute`). `--dry-run` uses sanitized fixtures with in-memory DB and can validate JobStreet fixture flow even when `JOBSTREET_ENABLED=false` for live mode. Keyword flags override `SCRAPER_KEYWORDS`; otherwise the env list is used. `--limit` applies per keyword. Add `--execute` only for an operator-controlled environment with a migrated, non-production database.
+`cli.smoke dry-run` validates one source fixture path per command across all supported sources. `cli.pipeline preflight` provides a read-only local readiness check before operator runs. `cli.pipeline wizard` is the primary operator path and always returns machine-readable JSON while still guiding interactive choices. `cli.pipeline run` remains available for explicit scripted flows. `--dry-run` uses sanitized fixtures with in-memory DB and can validate JobStreet fixture flow even when `JOBSTREET_ENABLED=false` for live mode. Keyword flags override `SCRAPER_KEYWORDS`; otherwise the env list is used. `--limit` applies per keyword. Add `--execute` only for an operator-controlled environment with a migrated, non-production database.
 
 Execute mode behavior:
 
 - `--execute` always uses configured source endpoints and configured scraper database.
 - Enrichment stage with `AI_ENRICHMENT_ENABLED=true` uses OpenAI structured output and persists AI request logs.
 - Enrichment stage with `AI_ENRICHMENT_ENABLED=false` still persists enrichment staging rows from normalized source fields (no outbound AI call).
+- Normalize stage uses serial AI batch normalization with per-item partial handling. Batch size and fixed delay are controlled by `OPENAI_NORMALIZATION_BATCH_SIZE` and `OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS`.
 - `--execute` with `BACKEND_SYNC_ENABLED=false` keeps backend sync/handoff local (recording clients).
 - `--execute` with `BACKEND_SYNC_ENABLED=true` sends sync payloads to Backend API and sends notification handoff payloads to Backend API.
+- Execute runs stream stage and job progress logs to `stderr` while preserving JSON result output on `stdout`.
 
 ## Testing And Verification
 

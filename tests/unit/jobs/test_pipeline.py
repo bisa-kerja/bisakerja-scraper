@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from core.errors import FetchError, NormalizeError
 from integrations.sources.mapper_utils import SourceMapperResult
 from jobs.pipeline import PipelineConfig, PipelineOrchestrator
+from modules.jobs import AINormalizationBatchItemResult, AINormalizationBatchPromptInput
 from modules.jobs.schemas import (
     CanonicalJobSchema,
     CanonicalJobStatus,
@@ -212,6 +213,79 @@ async def test_normalize_stage_quarantines_on_ai_failure_when_fail_closed() -> N
 
 
 @pytest.mark.asyncio
+async def test_normalize_stage_uses_batch_ai_and_partial_item_failure() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        raw_a = repository.upsert_raw_job(raw_input("run-scrape", "ai-batch-1"))[0]
+        repository.upsert_raw_job(raw_input("run-scrape", "ai-batch-2"))[0]
+        raw_c = repository.upsert_raw_job(raw_input("run-scrape", "ai-batch-3"))[0]
+        session.commit()
+        source = FakeSource("dealls", [])
+        client = FakeBatchAINormalizationClient(failed_external_ids={"ai-batch-3"})
+        orchestrator = PipelineOrchestrator(
+            sources=[source],
+            persistence=repository,
+            run_tracker=RunStateTracker(session),
+            quarantine=QuarantineRepository(session),
+            config=PipelineConfig(
+                ai_normalization_fail_open=False,
+                ai_normalization_batch_size=2,
+            ),
+            correlation_id_factory=lambda: "corr-1",
+            ai_normalization_client=client,
+        )
+
+        result = await orchestrator.run_normalize(run_id="run-normalize")
+
+        quarantine = session.scalar(
+            select(NormalizationQuarantine).where(NormalizationQuarantine.raw_job_id == raw_c.id)
+        )
+        normalized_rows = session.scalars(select(NormalizedJob)).all()
+        assert result.status == "partial"
+        assert result.counts.normalized == 2
+        assert result.counts.skipped == 1
+        assert client.batch_calls == 2
+        assert len(normalized_rows) == 2
+        assert quarantine is not None
+        assert quarantine.raw_job_id == raw_c.id
+        assert raw_a.id != raw_c.id
+
+
+@pytest.mark.asyncio
+async def test_normalize_stage_batch_delay_is_applied_between_batches(monkeypatch) -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        repository.upsert_raw_job(raw_input("run-scrape", "ai-delay-1"))
+        repository.upsert_raw_job(raw_input("run-scrape", "ai-delay-2"))
+        repository.upsert_raw_job(raw_input("run-scrape", "ai-delay-3"))
+        session.commit()
+        source = FakeSource("dealls", [])
+        client = FakeBatchAINormalizationClient(failed_external_ids=set())
+        sleeps: list[float] = []
+
+        async def fake_sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+
+        monkeypatch.setattr("jobs.pipeline.asyncio.sleep", fake_sleep)
+        orchestrator = PipelineOrchestrator(
+            sources=[source],
+            persistence=repository,
+            run_tracker=RunStateTracker(session),
+            config=PipelineConfig(
+                ai_normalization_batch_size=2,
+                ai_normalization_inter_batch_delay_ms=500,
+            ),
+            correlation_id_factory=lambda: "corr-1",
+            ai_normalization_client=client,
+        )
+
+        result = await orchestrator.run_normalize(run_id="run-normalize")
+
+        assert result.status == "completed"
+        assert sleeps == [0.5]
+
+
+@pytest.mark.asyncio
 async def test_scrape_stage_tracks_keyword_metadata_without_changing_identity() -> None:
     with session_scope() as session:
         orchestrator = PipelineOrchestrator(
@@ -358,6 +432,55 @@ class FailingAINormalizationClient:
             retryable=True,
             details={"source_field_path": "raw_payload"},
         )
+
+
+class FakeBatchAINormalizationClient:
+    def __init__(self, *, failed_external_ids: set[str]) -> None:
+        self.failed_external_ids = failed_external_ids
+        self.batch_calls = 0
+
+    async def normalize_jobs(
+        self,
+        prompt_input: AINormalizationBatchPromptInput,
+    ) -> list[AINormalizationBatchItemResult]:
+        self.batch_calls += 1
+        results: list[AINormalizationBatchItemResult] = []
+        for item in prompt_input.items:
+            external_id = str(item.raw_payload_subset.get("externalId"))
+            if external_id in self.failed_external_ids:
+                results.append(
+                    AINormalizationBatchItemResult(
+                        item_id=item.item_id,
+                        normalized_job=None,
+                        error_code="INSUFFICIENT_EVIDENCE",
+                        error_message="detail payload missing",
+                    )
+                )
+                continue
+            raw_url = item.raw_payload_subset.get("sourceUrl")
+            source_url = (
+                raw_url if isinstance(raw_url, str) else f"https://dealls.com/{external_id}"
+            )
+            results.append(
+                AINormalizationBatchItemResult(
+                    item_id=item.item_id,
+                    normalized_job=CanonicalJobSchema(
+                        source=SourceMetadataSchema(
+                            platform=SourcePlatform.DEALLS,
+                            external_job_id=external_id,
+                            source_url=source_url,
+                            external_apply_url=source_url,
+                            scraped_at=datetime.now(UTC),
+                        ),
+                        title=f"AI Batch {external_id}",
+                        company=CompanySchema(name="Bisakerja AI"),
+                        location=LocationSchema(display="Jakarta"),
+                        last_seen_at=datetime.now(UTC),
+                        status=CanonicalJobStatus.ACTIVE,
+                    ),
+                )
+            )
+        return results
 
 
 def canonical_job(raw_job: RawJobStub, *, scraped_at: datetime) -> CanonicalJobSchema:

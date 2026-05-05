@@ -117,6 +117,8 @@ def valid_env(**overrides: object) -> dict[str, object]:
         "OPENAI_TIMEOUT_SECONDS": "30",
         "OPENAI_MAX_RETRIES": "2",
         "OPENAI_BATCH_SIZE": "10",
+        "OPENAI_NORMALIZATION_BATCH_SIZE": "5",
+        "OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS": "1000",
         "DEALLS_BASE_URL": "https://dealls.com",
         "DEALLS_RATE_LIMIT_PER_MINUTE": "30",
         "GLINTS_GRAPHQL_URL": "https://glints.com/graphql",

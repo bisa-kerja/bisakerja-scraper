@@ -105,6 +105,7 @@ Minimum smoke checks:
 | --- | --- |
 | Startup env validation | Missing required config fails fast |
 | Fixture pipeline | One fixture batch reaches normalized staging |
+| Operator wizard | Interactive dry-run works with scripted input and non-TTY safe dry-run uses `--yes` |
 | Source health | Adapter health reports safe status without credentials |
 | Sync dry-run | Sync validates shape without mutating production DB |
 | Redaction | Logs and artifacts contain no token/cookie/session strings |
@@ -146,6 +147,8 @@ PYTHONPATH=src uv run python -m cli.smoke dry-run --source jobstreet
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source kalibrr
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape
 PYTHONPATH=src uv run python -m cli.pipeline preflight --stage full --source all --dry-run --env-file .env.example
+PYTHONPATH=src uv run python -m cli.pipeline wizard --dry-run --source dealls --stage scrape --limit 1 --env-file .env.example --yes
+PYTHONPATH=src uv run python -m cli.pipeline quick-dry-run --source all --stage full --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --dry-run --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --limit 1 --dry-run --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --dry-run --env-file .env.example
@@ -168,7 +171,7 @@ uv run pytest tests/smoke/test_runtime_boot.py
 
 The smoke dry-run command reads sanitized fixtures per source, parses list payloads, maps one job into the canonical schema, and prints a compact JSON result.
 
-The pipeline command requires explicit mode selection (`--dry-run` or `--execute`). Dry-run mode uses sanitized fixtures and in-memory storage. It exercises scrape, normalize, enrichment staging, backend sync handoff preparation, and notification handoff preparation without external network access or production database mutation.
+The wizard command is the primary operator entrypoint. It keeps output machine-readable while adding interactive selections and risk confirmation. In non-TTY contexts, wizard dry-run requires `--yes` and must reject risky configurations. The run command remains available for explicit scripted flows with mode selection (`--dry-run` or `--execute`). Dry-run mode uses sanitized fixtures and in-memory storage. It exercises scrape, normalize, enrichment staging, backend sync handoff preparation, and notification handoff preparation without external network access or production database mutation.
 
 For controlled local end-to-end validation, run execute mode with a fixed run id after migration:
 
@@ -226,9 +229,10 @@ The scraper test suite covers:
 - Internal jobs API reads against a migrated isolated database.
 - Backend sync client request contract using in-memory HTTP transport.
 - OpenAI-compatible client boundary, custom base URL usage, structured output parsing, and classified provider errors.
-- AI normalization prompt contract, schema gate, and format-only repair policy against golden fixtures.
+- AI normalization prompt contract, batch array output gate, item-order identity checks, and format-only repair policy against golden fixtures.
 - AI request audit logging stores request hashes and safe summaries without prompts, raw payloads, or secrets.
 - Enrichment staging upsert behavior for skills and requirements.
+- Enrichment service invalid-input handling remains per-item failed and must not crash full enrichment stage.
 - DB-backed stage queue retry, completion, and dead-letter behavior.
 - CLI smoke checks for config, health, and fixture-backed dry-run behavior.
 - Manual pipeline CLI dry-run, source/stage validation, status lookup, and output redaction.

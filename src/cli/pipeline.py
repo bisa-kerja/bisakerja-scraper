@@ -5,6 +5,8 @@ import asyncio
 import json
 import math
 import re
+import shlex
+import sys
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -71,7 +73,7 @@ from integrations.sources.kalibrr.list import (
 )
 from integrations.sources.kalibrr.mapper import map_kalibrr_job
 from integrations.sources.mapper_utils import SourceMapperResult
-from jobs.pipeline import PipelineOrchestrator, PipelineResult
+from jobs.pipeline import PipelineConfig, PipelineOrchestrator, PipelineResult
 from jobs.scheduler import ManualTriggerGuard, ScheduledStage
 from modules.enrichment import EnrichmentService, EnrichmentServiceConfig
 from modules.enrichment.repositories import EnrichmentSource, EnrichmentStagingRepository
@@ -110,6 +112,9 @@ from modules.sync import BackendSyncWorker, SyncEventRepository
 
 SOURCE_CHOICES = ("all", "dealls", "glints", "jobstreet", "kalibrr")
 STAGE_CHOICES = ("full", "scrape", "normalize", "enrich", "sync", "notify-handoff")
+WIZARD_MODE_CHOICES = ("dry-run", "execute", "status", "verify", "staging-report")
+WIZARD_ENV_PRESET_CHOICES = (".env.example", ".env", ".env.production")
+SAFE_AUTO_APPROVE_ENVS = {"local", "test"}
 DEFAULT_FIXTURE_ROOT = Path("tests/fixtures/raw")
 PLATFORM_SOURCES = SOURCE_CHOICES[1:]
 SENSITIVE_TOKEN_PATTERN = re.compile(r"(bearer\s+)[^\s]+", re.IGNORECASE)
@@ -139,6 +144,8 @@ def command_check_name(command: str | None) -> str:
         "verify": "pipeline-verify",
         "staging-report": "staging-report",
         "preflight": "pipeline-preflight",
+        "wizard": "pipeline-wizard",
+        "quick-dry-run": "pipeline-quick-dry-run",
     }
     if command is None:
         return "pipeline-cli"
@@ -226,6 +233,48 @@ def build_parser() -> argparse.ArgumentParser:
     mode_group.add_argument("--dry-run", action="store_true")
     mode_group.add_argument("--execute", action="store_true")
     run_parser.set_defaults(command_handler=run_pipeline)
+
+    wizard_parser = subparsers.add_parser("wizard")
+    wizard_parser.add_argument("--mode", choices=WIZARD_MODE_CHOICES, default=None)
+    wizard_parser.add_argument("--stage", choices=STAGE_CHOICES, default=None)
+    wizard_parser.add_argument("--source", choices=SOURCE_CHOICES, default=None)
+    wizard_parser.add_argument("--limit", type=positive_int, default=None)
+    wizard_parser.add_argument("--keyword", action="append", default=None)
+    wizard_parser.add_argument("--keywords", default=None)
+    wizard_parser.add_argument("--latest", action="store_true")
+    wizard_parser.add_argument("--recency-days", type=recency_days, default=None)
+    wizard_parser.add_argument("--env-file", default=None)
+    wizard_parser.add_argument("--fixture-root", default=str(DEFAULT_FIXTURE_ROOT))
+    wizard_parser.add_argument("--run-id", default=None)
+    wizard_parser.add_argument("--database-url", default=None)
+    wizard_parser.add_argument("--scraper-database-url", default=None)
+    wizard_parser.add_argument("--backend-database-url", default=None)
+    wizard_parser.add_argument("--backend-base-url", default=None)
+    wizard_parser.add_argument("--backend-token", default=None)
+    wizard_parser.add_argument("--sample-per-source", type=positive_sample_size, default=1)
+    wizard_parser.add_argument("--stage-p95-threshold-ms", type=positive_metric_value, default=None)
+    wizard_parser.add_argument("--ai-p95-threshold-ms", type=positive_metric_value, default=None)
+    wizard_parser.add_argument("--sync-p95-threshold-ms", type=positive_metric_value, default=None)
+    wizard_parser.add_argument("--retry-threshold", type=non_negative_metric_value, default=None)
+    wizard_parser.add_argument("--glints-partial-min-rate", type=ratio_0_to_1, default=0.95)
+    wizard_parser.add_argument("--glints-partial-max-rate", type=ratio_0_to_1, default=1.0)
+    wizard_parser.add_argument("--dry-run", action="store_true")
+    wizard_parser.add_argument("--execute", action="store_true")
+    wizard_parser.add_argument("--yes", action="store_true")
+    wizard_parser.set_defaults(command_handler=run_wizard)
+
+    quick_dry_run_parser = subparsers.add_parser("quick-dry-run")
+    quick_dry_run_parser.add_argument("--stage", choices=STAGE_CHOICES, default="full")
+    quick_dry_run_parser.add_argument("--source", choices=SOURCE_CHOICES, default="all")
+    quick_dry_run_parser.add_argument("--limit", type=positive_int, default=1)
+    quick_dry_run_parser.add_argument("--keyword", action="append", default=None)
+    quick_dry_run_parser.add_argument("--keywords", default=None)
+    quick_dry_run_parser.add_argument("--latest", action="store_true")
+    quick_dry_run_parser.add_argument("--recency-days", type=recency_days, default=None)
+    quick_dry_run_parser.add_argument("--env-file", default=".env.example")
+    quick_dry_run_parser.add_argument("--fixture-root", default=str(DEFAULT_FIXTURE_ROOT))
+    quick_dry_run_parser.add_argument("--run-id", default=None)
+    quick_dry_run_parser.set_defaults(command_handler=run_quick_dry_run)
 
     status_parser = subparsers.add_parser("status")
     status_parser.add_argument("--run-id", required=True)
@@ -324,6 +373,468 @@ async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "reason": "pipeline produced no output",
             "stage": args.stage,
         }
+
+
+async def run_quick_dry_run(args: argparse.Namespace) -> dict[str, Any]:
+    run_args = argparse.Namespace(
+        stage=args.stage,
+        source=args.source,
+        limit=args.limit,
+        keyword=args.keyword,
+        keywords=args.keywords,
+        latest=args.latest,
+        recency_days=args.recency_days,
+        env_file=args.env_file,
+        fixture_root=args.fixture_root,
+        run_id=args.run_id,
+        dry_run=True,
+        execute=False,
+    )
+    return await run_pipeline(run_args)
+
+
+async def run_wizard(args: argparse.Namespace) -> dict[str, Any]:
+    selected_mode = resolve_wizard_mode(args)
+    interactive_tty = wizard_tty_available()
+
+    if not interactive_tty:
+        return await run_wizard_non_tty(args, selected_mode)
+
+    mode = selected_mode or wizard_prompt_choice(
+        "Select mode",
+        WIZARD_MODE_CHOICES,
+        default="dry-run",
+    )
+    env_file = args.env_file or wizard_prompt_env_file(default=".env.example")
+    settings = load_settings(env_file)
+
+    if mode in {"dry-run", "execute"}:
+        run_args = wizard_build_run_args(
+            args=args,
+            mode=mode,
+            env_file=env_file,
+            settings=settings,
+            interactive=True,
+        )
+        preview = wizard_run_preview(run_args=run_args, settings=settings)
+        wizard_emit_summary(preview)
+        wizard_require_confirmation(
+            preview=preview,
+            interactive=True,
+            auto_approve=args.yes,
+        )
+        run_result = await run_pipeline(run_args)
+        return wizard_wrap_pipeline_result(
+            mode=mode,
+            preview=preview,
+            run_result=run_result,
+        )
+
+    if mode in {"status", "verify"}:
+        run_id = args.run_id or wizard_prompt_text("Run id")
+        command_args = argparse.Namespace(
+            run_id=run_id,
+            env_file=env_file,
+            database_url=args.database_url,
+        )
+        result = await (run_status(command_args) if mode == "status" else run_verify(command_args))
+        return wizard_wrap_read_result(mode=mode, result=result)
+
+    if mode == "staging-report":
+        run_id = args.run_id or wizard_prompt_text("Run id")
+        command_args = argparse.Namespace(
+            run_id=run_id,
+            env_file=env_file,
+            scraper_database_url=args.scraper_database_url,
+            backend_database_url=args.backend_database_url,
+            backend_base_url=args.backend_base_url,
+            backend_token=args.backend_token,
+            sample_per_source=args.sample_per_source,
+            stage_p95_threshold_ms=args.stage_p95_threshold_ms,
+            ai_p95_threshold_ms=args.ai_p95_threshold_ms,
+            sync_p95_threshold_ms=args.sync_p95_threshold_ms,
+            retry_threshold=args.retry_threshold,
+            glints_partial_min_rate=args.glints_partial_min_rate,
+            glints_partial_max_rate=args.glints_partial_max_rate,
+        )
+        result = await run_staging_report(command_args)
+        return wizard_wrap_read_result(mode=mode, result=result)
+
+    raise CliInputError(f"unsupported wizard mode: {mode}")
+
+
+async def run_wizard_non_tty(
+    args: argparse.Namespace,
+    selected_mode: str | None,
+) -> dict[str, Any]:
+    mode = selected_mode or "dry-run"
+    if mode != "dry-run":
+        raise CliInputError(
+            "wizard requires TTY for mode other than dry-run. "
+            "Use regular subcommands (run/status/verify/staging-report) in non-interactive mode."
+        )
+    if args.execute:
+        raise CliInputError("wizard non-TTY does not allow --execute")
+    if not args.yes:
+        raise CliInputError("wizard non-TTY requires --yes for safe dry-run execution")
+
+    env_file = args.env_file or ".env.example"
+    settings = load_settings(env_file)
+    run_args = wizard_build_run_args(
+        args=args,
+        mode="dry-run",
+        env_file=env_file,
+        settings=settings,
+        interactive=False,
+    )
+    preview = wizard_run_preview(run_args=run_args, settings=settings)
+    wizard_require_confirmation(
+        preview=preview,
+        interactive=False,
+        auto_approve=True,
+    )
+    run_result = await run_pipeline(run_args)
+    return wizard_wrap_pipeline_result(
+        mode="dry-run",
+        preview=preview,
+        run_result=run_result,
+    )
+
+
+def resolve_wizard_mode(args: argparse.Namespace) -> str | None:
+    if args.mode is not None and (args.dry_run or args.execute):
+        raise CliInputError("wizard mode conflict: use either --mode or --dry-run/--execute")
+    if args.dry_run and args.execute:
+        raise CliInputError("wizard mode conflict: --dry-run and --execute are mutually exclusive")
+    if args.mode is not None:
+        return args.mode
+    if args.execute:
+        return "execute"
+    if args.dry_run:
+        return "dry-run"
+    return None
+
+
+def wizard_tty_available() -> bool:
+    stdin_ready = bool(getattr(sys.stdin, "isatty", lambda: False)())
+    stdout_ready = bool(getattr(sys.stdout, "isatty", lambda: False)())
+    return stdin_ready and stdout_ready
+
+
+def wizard_prompt_env_file(*, default: str) -> str:
+    use_preset = wizard_prompt_yes_no(
+        "Use preset env file list?",
+        default=True,
+    )
+    if use_preset:
+        return wizard_prompt_choice(
+            "Select env file",
+            WIZARD_ENV_PRESET_CHOICES,
+            default=default,
+        )
+    return wizard_prompt_text("Custom env file path", default=default)
+
+
+def wizard_build_run_args(
+    *,
+    args: argparse.Namespace,
+    mode: str,
+    env_file: str,
+    settings: Settings,
+    interactive: bool,
+) -> argparse.Namespace:
+    stage = args.stage or (
+        wizard_prompt_choice("Select stage", STAGE_CHOICES, default="full")
+        if interactive
+        else "full"
+    )
+    source = args.source or (
+        wizard_prompt_choice("Select source", SOURCE_CHOICES, default="all")
+        if interactive
+        else "all"
+    )
+    limit = args.limit
+    if limit is None:
+        default_limit = settings.scraper_max_items_per_keyword
+        limit = (
+            wizard_prompt_int("Limit per keyword", default=default_limit)
+            if interactive
+            else default_limit
+        )
+    recency_days_value = args.recency_days
+    if recency_days_value is None:
+        recency_days_value = (
+            wizard_prompt_int("Recency days", default=settings.scraper_recency_days)
+            if interactive
+            else settings.scraper_recency_days
+        )
+
+    keyword = args.keyword
+    keywords = args.keywords
+    if keyword is None and keywords is None and interactive:
+        use_env_keywords = wizard_prompt_yes_no(
+            f"Use env keyword preset ({', '.join(settings.scraper_keywords)})?",
+            default=True,
+        )
+        if not use_env_keywords:
+            keywords = wizard_prompt_text("Custom keywords (comma-separated)")
+
+    run_id = args.run_id
+    if interactive and not run_id:
+        if wizard_prompt_yes_no("Set custom run id?", default=False):
+            run_id = wizard_prompt_text("Run id")
+
+    return argparse.Namespace(
+        stage=stage,
+        source=source,
+        limit=limit,
+        keyword=keyword,
+        keywords=keywords,
+        latest=args.latest,
+        recency_days=recency_days_value,
+        env_file=env_file,
+        fixture_root=args.fixture_root,
+        run_id=run_id,
+        dry_run=mode == "dry-run",
+        execute=mode == "execute",
+    )
+
+
+def wizard_run_preview(*, run_args: argparse.Namespace, settings: Settings) -> dict[str, Any]:
+    source_selection = select_sources(
+        source=run_args.source,
+        settings=settings,
+        execute=run_args.execute,
+    )
+    keywords = resolve_keywords(run_args, settings)
+    backend_mode = backend_sync_mode(settings, execute=run_args.execute)
+    env_name = settings.app_env.value
+    risks: list[str] = []
+    if run_args.execute:
+        risks.append("execute mode mutates scraper database and may call live source APIs")
+    if env_name in {"staging", "production"}:
+        risks.append(f"environment is {env_name}")
+    if settings.backend_sync_enabled:
+        risks.append("BACKEND_SYNC_ENABLED=true (live backend sync/handoff)")
+    if (
+        run_args.execute
+        and "jobstreet" in source_selection.executed
+        and settings.jobstreet_enabled
+        and settings.jobstreet_bearer_token is not None
+    ):
+        risks.append("JobStreet live token will be used")
+    if run_args.execute and settings.ai_enrichment_enabled:
+        risks.append("AI enrichment is enabled")
+
+    run_tokens = build_run_command_tokens(run_args)
+    mutation_scope = "read-only fixture flow"
+    if run_args.execute:
+        mutation_scope = "source fetch + scraper DB write"
+        if settings.backend_sync_enabled:
+            mutation_scope += " + backend sync/handoff"
+
+    return {
+        "mode": "execute" if run_args.execute else "dry-run",
+        "envFile": run_args.env_file,
+        "env": env_name,
+        "stage": run_args.stage,
+        "source": run_args.source,
+        "keywords": list(keywords),
+        "limit": run_args.limit,
+        "recencyMode": "latest" if run_args.latest else settings.scraper_recency_mode.value,
+        "recencyDays": run_args.recency_days,
+        "requestedSources": list(source_selection.requested),
+        "executedSources": list(source_selection.executed),
+        "skippedSources": list(source_selection.skipped),
+        "commandEquivalent": shlex.join(run_tokens),
+        "scraperDatabaseUrl": redact_database_url(settings.scraper_database_url),
+        "backendSyncMode": backend_mode,
+        "backendTarget": settings.backend_sync_base_url,
+        "expectedMutationScope": mutation_scope,
+        "risks": risks,
+    }
+
+
+def wizard_require_confirmation(
+    *,
+    preview: dict[str, Any],
+    interactive: bool,
+    auto_approve: bool,
+) -> None:
+    risks = preview["risks"]
+    if not risks:
+        if auto_approve:
+            return
+        if not interactive:
+            raise CliInputError("wizard non-TTY safe dry-run requires --yes")
+        return
+
+    if not interactive:
+        raise CliInputError(
+            "wizard non-TTY cannot bypass risk confirmation. Use interactive TTY for this run."
+        )
+    confirmation = wizard_prompt_text("Type YES to continue", default="")
+    if confirmation != "YES":
+        raise CliInputError("confirmation rejected; wizard run cancelled")
+
+
+def wizard_wrap_pipeline_result(
+    *,
+    mode: str,
+    preview: dict[str, Any],
+    run_result: dict[str, Any],
+) -> dict[str, Any]:
+    source_counts: dict[str, dict[str, int]] = {}
+    for source_row in run_result.get("sources", []):
+        source_name = source_row.get("source")
+        counts = source_row.get("counts")
+        if not isinstance(source_name, str) or not isinstance(counts, dict):
+            continue
+        aggregate = source_counts.setdefault(
+            source_name,
+            {"fetched": 0, "parsed": 0, "normalized": 0, "persisted": 0, "skipped": 0},
+        )
+        for key in aggregate:
+            value = counts.get(key)
+            if isinstance(value, int):
+                aggregate[key] += value
+    run_id = run_result.get("runId")
+    env_file = preview.get("envFile")
+    verify_command = (
+        (
+            f"PYTHONPATH=src uv run python -m cli.pipeline verify --run-id {run_id} "
+            f"--env-file {env_file}"
+        )
+        if isinstance(run_id, str) and run_id and isinstance(env_file, str) and env_file
+        else None
+    )
+    return {
+        "check": "pipeline-wizard",
+        "status": run_result.get("status", "fail"),
+        "mode": mode,
+        "summary": preview,
+        "result": run_result,
+        "friendly": {
+            "status": run_result.get("runStatus"),
+            "runId": run_id,
+            "sourceCounts": source_counts,
+            "skippedSources": run_result.get("skippedSources", []),
+            "nextSuggestedAction": (
+                "Review failed/skipped sources before execute run"
+                if run_result.get("status") != "ok"
+                else "Run verify for deterministic evidence"
+            ),
+            "verifyCommand": verify_command,
+        },
+    }
+
+
+def wizard_emit_summary(preview: dict[str, Any]) -> None:
+    print("Wizard summary:", file=sys.stderr)
+    print(json.dumps(preview, indent=2, sort_keys=True), file=sys.stderr)
+
+
+def wizard_wrap_read_result(*, mode: str, result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "check": "pipeline-wizard",
+        "status": result.get("status", "fail"),
+        "mode": mode,
+        "result": result,
+        "friendly": {
+            "status": result.get("status"),
+            "runId": result.get("runId"),
+            "nextSuggestedAction": (
+                "Inspect failed checks and rerun with corrected inputs"
+                if result.get("status") != "ok"
+                else "Capture output as verification evidence"
+            ),
+        },
+    }
+
+
+def build_run_command_tokens(args: argparse.Namespace) -> list[str]:
+    tokens = ["python", "-m", "cli.pipeline", "run"]
+    tokens.extend(["--stage", args.stage])
+    tokens.extend(["--source", args.source])
+    if args.limit is not None:
+        tokens.extend(["--limit", str(args.limit)])
+    for keyword in args.keyword or []:
+        tokens.extend(["--keyword", keyword])
+    if args.keywords:
+        tokens.extend(["--keywords", args.keywords])
+    if args.latest:
+        tokens.append("--latest")
+    if args.recency_days is not None:
+        tokens.extend(["--recency-days", str(args.recency_days)])
+    if args.env_file:
+        tokens.extend(["--env-file", args.env_file])
+    if args.fixture_root:
+        tokens.extend(["--fixture-root", args.fixture_root])
+    if args.run_id:
+        tokens.extend(["--run-id", args.run_id])
+    tokens.append("--execute" if args.execute else "--dry-run")
+    return tokens
+
+
+def wizard_prompt_choice(prompt: str, choices: Sequence[str], *, default: str) -> str:
+    if default not in choices:
+        raise CliInputError(f"internal wizard error: default '{default}' is not in choices")
+    options = ", ".join(f"{index + 1}:{choice}" for index, choice in enumerate(choices))
+    while True:
+        raw = wizard_prompt_text(f"{prompt} ({options})", default=str(choices.index(default) + 1))
+        if raw.isdigit():
+            index = int(raw) - 1
+            if 0 <= index < len(choices):
+                return choices[index]
+        normalized = raw.strip().lower()
+        for choice in choices:
+            if normalized == choice.lower():
+                return choice
+        print(f"Invalid choice '{raw}'.", file=sys.stderr)
+
+
+def wizard_prompt_yes_no(prompt: str, *, default: bool) -> bool:
+    suffix = "Y/n" if default else "y/N"
+    while True:
+        raw = wizard_prompt_text(f"{prompt} ({suffix})", default="" if not default else "y").lower()
+        if not raw:
+            return default
+        if raw in {"y", "yes"}:
+            return True
+        if raw in {"n", "no"}:
+            return False
+        print("Please answer yes or no.", file=sys.stderr)
+
+
+def wizard_prompt_int(prompt: str, *, default: int) -> int:
+    while True:
+        raw = wizard_prompt_text(prompt, default=str(default))
+        try:
+            value = int(raw)
+        except ValueError:
+            print("Input must be an integer.", file=sys.stderr)
+            continue
+        if value <= 0:
+            print("Input must be greater than zero.", file=sys.stderr)
+            continue
+        return value
+
+
+def wizard_prompt_text(prompt: str, default: str | None = None) -> str:
+    suffix = f" [{default}]" if default else ""
+    print(f"{prompt}{suffix}: ", end="", file=sys.stderr)
+    try:
+        raw = input()
+    except EOFError as exc:
+        raise CliInputError("interactive input ended unexpectedly (EOF)") from exc
+    except OSError as exc:
+        raise CliInputError("interactive input is unavailable in this environment") from exc
+    value = raw.strip()
+    if not value and default is not None:
+        return default
+    if not value:
+        raise CliInputError(f"{prompt} must not be empty")
+    return value
 
 
 async def run_preflight(args: argparse.Namespace) -> dict[str, Any]:
@@ -1273,6 +1784,12 @@ class ManualPipelineRunner:
         self.output: dict[str, Any] | None = None
         self.stage_run_ids: dict[str, str] = {}
 
+    def emit_progress(self, message: str) -> None:
+        if not self.execute:
+            return
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        print(f"[{timestamp}] {message}", file=sys.stderr, flush=True)
+
     async def run_stage(self, stage: ScheduledStage) -> None:
         stage_value = self.stage
         if self.run_id and stage_value == "full":
@@ -1280,10 +1797,21 @@ class ManualPipelineRunner:
         else:
             run_id_prefix = self.run_id
         orchestrator = self.build_orchestrator()
+        self.emit_progress(
+            "pipeline start "
+            f"stage={stage_value} source={self.source} "
+            f"keywords={len(self.keywords)} limit={self.limit}"
+        )
         if stage_value == "full":
             result = await self.run_full(orchestrator, run_id_prefix=run_id_prefix)
         else:
+            self.emit_progress(f"stage start stage={stage_value}")
             result = await orchestrator.run_stage(stage_value, run_id=run_id_prefix)
+            self.emit_progress(
+                "stage done "
+                f"stage={stage_value} status={result.status} "
+                f"counts={result.counts.model_dump()}"
+            )
         self.output = output_from_result(
             result,
             stage=stage_value,
@@ -1334,12 +1862,12 @@ class ManualPipelineRunner:
                         source=EnrichmentSource.SOURCE,
                     )
                 self.session.commit()
-                return RunCounts(
-                    fetched=len(jobs),
-                    parsed=len(jobs),
-                    normalized=len(jobs),
-                    persisted=len(jobs),
-                )
+            return RunCounts(
+                fetched=len(jobs),
+                parsed=len(jobs),
+                normalized=len(jobs),
+                persisted=len(jobs),
+            )
 
             service = EnrichmentService(
                 session=self.session,
@@ -1358,13 +1886,23 @@ class ManualPipelineRunner:
             )
             succeeded = 0
             failed = 0
-            for job in jobs:
+            total_jobs = len(jobs)
+            self.emit_progress(f"enrich start jobs={total_jobs}")
+            for index, job in enumerate(jobs, start=1):
+                self.emit_progress(f"enrich job start index={index}/{total_jobs} job_id={job.id}")
                 result = await service.enrich_one(job, scrape_run_id=run_id)
                 if result.status == "success":
                     succeeded += 1
                 else:
                     failed += 1
+                self.emit_progress(
+                    "enrich job done "
+                    f"index={index}/{total_jobs} job_id={job.id} status={result.status}"
+                )
             self.session.commit()
+            self.emit_progress(
+                f"enrich done jobs={total_jobs} succeeded={succeeded} failed={failed}"
+            )
             return RunCounts(
                 fetched=len(jobs),
                 parsed=len(jobs),
@@ -1380,12 +1918,16 @@ class ManualPipelineRunner:
                 events=SyncEventRepository(self.session),
             )
             max_jobs = self.limit * len(self.source_selection.executed) * len(self.keywords)
+            self.emit_progress(f"sync start limit={max_jobs}")
             result = await worker.sync_eligible_jobs(
                 scrape_run_id=run_id,
                 limit=max_jobs,
                 batch_size=min(max_jobs, 100),
             )
             self.session.commit()
+            self.emit_progress(
+                f"sync done attempted={result.attempted} sent={result.sent} failed={result.failed}"
+            )
             sync_run_id["value"] = run_id
             return RunCounts(fetched=result.attempted, persisted=result.sent, skipped=result.failed)
 
@@ -1395,10 +1937,15 @@ class ManualPipelineRunner:
                 repository=NotificationHandoffRepository(self.session),
                 client=handoff_client,
             )
+            self.emit_progress("notify-handoff start")
             result = await worker.handoff_synced_jobs(
                 scrape_run_id=sync_run_id.get("value", run_id)
             )
             self.session.commit()
+            self.emit_progress(
+                "notify-handoff done "
+                f"attempted={result.attempted} sent={result.sent} failed={result.failed}"
+            )
             return RunCounts(fetched=result.attempted, persisted=result.sent, skipped=result.failed)
 
         return PipelineOrchestrator(
@@ -1419,6 +1966,14 @@ class ManualPipelineRunner:
                 RunStage.SYNC.value: sync_hook,
                 RunStage.NOTIFY_HANDOFF.value: handoff_hook,
             },
+            config=PipelineConfig(
+                max_concurrency_per_source=self.settings.worker_concurrency,
+                ai_normalization_batch_size=self.settings.openai_normalization_batch_size,
+                ai_normalization_inter_batch_delay_ms=(
+                    self.settings.openai_normalization_inter_batch_delay_ms
+                ),
+                progress_hook=self.emit_progress if self.execute else None,
+            ),
             correlation_id_factory=lambda: "manual-pipeline",
             ai_normalization_client=ai_normalization_client,
         )
@@ -1444,14 +1999,38 @@ class ManualPipelineRunner:
         *,
         run_id_prefix: str | None,
     ) -> PipelineResult:
+        self.emit_progress("stage start stage=scrape")
         scrape = await orchestrator.run_scrape(run_id=suffixed_run_id(run_id_prefix, "scrape"))
+        self.emit_progress(
+            f"stage done stage=scrape status={scrape.status} counts={scrape.counts.model_dump()}"
+        )
+        self.emit_progress("stage start stage=normalize")
         normalize = await orchestrator.run_normalize(
             run_id=suffixed_run_id(run_id_prefix, "normalize")
         )
+        self.emit_progress(
+            "stage done "
+            f"stage=normalize status={normalize.status} "
+            f"counts={normalize.counts.model_dump()}"
+        )
+        self.emit_progress("stage start stage=enrich")
         enrich = await orchestrator.run_enrich(run_id=suffixed_run_id(run_id_prefix, "enrich"))
+        self.emit_progress(
+            f"stage done stage=enrich status={enrich.status} counts={enrich.counts.model_dump()}"
+        )
+        self.emit_progress("stage start stage=sync")
         sync = await orchestrator.run_sync(run_id=suffixed_run_id(run_id_prefix, "sync"))
+        self.emit_progress(
+            f"stage done stage=sync status={sync.status} counts={sync.counts.model_dump()}"
+        )
+        self.emit_progress("stage start stage=notify-handoff")
         notify = await orchestrator.run_notify_handoff(
             run_id=suffixed_run_id(run_id_prefix, "notify")
+        )
+        self.emit_progress(
+            "stage done "
+            f"stage=notify-handoff status={notify.status} "
+            f"counts={notify.counts.model_dump()}"
         )
         self.stage_run_ids = {
             "scrape": scrape.run_id,

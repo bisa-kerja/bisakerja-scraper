@@ -95,7 +95,34 @@ class EnrichmentService:
         *,
         scrape_run_id: str | None = None,
     ) -> EnrichmentJobResult:
-        request = enrichment_input_from_job(job)
+        try:
+            request = enrichment_input_from_job(job)
+        except Exception as exc:  # noqa: BLE001
+            fallback_request = failed_request_input()
+            log = self.logs.create(
+                AIRequestLogInput(
+                    normalized_job_id=job.id,
+                    scrape_run_id=scrape_run_id,
+                    provider=self.config.provider,
+                    model=self.config.model or getattr(self.client, "model", "unknown"),
+                    base_url=self.config.base_url,
+                    latency_ms=0,
+                    status=AIRequestStatus.FAILED,
+                    retry_count=0,
+                    request=fallback_request,
+                    response_summary={"errorCategory": error_category(exc)},
+                    error_category=error_category(exc),
+                    error_message=str(exc),
+                )
+            )
+            return EnrichmentJobResult(
+                normalized_job_id=job.id,
+                status="failed",
+                ai_request_log_id=log.id,
+                error_category=error_category(exc),
+                error_message=str(exc),
+            )
+
         started = time.perf_counter()
         retry_count = 0
         last_error: Exception | None = None
@@ -192,3 +219,13 @@ def is_retryable(exc: Exception) -> bool:
 
 def error_category(exc: Exception) -> str:
     return str(getattr(exc, "code", exc.__class__.__name__))
+
+
+def failed_request_input() -> EnrichmentJobInput:
+    return EnrichmentJobInput(
+        title="unavailable title",
+        description=None,
+        requirements=None,
+        company="unavailable company",
+        source="unavailable source",
+    )

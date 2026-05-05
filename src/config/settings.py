@@ -117,6 +117,16 @@ class Settings(BaseSettings):
     openai_timeout_seconds: float = Field(validation_alias="OPENAI_TIMEOUT_SECONDS", gt=0)
     openai_max_retries: int = Field(validation_alias="OPENAI_MAX_RETRIES", ge=0, le=10)
     openai_batch_size: int = Field(validation_alias="OPENAI_BATCH_SIZE", ge=1, le=100)
+    openai_normalization_batch_size: int = Field(
+        validation_alias="OPENAI_NORMALIZATION_BATCH_SIZE",
+        ge=1,
+        le=50,
+    )
+    openai_normalization_inter_batch_delay_ms: int = Field(
+        validation_alias="OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS",
+        ge=0,
+        le=60000,
+    )
 
     dealls_base_url: NonEmptyStr = Field(validation_alias="DEALLS_BASE_URL")
     dealls_rate_limit_per_minute: int = Field(

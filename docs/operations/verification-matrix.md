@@ -25,16 +25,17 @@ This matrix defines the minimum evidence needed before scraper docs, code, or op
 | JobStreet adapter | GraphQL list and detail fixtures parsed without real auth | Missing bearer token is classified as config error and request bodies omit auth/session captures | Contract test result |
 | Kalibrr adapter | Next.js build id is resolved and cached from page data | Stale `buildId` 404 refreshes and retries data request | Unit test result |
 | Raw store | Redacted payload metadata stored | Unsafe header cannot be persisted | Redaction test |
-| Normalizer | Canonical job fields, salary ranges, and UTC posted dates produced | Relative date labels do not become fake timestamps | Mapper and unit test result |
+| Normalizer | Canonical job fields, salary ranges, and UTC posted dates produced | Relative date labels do not become fake timestamps; batch output order and item identity must match input | Mapper and unit test result |
 | Quarantine | Malformed raw records are held with safe error metadata | Quarantined records are excluded from sync | Unit or contract test result |
 | Deduplicator | Existing job updates by source identity | Missing identity quarantines and identity collision is surfaced | Dedup test |
-| Enrichment | Skills and requirements added from clean text | Timeout creates retry/dead letter | Worker test or run log |
+| Enrichment | Skills and requirements added from clean text | Timeout creates retry/dead letter; invalid input is failed per-item without aborting full stage | Worker test or run log |
 | Persistence | Staging rows and sync batches write successfully | Batch error rolls back or isolates failed rows | DB integration test |
 | Freshness | `lastSeenAt` updates for seen jobs | Partial source run does not expire unseen jobs | Freshness test |
 | Sync | Main DB shape receives upsert-ready rows | Sync failure keeps staging recoverable | Sync dry-run/test |
 | Notification handoff | Sent sync events become job candidate events | Failed handoff remains retryable and never reads backend user tables | Handoff unit or E2E test |
 | AI audit | Sanitized request metadata and summaries are stored | API key, raw prompt, raw payload, headers, and tokens are not persisted | Unit test result |
 | Stage queue | Eligible jobs are claimed and completed | One failed claim increments attempt once, retries until max attempts, then dead-letter | Queue unit test result |
+| Operator wizard | Interactive operator flow builds valid run/status/verify/staging inputs | Non-TTY rejects risky execution and execute mode requires explicit `YES` confirmation | Smoke test result |
 | Docs sync | Bundle manifest maps docs deterministically | Path escape or missing metadata rejects bundle | Docs check result |
 
 ## Source Coverage Matrix
@@ -59,6 +60,7 @@ This matrix defines the minimum evidence needed before scraper docs, code, or op
 | Integration tests | Changed DB/sync behavior passes against isolated DB |
 | Smoke tests | Target runtime starts and processes fixture path |
 | Local preflight | `cli.pipeline preflight` passes env, migration target, source enablement, fixture availability, backend sync mode, and redaction checks |
+| Wizard safety | `cli.pipeline wizard` interactive dry-run passes, non-TTY safe dry-run requires `--yes`, and risky non-TTY run is rejected |
 | E2E fixture pipeline | Raw fixtures produce normalized, enriched, synced, and handed-off jobs without network |
 | Staging validation report | Stage counts, latency percentiles, retries, consistency checks, and backend read sampling pass configured gates |
 | Observability | Run logs include `runId`, source, stage, status, counts, and duration |

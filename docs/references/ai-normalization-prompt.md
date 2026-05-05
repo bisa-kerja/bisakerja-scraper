@@ -17,11 +17,14 @@ This contract defines how AI-generated normalized job output must be shaped befo
 
 Each normalization request includes:
 
-- `sourcePlatform`: source slug (`dealls`, `glints`, `jobstreet`, `kalibrr`).
-- `endpointType`: `list` or `detail`.
-- `rawPayloadSubset`: minimal source payload fragment used as evidence.
+- `inputItems[]`: batch items with:
+  - `itemId`: stable per-item identifier.
+  - `sourcePlatform`: source slug (`dealls`, `glints`, `jobstreet`, `kalibrr`).
+  - `endpointType`: `list` or `detail`.
+  - `rawPayloadSubset`: minimal source payload fragment used as evidence.
 - `targetSchema`: canonical output contract name.
 - `targetJsonSchema`: JSON schema generated from `CanonicalJobSchema`.
+- `batchOutputJsonSchema`: JSON schema generated from `AINormalizationBatchOutput`.
 - `backendSchemaContext`: embedded backend schema alignment rules.
 - `standaloneSchemaBlueprint`: standalone canonical blueprint (type, required fields, defaults, constraints).
 - `normalizationOutputExamples`: valid list/detail output examples.
@@ -31,7 +34,11 @@ Each normalization request includes:
 The normalization system prompt enforces:
 
 - AI acts as strict normalizer, not copywriter.
-- Output must be one JSON object matching schema exactly.
+- Output must be one JSON object with `results[]`.
+- `results[]` length and order must match `inputItems[]`.
+- Every `results[]` item must keep `itemId` and return either:
+  - `normalizedJob`, or
+  - `errorCode` + `errorMessage`.
 - No invented facts outside `rawPayloadSubset`.
 - HTML fields are normalized into safe plain text.
 - Salary parsing may use numeric fields or salary labels.
@@ -46,24 +53,42 @@ Implementation source: `src/modules/jobs/ai_normalization.py`.
 
 AI output is accepted only when:
 
-1. It parses into `CanonicalJobSchema`.
-2. Default normalization pass succeeds:
+1. It parses into `AINormalizationBatchOutput`.
+2. Output item order and `itemId` exactly match input order and identity.
+3. Every successful item parses into `CanonicalJobSchema`.
+4. Default normalization pass succeeds:
    - `external_apply_url` fallback is resolved.
    - salary values are normalized using shared salary parser.
    - HTML-like text fields are cleaned.
    - location display fallback is derived from city/region/country.
-3. Source policy checks pass:
+5. Source policy checks pass:
    - Glints list payloads without detail evidence must not contain `description` or `requirements`.
 
 Rejected output raises `AINormalizationContractError`.
 
+## Partial Item Policy
+
+Batch response uses per-item partial handling:
+
+- one item error must not fail the full batch response shape.
+- when `ai_normalization_fail_open=true`, failed items fall back to mapper output.
+- when `ai_normalization_fail_open=false`, failed items are quarantined.
+
+Supported batch error codes:
+
+- `INSUFFICIENT_EVIDENCE`
+- `UNSUPPORTED_PAYLOAD`
+
 ## Pipeline Integration
 
 - `PipelineOrchestrator` uses source mapper output as baseline.
-- When an AI normalization client is configured, orchestrator requests AI normalization per job.
-- Success path: AI result replaces baseline mapper result.
-- Failure path (default): fail-open fallback to mapper output.
-- Optional fail-closed mode quarantines normalization failures.
+- Execute normalize stage groups records into serial batches.
+- Batch size is controlled by `OPENAI_NORMALIZATION_BATCH_SIZE` (default `5`).
+- Fixed inter-batch delay is controlled by `OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS` and is always applied between batches.
+- Success path: AI per-item result replaces baseline mapper result.
+- Failure path:
+  - fail-open mode persists mapper fallback.
+  - fail-closed mode quarantines only failed items.
 
 ## Format Repair Policy
 
@@ -104,6 +129,8 @@ Contract tests:
 
 - OpenAI Structured Outputs:
   - `https://developers.openai.com/api/docs/guides/structured-outputs`
+- OpenAI rate-limit handling guidance:
+  - `https://developers.openai.com/cookbook/examples/how_to_handle_rate_limits`
 - Pydantic model validation:
   - `https://docs.pydantic.dev/latest/concepts/models/`
   - `https://docs.pydantic.dev/latest/concepts/json/`

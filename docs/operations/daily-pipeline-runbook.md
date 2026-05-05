@@ -55,7 +55,15 @@ PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage sync
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage notify-handoff
 ```
 
-Use the pipeline command for an operator-style end-to-end dry run. Use explicit `--dry-run` mode with sanitized fixtures and an in-memory database, so it does not mutate staging or production data.
+Use the wizard command as the primary operator entrypoint. It guides mode, stage, source, keyword preset, limit, recency, env file, and optional run id, then prints a redacted pre-run summary and risk gates.
+
+```bash
+PYTHONPATH=src uv run python -m cli.pipeline wizard
+PYTHONPATH=src uv run python -m cli.pipeline wizard --dry-run --source dealls --stage scrape --limit 1 --env-file .env.example --yes
+PYTHONPATH=src uv run python -m cli.pipeline quick-dry-run --source all --stage full --env-file .env.example
+```
+
+Use the run command for explicit scripted flows. Use `--dry-run` mode with sanitized fixtures and an in-memory database, so it does not mutate staging or production data.
 
 ```bash
 PYTHONPATH=src uv run python -m cli.pipeline preflight --stage full --source all --dry-run --env-file .env.example
@@ -93,6 +101,9 @@ Pipeline command rules:
 - When keyword flags are absent, the command uses `SCRAPER_KEYWORDS`.
 - `--latest` forces latest retrieval mode.
 - `--recency-days` must be between `1` and `365`; when absent, the command uses `SCRAPER_RECENCY_DAYS`.
+- `wizard` mode menu supports `dry-run`, `execute`, `status`, `verify`, and `staging-report`.
+- `wizard` risk confirmation requires exact `YES`; default enter must reject risky runs.
+- `wizard --yes` is only valid for non-TTY safe dry-run and must not bypass risky confirmation gates.
 - Dry-run output is compact JSON and must not print service tokens, bearer tokens, cookies, raw headers, database passwords, or raw payload bodies.
 - Dry-run output includes `requestedSources`, `executedSources`, and `skippedSources` so operators can see disabled-source skips explicitly.
 - `preflight` validates env loading, migration target head, source enablement, fixture availability, backend sync mode, and redacted evidence preview before an operator run.
@@ -104,6 +115,9 @@ Pipeline command rules:
 - Deployed scheduler stage runs use deterministic day-based ids (`scheduled-YYYYMMDD-<stage>`). Completed day-stage rows are skipped; failed or partial rows run with retry ids (`scheduled-YYYYMMDD-<stage>-retry-XX`).
 - `verify` summarizes run rows, raw and normalized counts, source/keyword counts, sync and handoff counts, duplicate identity counts, and latest metadata without printing raw payloads or secrets.
 - `staging-report` adds staging evidence checks for latency percentiles, retries, quarantine distribution, backend relation consistency, and backend read-path sampling.
+- Normalize stage AI processing is serial per batch (`OPENAI_NORMALIZATION_BATCH_SIZE`) and always waits fixed inter-batch delay (`OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS`).
+- Normalize and enrich stages use per-item partial handling; one failed item does not stop the whole stage.
+- Execute mode streams progress logs to `stderr`; machine-readable final JSON stays on `stdout`.
 - Stage run-id derivation accepts base IDs and stage-suffixed IDs, including `-notify` and `-notify-handoff`.
 - Source HTTP circuit breaker is retryable and auto-recovers after cooldown; if still open after repeated cooldown windows, treat as active incident and escalate.
 

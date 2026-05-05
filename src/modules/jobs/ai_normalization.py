@@ -41,6 +41,82 @@ class AINormalizationPromptInput(BaseModel):
         return self
 
 
+class AINormalizationBatchPromptItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, serialize_by_alias=True)
+
+    item_id: str = Field(
+        min_length=1,
+        validation_alias="itemId",
+        serialization_alias="itemId",
+    )
+    source_platform: SourcePlatform = Field(
+        validation_alias="sourcePlatform",
+        serialization_alias="sourcePlatform",
+    )
+    endpoint_type: NormalizationEndpointType = Field(
+        validation_alias="endpointType",
+        serialization_alias="endpointType",
+    )
+    raw_payload_subset: dict[str, Any] = Field(
+        validation_alias="rawPayloadSubset",
+        serialization_alias="rawPayloadSubset",
+    )
+
+    @model_validator(mode="after")
+    def validate_raw_payload_subset(self) -> AINormalizationBatchPromptItem:
+        if not self.raw_payload_subset:
+            raise ValueError("rawPayloadSubset must not be empty")
+        return self
+
+
+class AINormalizationBatchPromptInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, serialize_by_alias=True)
+
+    items: list[AINormalizationBatchPromptItem] = Field(min_length=1, max_length=50)
+    target_schema: str = Field(default="CanonicalJobSchema", serialization_alias="targetSchema")
+
+
+class AINormalizationBatchItemResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, serialize_by_alias=True)
+
+    item_id: str = Field(
+        min_length=1,
+        validation_alias="itemId",
+        serialization_alias="itemId",
+    )
+    normalized_job: CanonicalJobSchema | None = Field(
+        default=None,
+        validation_alias="normalizedJob",
+        serialization_alias="normalizedJob",
+    )
+    error_code: str | None = Field(
+        default=None,
+        validation_alias="errorCode",
+        serialization_alias="errorCode",
+    )
+    error_message: str | None = Field(
+        default=None,
+        validation_alias="errorMessage",
+        serialization_alias="errorMessage",
+    )
+
+    @model_validator(mode="after")
+    def validate_partial_result(self) -> AINormalizationBatchItemResult:
+        has_job = self.normalized_job is not None
+        has_error = bool(self.error_code and self.error_message)
+        if has_job and has_error:
+            raise ValueError("batch result item cannot include both normalizedJob and error")
+        if not has_job and not has_error:
+            raise ValueError("batch result item must include normalizedJob or error")
+        return self
+
+
+class AINormalizationBatchOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, serialize_by_alias=True)
+
+    results: list[AINormalizationBatchItemResult] = Field(min_length=1)
+
+
 class AINormalizationContractError(ValueError):
     def __init__(self, message: str, *, details: list[dict[str, Any]] | None = None) -> None:
         super().__init__(message)
@@ -56,6 +132,15 @@ def build_ai_normalization_messages(
     ]
 
 
+def build_ai_normalization_batch_messages(
+    prompt_input: AINormalizationBatchPromptInput,
+) -> list[dict[str, str]]:
+    return [
+        {"role": "system", "content": AI_NORMALIZATION_BATCH_SYSTEM_PROMPT},
+        {"role": "user", "content": build_ai_normalization_batch_user_prompt(prompt_input)},
+    ]
+
+
 def build_ai_normalization_user_prompt(prompt_input: AINormalizationPromptInput) -> str:
     request = {
         "sourcePlatform": prompt_input.source_platform.value,
@@ -67,6 +152,38 @@ def build_ai_normalization_user_prompt(prompt_input: AINormalizationPromptInput)
         "normalizationObjectives": NORMALIZATION_OBJECTIVES,
         "standaloneSchemaBlueprint": STANDALONE_SCHEMA_BLUEPRINT,
         "normalizationOutputExamples": NORMALIZATION_OUTPUT_EXAMPLES,
+    }
+    return json.dumps(request, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+
+
+def build_ai_normalization_batch_user_prompt(prompt_input: AINormalizationBatchPromptInput) -> str:
+    request = {
+        "targetSchema": prompt_input.target_schema,
+        "inputItems": [
+            {
+                "itemId": item.item_id,
+                "sourcePlatform": item.source_platform.value,
+                "endpointType": item.endpoint_type.value,
+                "rawPayloadSubset": item.raw_payload_subset,
+            }
+            for item in prompt_input.items
+        ],
+        "targetJsonSchema": CanonicalJobSchema.model_json_schema(),
+        "batchOutputJsonSchema": AINormalizationBatchOutput.model_json_schema(),
+        "backendSchemaContext": BACKEND_SCHEMA_CONTEXT,
+        "normalizationObjectives": NORMALIZATION_OBJECTIVES,
+        "standaloneSchemaBlueprint": STANDALONE_SCHEMA_BLUEPRINT,
+        "normalizationOutputExamples": NORMALIZATION_OUTPUT_EXAMPLES,
+        "batchOutputPolicy": {
+            "resultShape": "results[]",
+            "ordering": "must preserve inputItems order",
+            "itemIdentity": "itemId must match input itemId exactly",
+            "partialPolicy": "per-item result; never fail whole batch for one bad item",
+            "errorPolicy": {
+                "on_missing_evidence": "return errorCode/errorMessage for that item",
+                "allowedErrorCode": ["INSUFFICIENT_EVIDENCE", "UNSUPPORTED_PAYLOAD"],
+            },
+        },
     }
     return json.dumps(request, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
 
@@ -120,6 +237,69 @@ def validate_ai_normalization_output(
     job = _apply_defaults(job)
     _validate_source_policy(job, prompt_input)
     return job
+
+
+def validate_ai_normalization_batch_output(
+    output: dict[str, Any] | str | AINormalizationBatchOutput,
+    *,
+    prompt_input: AINormalizationBatchPromptInput,
+) -> list[AINormalizationBatchItemResult]:
+    try:
+        batch_output = (
+            AINormalizationBatchOutput.model_validate_json(output)
+            if isinstance(output, str)
+            else (
+                output
+                if isinstance(output, AINormalizationBatchOutput)
+                else AINormalizationBatchOutput.model_validate(output)
+            )
+        )
+    except ValidationError as exc:
+        raise AINormalizationContractError(
+            "AI normalization batch output does not match batch schema",
+            details=list(exc.errors()),
+        ) from exc
+
+    expected_ids = [item.item_id for item in prompt_input.items]
+    actual_ids = [item.item_id for item in batch_output.results]
+    if actual_ids != expected_ids:
+        raise AINormalizationContractError(
+            "AI normalization batch output must preserve input item order and identity",
+            details=[
+                {
+                    "loc": ["results", "itemId"],
+                    "msg": "itemId order mismatch",
+                    "type": "item_order_mismatch",
+                    "expected": expected_ids,
+                    "actual": actual_ids,
+                }
+            ],
+        )
+
+    validated_results: list[AINormalizationBatchItemResult] = []
+    for request_item, result_item in zip(prompt_input.items, batch_output.results, strict=True):
+        if result_item.normalized_job is None:
+            validated_results.append(result_item)
+            continue
+        normalized = _apply_defaults(result_item.normalized_job)
+        _validate_source_policy(
+            normalized,
+            AINormalizationPromptInput(
+                source_platform=request_item.source_platform,
+                endpoint_type=request_item.endpoint_type,
+                raw_payload_subset=request_item.raw_payload_subset,
+                target_schema=prompt_input.target_schema,
+            ),
+        )
+        validated_results.append(
+            AINormalizationBatchItemResult(
+                item_id=result_item.item_id,
+                normalized_job=normalized,
+                error_code=result_item.error_code,
+                error_message=result_item.error_message,
+            )
+        )
+    return validated_results
 
 
 def _apply_defaults(job: CanonicalJobSchema) -> CanonicalJobSchema:
@@ -241,6 +421,21 @@ Rules:
 10. external_apply_url must fall back to source_url when missing.
 11. Prefer explicit defaults aligned with backendSchemaContext default policy.
 12. Keep unknown values null instead of placeholders such as '-', 'N/A', or 'unknown text'.
+"""
+
+
+AI_NORMALIZATION_BATCH_SYSTEM_PROMPT = """You are a strict job data normalizer for batch processing.
+Return JSON object only in shape {"results":[...]}.
+Rules:
+1. Every input item is independent and must return exactly one result item.
+2. Preserve item order exactly as input; each output itemId must match input itemId.
+3. For each item, return either normalizedJob (valid CanonicalJobSchema) OR errorCode+errorMessage.
+4. Never fail whole batch because one item has low evidence or unsupported payload.
+5. Use only factual evidence in each rawPayloadSubset. Never fabricate values.
+6. Follow backendSchemaContext as strict normalization policy for defaults,
+   enums, and relation safety.
+7. Fill as many fields as evidence permits; keep null only when evidence is truly absent.
+8. Output JSON only. No prose, markdown, comments, code fences, or extra keys.
 """
 
 
