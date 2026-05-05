@@ -97,7 +97,11 @@ class Settings(BaseSettings):
         validation_alias="BACKEND_SYNC_TIMEOUT_SECONDS",
         gt=0,
     )
-    backend_sync_batch_size: int = Field(validation_alias="BACKEND_SYNC_BATCH_SIZE", ge=1)
+    backend_sync_batch_size: int = Field(
+        validation_alias="BACKEND_SYNC_BATCH_SIZE",
+        ge=1,
+        le=100,
+    )
     freshness_stale_after_hours: int = Field(
         validation_alias="FRESHNESS_STALE_AFTER_HOURS",
         ge=1,

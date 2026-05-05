@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-02
+last_reviewed: 2026-05-05
 ---
 
 # Recommendation Email Handoff
@@ -37,6 +37,14 @@ runId + sourcePlatform + externalJobId + target
 Repeating the same handoff reuses the existing event. Sent handoff events are not sent again. Failed events may retry until the configured attempt limit, then move to dead-letter for operator review.
 
 ## Candidate Payload
+
+Default backend endpoint:
+
+```text
+POST /api/v1/internal/notification-events
+```
+
+The request uses `Authorization: Bearer <BACKEND_SYNC_SERVICE_TOKEN>`. This token must match Backend API `SCRAPER_API_SERVICE_TOKEN`.
 
 The scraper sends only job-level fields needed by backend-owned matching:
 
@@ -77,6 +85,8 @@ Recommendation email output should cap candidates to 10-20 jobs per user and sor
 | Backend notification endpoint fails | Handoff event becomes retryable failure |
 | Repeated backend failure | Handoff event moves to dead-letter |
 | User preference unavailable | Backend suppresses or delays delivery; scraper does not compensate |
+
+Failure response summaries store only safe fields: status code, status class, error code, message, and endpoint path.
 
 ## Verification
 

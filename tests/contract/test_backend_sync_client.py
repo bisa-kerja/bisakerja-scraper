@@ -22,6 +22,7 @@ async def test_backend_sync_client_sends_batch_with_service_token() -> None:
         "statusClass": "2xx",
         "success": True,
         "message": "Accepted",
+        "endpointPath": "/api/v1/internal/scraper/jobs",
     }
     assert requests[0].headers["authorization"] == "Bearer secret-token"
     assert requests[0].url.path == "/api/v1/internal/scraper/jobs"
@@ -42,6 +43,12 @@ async def test_backend_sync_client_does_not_retry_4xx() -> None:
 
     assert calls == 1
     assert exc_info.value.status_code == 400
+    assert exc_info.value.response_summary == {
+        "statusCode": 400,
+        "statusClass": "4xx",
+        "errorCode": "VALIDATION_ERROR",
+        "endpointPath": "/api/v1/internal/scraper/jobs",
+    }
     assert "secret-token" not in str(exc_info.value)
 
 
@@ -76,6 +83,12 @@ async def test_backend_sync_client_raises_after_retry_limit() -> None:
 
     assert calls == 2
     assert exc_info.value.status_code == 503
+    assert exc_info.value.response_summary == {
+        "statusCode": 503,
+        "statusClass": "5xx",
+        "message": "busy",
+        "endpointPath": "/api/v1/internal/scraper/jobs",
+    }
 
 
 def make_client(handler, *, max_retries: int = 2) -> BackendSyncClient:  # noqa: ANN001

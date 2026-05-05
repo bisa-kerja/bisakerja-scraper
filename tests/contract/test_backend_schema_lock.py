@@ -132,6 +132,15 @@ def test_backend_payload_contract_rejects_invalid_salary_range() -> None:
     assert any("salaryMin" in str(item) for item in exc_info.value.details)
 
 
+def test_backend_payload_contract_rejects_backend_text_limit_drift() -> None:
+    job = normalized_job_for_contract(external_id="x" * 256)
+
+    with pytest.raises(BackendPayloadValidationError) as exc_info:
+        build_backend_job_payload(job)
+
+    assert any("external_job_id" in str(item) for item in exc_info.value.details)
+
+
 def test_backend_payload_contract_rejects_orphan_skill_relation() -> None:
     job = normalized_job_for_contract()
     job.skills_staging = [

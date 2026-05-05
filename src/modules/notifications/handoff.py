@@ -185,9 +185,11 @@ class RecommendationHandoffWorker:
         try:
             result = await self.client.send_candidates(payload)
         except Exception as exc:
+            response_summary = getattr(exc, "response_summary", None)
             failure = HandoffFailure(
                 category=exc.__class__.__name__,
                 message=str(exc),
+                response_summary=response_summary if isinstance(response_summary, dict) else None,
             )
             for event in retryable_events:
                 self.repository.record_failure(event, failure, max_attempts=self.max_attempts)

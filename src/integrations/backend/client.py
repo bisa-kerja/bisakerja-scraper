@@ -13,9 +13,16 @@ RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
 class BackendSyncError(RuntimeError):
-    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        response_summary: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.response_summary = response_summary or {}
 
 
 class BackendSyncClientError(BackendSyncError):
@@ -91,6 +98,7 @@ class BackendSyncClient:
                 await client.aclose()
 
         summary = summarize_response(response)
+        summary["endpointPath"] = self.path
         if 200 <= response.status_code < 300:
             return BackendSyncResult(
                 status_code=response.status_code,
@@ -100,10 +108,12 @@ class BackendSyncClient:
             raise BackendSyncServerError(
                 "backend sync retryable failure",
                 status_code=response.status_code,
+                response_summary=summary,
             )
         raise BackendSyncClientError(
             "backend sync rejected payload",
             status_code=response.status_code,
+            response_summary=summary,
         )
 
 

@@ -105,10 +105,10 @@ Latest mode requests newest listings first when a source supports it. If a sourc
 
 | Variable | Required | Rule |
 | --- | --- | --- |
-| `BACKEND_SYNC_BASE_URL` | Yes when sync is enabled | Backend API or internal sync endpoint base URL |
-| `BACKEND_SYNC_SERVICE_TOKEN` | Yes when sync is enabled | Internal service credential from secret storage |
+| `BACKEND_SYNC_BASE_URL` | Yes when sync is enabled | Backend API base URL; scraper appends `/api/v1/internal/scraper/jobs` and `/api/v1/internal/notification-events` |
+| `BACKEND_SYNC_SERVICE_TOKEN` | Yes when sync is enabled | Internal service credential from secret storage; must match Backend API `SCRAPER_API_SERVICE_TOKEN` |
 | `BACKEND_SYNC_TIMEOUT_SECONDS` | Yes | Positive sync request timeout |
-| `BACKEND_SYNC_BATCH_SIZE` | Yes | Positive batch size |
+| `BACKEND_SYNC_BATCH_SIZE` | Yes | Positive batch size, maximum `100` to match Backend API internal sync limit |
 | `FRESHNESS_STALE_AFTER_HOURS` | Yes | Positive threshold for stale listings |
 | `FRESHNESS_EXPIRED_AFTER_HOURS` | Yes | Positive threshold greater than stale threshold |
 

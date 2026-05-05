@@ -128,15 +128,22 @@ class BackendSyncWorker:
         try:
             result = await self.client.sync_jobs(payload_jobs)
         except BackendSyncClientError as exc:
+            category = (
+                "backend_endpoint_not_found"
+                if exc.status_code == 404
+                else "backend_rejected_payload"
+            )
+            failure_max_attempts = self.max_attempts if exc.status_code == 404 else 1
             for event in valid_events:
                 self.events.record_failure(
                     event,
                     SyncFailure(
-                        category="backend_rejected_payload",
+                        category=category,
                         message=str(exc),
-                        response_summary={"statusCode": exc.status_code, "statusClass": "4xx"},
+                        response_summary=exc.response_summary
+                        or {"statusCode": exc.status_code, "statusClass": "4xx"},
                     ),
-                    max_attempts=1,
+                    max_attempts=failure_max_attempts,
                 )
                 failed += 1
             return sent, failed
@@ -148,7 +155,8 @@ class BackendSyncWorker:
                     SyncFailure(
                         category="backend_retryable_failure",
                         message=str(exc),
-                        response_summary={
+                        response_summary=exc.response_summary
+                        or {
                             "statusCode": exc.status_code,
                             "statusClass": status_class,
                         },

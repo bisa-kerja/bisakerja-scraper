@@ -43,6 +43,36 @@ async def test_sync_worker_records_4xx_as_non_retryable_failure() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sync_worker_records_404_as_retryable_endpoint_failure() -> None:
+    with session_scope() as session:
+        result = JobPersistenceRepository(session).write_job(
+            raw_input("run-1", "job-1"),
+            canonical_job("job-1"),
+        )
+        result.normalized_job.status = "active"
+        worker = BackendSyncWorker(
+            session=session,
+            client=MissingEndpointClient(),
+            events=SyncEventRepository(session),
+            max_attempts=3,
+        )
+
+        sync_result = await worker.sync_eligible_jobs(scrape_run_id="run-1", limit=10)
+
+        event = session.scalar(select(SyncEvent).where(SyncEvent.external_id == "job-1"))
+        assert sync_result.failed == 1
+        assert event is not None
+        assert event.status == SyncEventStatus.FAILED.value
+        assert event.error_category == "backend_endpoint_not_found"
+        assert event.attempt_count == 1
+        assert event.response_summary == {
+            "statusCode": 404,
+            "statusClass": "4xx",
+            "endpointPath": "/api/v1/internal/scraper/jobs",
+        }
+
+
+@pytest.mark.asyncio
 async def test_sync_worker_only_sends_eligible_jobs() -> None:
     with session_scope() as session:
         repository = JobPersistenceRepository(session)
@@ -142,6 +172,19 @@ async def test_sync_worker_resume_skips_sent_and_dead_letter_events() -> None:
 class RejectingClient:
     async def sync_jobs(self, jobs: list[Any]) -> BackendSyncResult:
         raise BackendSyncClientError("validation failed", status_code=400)
+
+
+class MissingEndpointClient:
+    async def sync_jobs(self, jobs: list[Any]) -> BackendSyncResult:
+        raise BackendSyncClientError(
+            "backend sync rejected payload",
+            status_code=404,
+            response_summary={
+                "statusCode": 404,
+                "statusClass": "4xx",
+                "endpointPath": "/api/v1/internal/scraper/jobs",
+            },
+        )
 
 
 class RecordingClient:

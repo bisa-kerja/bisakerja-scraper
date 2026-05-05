@@ -118,6 +118,13 @@ def test_backend_sync_requires_target_and_token() -> None:
         Settings(**env, _env_file=None)
 
 
+def test_backend_sync_batch_size_matches_backend_endpoint_limit() -> None:
+    env = valid_env(BACKEND_SYNC_BATCH_SIZE="101")
+
+    with pytest.raises(ValidationError, match="BACKEND_SYNC_BATCH_SIZE"):
+        Settings(**env, _env_file=None)
+
+
 def test_jobstreet_token_required_when_enabled() -> None:
     env = valid_env(JOBSTREET_ENABLED="true")
 

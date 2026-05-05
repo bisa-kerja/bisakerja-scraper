@@ -2155,6 +2155,7 @@ class ManualPipelineRunner:
         self.stage_run_ids: dict[str, str] = {}
         self.stage_statuses: dict[str, str] = {}
         self.stage_count_breakdown: dict[str, dict[str, int]] = {}
+        self.sync_diagnostics: dict[str, Any] = {}
 
     def emit_progress(self, message: str) -> None:
         if not self.execute:
@@ -2198,6 +2199,7 @@ class ManualPipelineRunner:
             stage_run_ids=self.stage_run_ids,
             stage_statuses=self.stage_statuses,
             stage_count_breakdown=self.stage_count_breakdown,
+            sync_diagnostics=self.sync_diagnostics,
             source_selection=self.source_selection,
         )
 
@@ -2301,6 +2303,12 @@ class ManualPipelineRunner:
                 batch_size=min(max_jobs, 100),
             )
             self.session.commit()
+            if result.failed:
+                self.sync_diagnostics = {"failures": self.sync_failure_summary(run_id)}
+                self.emit_progress(
+                    "sync failures "
+                    f"summary={json.dumps(self.sync_diagnostics['failures'], sort_keys=True)}"
+                )
             self.emit_progress(
                 f"sync done attempted={result.attempted} sent={result.sent} failed={result.failed}"
             )
@@ -2368,6 +2376,46 @@ class ManualPipelineRunner:
                 select(NormalizedJob).where(NormalizedJob.raw_job_id.in_(raw_job_ids))
             ).all()
         )
+
+    def sync_failure_summary(self, run_id: str) -> list[dict[str, Any]]:
+        events = list(
+            self.session.scalars(
+                select(SyncEvent)
+                .where(
+                    SyncEvent.scrape_run_id == run_id,
+                    SyncEvent.status.in_(("failed", "dead-letter")),
+                )
+                .order_by(SyncEvent.error_category.asc(), SyncEvent.id.asc())
+            ).all()
+        )
+        counts: Counter[tuple[str, int | None, str | None]] = Counter()
+        for event in events:
+            summary = event.response_summary if isinstance(event.response_summary, dict) else {}
+            status_code = summary.get("statusCode")
+            endpoint_path = summary.get("endpointPath")
+            counts[
+                (
+                    event.error_category or "unknown",
+                    status_code if isinstance(status_code, int) else None,
+                    endpoint_path if isinstance(endpoint_path, str) else None,
+                )
+            ] += 1
+        return [
+            {
+                "category": category,
+                "statusCode": status_code,
+                "endpointPath": endpoint_path,
+                "count": count,
+            }
+            for (category, status_code, endpoint_path), count in sorted(
+                counts.items(),
+                key=lambda item: (
+                    item[0][0],
+                    -1 if item[0][1] is None else item[0][1],
+                    item[0][2] or "",
+                ),
+            )
+        ]
 
     async def run_full(
         self,
@@ -3129,6 +3177,7 @@ def output_from_result(
     stage_run_ids: dict[str, str] | None = None,
     stage_statuses: dict[str, str] | None = None,
     stage_count_breakdown: dict[str, dict[str, int]] | None = None,
+    sync_diagnostics: dict[str, Any] | None = None,
     source_selection: SourceSelection | None = None,
 ) -> dict[str, Any]:
     requested_sources = list(source_selection.requested) if source_selection else []
@@ -3142,7 +3191,7 @@ def output_from_result(
         "syncSent": breakdown.get("sync", {}).get("persisted", 0),
         "notifyHandoffSent": breakdown.get("notify-handoff", {}).get("persisted", 0),
     }
-    return {
+    output = {
         "check": "pipeline-run",
         "status": "ok" if result.status in {"completed", "partial"} else "fail",
         "mode": "execute" if execute else "dry-run",
@@ -3177,6 +3226,9 @@ def output_from_result(
         ],
         "events": result.stage_events,
     }
+    if sync_diagnostics:
+        output["diagnostics"] = {"sync": sync_diagnostics}
+    return output
 
 
 def build_engine(database_url: str, *, execute: bool) -> Engine:

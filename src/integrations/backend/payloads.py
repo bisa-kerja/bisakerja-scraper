@@ -13,6 +13,8 @@ from modules.persistence import JobRequirementStaging, JobSkillStaging, Normaliz
 
 MONTHLY_PATTERN = re.compile(r"\b(month|monthly|bulan|bulanan)\b", re.IGNORECASE)
 YEARLY_PATTERN = re.compile(r"\b(year|yearly|tahun|tahunan)\b", re.IGNORECASE)
+MAX_JOBS_PER_BACKEND_BATCH = 100
+MAX_RELATIONS_PER_BACKEND_JOB = 100
 
 
 class PrismaWorkType(StrEnum):
@@ -86,8 +88,8 @@ class BackendPayloadModel(BaseModel):
 
 
 class BackendSourcePlatformPayload(BackendPayloadModel):
-    slug: str = Field(min_length=1)
-    name: str = Field(min_length=1)
+    slug: str = Field(min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=120)
 
     @field_validator("slug")
     @classmethod
@@ -96,39 +98,59 @@ class BackendSourcePlatformPayload(BackendPayloadModel):
 
 
 class BackendCompanyPayload(BackendPayloadModel):
-    name: str = Field(min_length=1)
-    source_company_id: str | None = Field(default=None, serialization_alias="sourceCompanyId")
-    source_slug: str | None = Field(default=None, serialization_alias="sourceSlug")
-    logo_url: str | None = Field(default=None, serialization_alias="logoUrl")
-    website_url: str | None = Field(default=None, serialization_alias="websiteUrl")
-    industry: str | None = None
+    name: str = Field(min_length=1, max_length=180)
+    source_company_id: str | None = Field(
+        default=None,
+        max_length=120,
+        serialization_alias="sourceCompanyId",
+    )
+    source_slug: str | None = Field(default=None, max_length=120, serialization_alias="sourceSlug")
+    logo_url: str | None = Field(default=None, max_length=2000, serialization_alias="logoUrl")
+    website_url: str | None = Field(
+        default=None,
+        max_length=2000,
+        serialization_alias="websiteUrl",
+    )
+    industry: str | None = Field(default=None, max_length=120)
 
 
 class BackendIngestionRunPayload(BackendPayloadModel):
-    source_run_id: str = Field(min_length=1, serialization_alias="sourceRunId")
+    source_run_id: str = Field(min_length=1, max_length=160, serialization_alias="sourceRunId")
 
 
 class BackendRequirementPayload(BackendPayloadModel):
     type: PrismaRequirementType
-    value: str = Field(min_length=1)
+    value: str = Field(min_length=1, max_length=2000)
     priority: PrismaRequirementPriority | None = None
     confidence: float | None = Field(default=None, ge=0, le=1)
-    source: str | None = None
+    source: str | None = Field(default=None, max_length=80)
 
 
 class BackendSkillPayload(BackendPayloadModel):
-    name: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=120)
     confidence: float | None = Field(default=None, ge=0, le=1)
-    source: str | None = None
+    source: str | None = Field(default=None, max_length=80)
 
 
 class BackendJobListingPayload(BackendPayloadModel):
-    external_job_id: str = Field(min_length=1, serialization_alias="externalJobId")
-    title: str = Field(min_length=1)
-    normalized_title: str | None = Field(default=None, serialization_alias="normalizedTitle")
-    category: str | None = None
-    description: str | None = None
-    requirement_summary: str | None = Field(default=None, serialization_alias="requirementSummary")
+    external_job_id: str = Field(
+        min_length=1,
+        max_length=255,
+        serialization_alias="externalJobId",
+    )
+    title: str = Field(min_length=1, max_length=255)
+    normalized_title: str | None = Field(
+        default=None,
+        max_length=255,
+        serialization_alias="normalizedTitle",
+    )
+    category: str | None = Field(default=None, max_length=120)
+    description: str | None = Field(default=None, max_length=10_000)
+    requirement_summary: str | None = Field(
+        default=None,
+        max_length=10_000,
+        serialization_alias="requirementSummary",
+    )
     work_type: PrismaWorkType | None = Field(default=None, serialization_alias="workType")
     employment_type: PrismaEmploymentType | None = Field(
         default=None,
@@ -138,9 +160,13 @@ class BackendJobListingPayload(BackendPayloadModel):
         default=None,
         serialization_alias="experienceLevel",
     )
-    location_display: str | None = Field(default=None, serialization_alias="locationDisplay")
-    province: str | None = None
-    city: str | None = None
+    location_display: str | None = Field(
+        default=None,
+        max_length=255,
+        serialization_alias="locationDisplay",
+    )
+    province: str | None = Field(default=None, max_length=120)
+    city: str | None = Field(default=None, max_length=120)
     salary_min: int | None = Field(default=None, ge=0, serialization_alias="salaryMin")
     salary_max: int | None = Field(default=None, ge=0, serialization_alias="salaryMax")
     salary_currency: str = Field(default="IDR", min_length=3, max_length=3)
@@ -148,12 +174,20 @@ class BackendJobListingPayload(BackendPayloadModel):
         default=None,
         serialization_alias="salaryPeriod",
     )
-    salary_display: str | None = Field(default=None, serialization_alias="salaryDisplay")
-    source_url: str = Field(min_length=1, serialization_alias="sourceUrl")
-    external_apply_url: str = Field(min_length=1, serialization_alias="externalApplyUrl")
+    salary_display: str | None = Field(
+        default=None,
+        max_length=255,
+        serialization_alias="salaryDisplay",
+    )
+    source_url: str = Field(min_length=1, max_length=2000, serialization_alias="sourceUrl")
+    external_apply_url: str = Field(
+        min_length=1,
+        max_length=2000,
+        serialization_alias="externalApplyUrl",
+    )
     source_posted_at: str | None = Field(default=None, serialization_alias="sourcePostedAt")
     source_updated_at: str | None = Field(default=None, serialization_alias="sourceUpdatedAt")
-    last_seen_at: str = Field(min_length=1, serialization_alias="lastSeenAt")
+    last_seen_at: str = Field(min_length=1, max_length=80, serialization_alias="lastSeenAt")
     status: PrismaJobListingStatus = PrismaJobListingStatus.ACTIVE
 
     @field_validator("salary_currency")
@@ -180,8 +214,14 @@ class BackendJobPayload(BackendPayloadModel):
         serialization_alias="ingestionRun",
     )
     job_listing: BackendJobListingPayload = Field(serialization_alias="jobListing")
-    requirements: list[BackendRequirementPayload] = Field(default_factory=list)
-    skills: list[BackendSkillPayload] = Field(default_factory=list)
+    requirements: list[BackendRequirementPayload] = Field(
+        default_factory=list,
+        max_length=MAX_RELATIONS_PER_BACKEND_JOB,
+    )
+    skills: list[BackendSkillPayload] = Field(
+        default_factory=list,
+        max_length=MAX_RELATIONS_PER_BACKEND_JOB,
+    )
 
     @model_validator(mode="after")
     def validate_relations(self) -> BackendJobPayload:
@@ -276,6 +316,17 @@ def build_backend_job_payload(job: NormalizedJob) -> BackendJobPayload:
 
 
 def build_backend_jobs_body(jobs: list[NormalizedJob]) -> dict[str, Any]:
+    if len(jobs) > MAX_JOBS_PER_BACKEND_BATCH:
+        raise BackendPayloadValidationError(
+            "sync payload exceeds backend batch limit",
+            details=[
+                {
+                    "loc": ["jobs"],
+                    "msg": f"maximum {MAX_JOBS_PER_BACKEND_BATCH} jobs per batch",
+                    "type": "max_length",
+                }
+            ],
+        )
     payloads: list[dict[str, Any]] = []
     for job in jobs:
         payloads.append(build_backend_job_payload(job).model_dump(mode="json", by_alias=True))

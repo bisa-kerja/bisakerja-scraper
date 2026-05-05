@@ -136,6 +136,7 @@ Wizard guard rules:
 
 - When `BACKEND_SYNC_ENABLED=false`, sync and notification handoff use recording clients (no outbound backend API mutation).
 - When `BACKEND_SYNC_ENABLED=true`, sync and notification handoff use real backend API clients with `BACKEND_SYNC_BASE_URL` and `BACKEND_SYNC_SERVICE_TOKEN`.
+- Live backend mode calls `POST /api/v1/internal/scraper/jobs` and `POST /api/v1/internal/notification-events`; `BACKEND_SYNC_SERVICE_TOKEN` must match Backend API `SCRAPER_API_SERVICE_TOKEN`.
 
 Recommended controlled local execute sequence:
 
@@ -229,7 +230,7 @@ Execute mode behavior:
 - Enrichment stage with `AI_ENRICHMENT_ENABLED=false` still persists enrichment staging rows from normalized source fields (no outbound AI call).
 - Normalize stage uses serial AI batch normalization with per-item partial handling. Batch size and fixed delay are controlled by `OPENAI_NORMALIZATION_BATCH_SIZE` and `OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS`.
 - `--execute` with `BACKEND_SYNC_ENABLED=false` keeps backend sync/handoff local (recording clients).
-- `--execute` with `BACKEND_SYNC_ENABLED=true` sends sync payloads to Backend API and sends notification handoff payloads to Backend API.
+- `--execute` with `BACKEND_SYNC_ENABLED=true` sends sync payloads to Backend API and sends notification handoff payloads to Backend API. Sync batches are capped at `100` jobs to match the Backend API internal endpoint.
 - Execute runs stream stage and job progress logs to `stderr` while preserving JSON result output on `stdout`.
 
 ## Testing And Verification

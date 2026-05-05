@@ -68,6 +68,32 @@ async def test_handoff_is_idempotent_by_run_source_job_target() -> None:
         assert len(session.scalars(select(NotificationHandoffEvent)).all()) == 1
 
 
+@pytest.mark.asyncio
+async def test_handoff_records_safe_backend_response_summary() -> None:
+    with session_scope() as session:
+        persistence = JobPersistenceRepository(session)
+        synced = persistence.write_job(raw_input("run-1", "synced"), canonical_job("synced"))
+        sync_events = SyncEventRepository(session)
+        sent_event = sync_events.prepare_event(synced.normalized_job, scrape_run_id="run-1")
+        sync_events.record_success(sent_event, SyncSuccess({"statusCode": 200}))
+        worker = RecommendationHandoffWorker(
+            session=session,
+            repository=NotificationHandoffRepository(session),
+            client=FailingHandoffClient(),
+        )
+
+        result = await worker.handoff_synced_jobs(scrape_run_id="run-1")
+
+        event = session.scalar(select(NotificationHandoffEvent))
+        assert result.failed == 1
+        assert event is not None
+        assert event.response_summary == {
+            "statusCode": 404,
+            "statusClass": "4xx",
+            "endpointPath": "/api/v1/internal/notification-events",
+        }
+
+
 class RecordingHandoffClient:
     def __init__(self) -> None:
         self.payloads: list[dict[str, Any]] = []
@@ -75,6 +101,24 @@ class RecordingHandoffClient:
     async def send_candidates(self, payload: dict[str, Any]) -> HandoffSuccess:
         self.payloads.append(payload)
         return HandoffSuccess({"statusCode": 202, "statusClass": "2xx"})
+
+
+class FailingHandoffClient:
+    async def send_candidates(self, payload: dict[str, Any]) -> HandoffSuccess:
+        raise HandoffFailureCarrierError(
+            "notification handoff failed",
+            {
+                "statusCode": 404,
+                "statusClass": "4xx",
+                "endpointPath": "/api/v1/internal/notification-events",
+            },
+        )
+
+
+class HandoffFailureCarrierError(RuntimeError):
+    def __init__(self, message: str, response_summary: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.response_summary = response_summary
 
 
 def session_scope():

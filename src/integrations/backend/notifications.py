@@ -10,9 +10,16 @@ DEFAULT_NOTIFICATION_HANDOFF_PATH = "/api/v1/internal/notification-events"
 
 
 class BackendNotificationHandoffError(RuntimeError):
-    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        response_summary: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.response_summary = response_summary or {}
 
 
 class BackendNotificationHandoffClient:
@@ -50,11 +57,13 @@ class BackendNotificationHandoffClient:
                 await client.aclose()
 
         summary = summarize_response(response)
+        summary["endpointPath"] = self.path
         if 200 <= response.status_code < 300:
             return HandoffSuccess(response_summary=summary)
         raise BackendNotificationHandoffError(
             "notification handoff failed",
             status_code=response.status_code,
+            response_summary=summary,
         )
 
 
@@ -71,4 +80,7 @@ def summarize_response(response: httpx.Response) -> dict[str, Any]:
         for key in ("success", "message", "code"):
             if key in body:
                 summary[key] = body[key]
+        error = body.get("error")
+        if isinstance(error, dict):
+            summary["errorCode"] = error.get("code")
     return summary

@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-04
+last_reviewed: 2026-05-05
 ---
 
 # Scraper Failure Scenarios
@@ -136,6 +136,7 @@ Queue recovery rules:
 Sync triage rules:
 
 - `4xx` responses usually indicate payload or credential problems and should not be retried blindly.
+- `404` on the configured sync path indicates a missing or wrong Backend API endpoint and is recorded as `backend_endpoint_not_found` so it can be retried after config or backend routing is fixed.
 - `429` and `5xx` responses may be retried within the configured limit.
 - Sync runs are chunked; a failed chunk should not mark later chunks failed.
 - Repeating the same payload should reuse the same sync event.
@@ -156,9 +157,11 @@ Sync triage rules:
 Handoff triage rules:
 
 - Handoff only starts from `sent` sync events.
+- `404` on `/api/v1/internal/notification-events` indicates a missing or wrong Backend API notification handoff endpoint.
 - Scraper must not read backend user preference tables to compensate for a backend failure.
 - Repeating the same run/source/job target should reuse the same handoff event.
 - Dead-letter handoff rows require operator review before replay.
+- Response summaries must not contain service tokens, cookies, raw headers, or raw source payloads.
 
 ## Scenario 9: Jobs Become Stale After Partial Run
 

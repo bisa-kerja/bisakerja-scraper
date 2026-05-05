@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-04
+last_reviewed: 2026-05-05
 ---
 
 # Backend Sync Schema Map
@@ -70,6 +70,10 @@ Payload is rejected before sync when any of the following occurs:
   - invalid timestamp format
 - Invalid salary range:
   - `salaryMin > salaryMax`
+- Backend limit mismatch:
+  - sync batch contains more than `100` jobs
+  - job or relation text exceeds Backend API internal schema limits
+  - `requirements[]` or `skills[]` contains more than `100` rows for one job
 - Orphan staging relation:
   - `JobSkill.normalized_job_id != normalized_job.id`
   - `JobRequirement.normalized_job_id != normalized_job.id`

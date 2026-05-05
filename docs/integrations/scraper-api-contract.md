@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-04
+last_reviewed: 2026-05-05
 ---
 
 # Scraper API Contract
@@ -76,6 +76,8 @@ Authentication uses a service credential in the `Authorization` header:
 Authorization: Bearer <managed-service-token>
 ```
 
+The scraper `BACKEND_SYNC_SERVICE_TOKEN` value must equal the Backend API `SCRAPER_API_SERVICE_TOKEN` value.
+
 Request body:
 
 ```json
@@ -114,13 +116,75 @@ Request body:
 Behavior rules:
 
 - `2xx` responses mark the sync event as sent.
+- Current Backend API success response is `200` with a standard success envelope.
 - `4xx` responses are treated as rejected payloads and are not retried automatically.
 - `429` and `5xx` responses may be retried up to the configured limit.
+- Sync batches must contain `1` to `100` jobs.
 - For list-only sources such as current Glints capture, `description` may stay `null` and `requirementSummary` may stay `null` or safe list-derived summary text.
 - `externalApplyUrl` must be present; when source apply URL is unavailable, fallback to `sourceUrl`.
 - Foreign-key, missing source platform, and company resolution mismatches are recorded as sync failures with safe response summaries.
 - Service tokens, raw payloads, cookies, and request headers are never stored in sync event summaries.
 - Response summaries store only safe status class, status code, message, and stable error code.
+
+Success response summary stored by the scraper:
+
+```json
+{
+  "statusCode": 200,
+  "statusClass": "2xx",
+  "success": true,
+  "message": "Scraper jobs synced successfully",
+  "endpointPath": "/api/v1/internal/scraper/jobs"
+}
+```
+
+## Notification Handoff Request
+
+After successful sync, the scraper sends synced jobs to Backend API notification handling.
+
+Default request path:
+
+```text
+POST /api/v1/internal/notification-events
+```
+
+Authentication uses the same service credential:
+
+```text
+Authorization: Bearer <managed-service-token>
+```
+
+Request body:
+
+```json
+{
+  "runId": "scrape-run-2026-05-05",
+  "candidates": [
+    {
+      "eventId": "scrape-run-2026-05-05:glints:123",
+      "syncEventId": "sync-event-id",
+      "sourcePlatform": "glints",
+      "externalJobId": "123",
+      "title": "Backend Engineer",
+      "companyName": "Example Company",
+      "sourceUrl": "https://glints.example/job/123",
+      "location": {
+        "display": "Jakarta"
+      },
+      "salary": null,
+      "status": "active",
+      "lastSeenAt": "2026-05-05T03:00:00+00:00"
+    }
+  ]
+}
+```
+
+Behavior rules:
+
+- Current Backend API success response is `200` with a standard success envelope.
+- Notification candidate batches may contain up to `1000` candidates.
+- Non-`2xx` responses mark handoff events failed or dead-letter based on attempt count.
+- Response summaries store status code, status class, stable error code, message, and endpoint path only.
 
 ## Error Behavior
 

@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-04
+last_reviewed: 2026-05-05
 ---
 
 # Daily Pipeline Runbook
@@ -89,6 +89,7 @@ Execute sync semantics:
 
 - When `BACKEND_SYNC_ENABLED=false`, sync and notification handoff use recording clients (no outbound backend API mutation).
 - When `BACKEND_SYNC_ENABLED=true`, sync and notification handoff call backend internal endpoints using `BACKEND_SYNC_BASE_URL` and `BACKEND_SYNC_SERVICE_TOKEN`.
+- Backend must expose `POST /api/v1/internal/scraper/jobs` and `POST /api/v1/internal/notification-events`; `BACKEND_SYNC_SERVICE_TOKEN` must match Backend API `SCRAPER_API_SERVICE_TOKEN`.
 
 Pipeline command rules:
 
@@ -109,6 +110,7 @@ Pipeline command rules:
 - `preflight` validates env loading, migration target head, source enablement, fixture availability, backend sync mode, and redacted evidence preview before an operator run.
 - Dry-run output includes source and keyword summaries with requested limit and newest/oldest source timestamps when available.
 - Run output includes `stageStatuses` and `countBreakdown` so `rawPersisted`, `normalizedPersisted`, `enrichmentPersisted`, `syncSent`, and `notifyHandoffSent` are explicit.
+- Run output includes `diagnostics.sync.failures` when sync attempts fail, including error category, status code, safe endpoint path, and count.
 - Full-stage run status is `completed`, `partial`, or `failed`; treat `failed` as hard failure even when prior stages succeeded.
 - Manual runs share the scheduler guard so only one in-process operator run is accepted at a time.
 - `--execute` uses the configured scraper database and should only run after migration and readiness checks pass in a controlled non-production environment.
