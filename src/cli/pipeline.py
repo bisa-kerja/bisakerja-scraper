@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import math
+import re
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -13,8 +14,11 @@ from typing import Any
 from urllib.parse import quote, urlparse
 
 import httpx
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from config.database_urls import to_sync_postgres_url
@@ -107,21 +111,104 @@ from modules.sync import BackendSyncWorker, SyncEventRepository
 SOURCE_CHOICES = ("all", "dealls", "glints", "jobstreet", "kalibrr")
 STAGE_CHOICES = ("full", "scrape", "normalize", "enrich", "sync", "notify-handoff")
 DEFAULT_FIXTURE_ROOT = Path("tests/fixtures/raw")
+PLATFORM_SOURCES = SOURCE_CHOICES[1:]
+SENSITIVE_TOKEN_PATTERN = re.compile(r"(bearer\s+)[^\s]+", re.IGNORECASE)
+SENSITIVE_QUERY_PATTERN = re.compile(r"((token|password|secret|key)=)[^&\s]+", re.IGNORECASE)
+
+
+class CliInputError(ValueError):
+    """Raised when CLI input is invalid but should not trigger traceback."""
+
+
+@dataclass(frozen=True)
+class SourceSelection:
+    requested: tuple[str, ...]
+    executed: tuple[str, ...]
+    skipped: tuple[dict[str, str], ...]
+
+
+class PipelineArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:  # pragma: no cover - exercised via main()
+        raise CliInputError(message)
+
+
+def command_check_name(command: str | None) -> str:
+    mapping = {
+        "run": "pipeline-run",
+        "status": "pipeline-status",
+        "verify": "pipeline-verify",
+        "staging-report": "staging-report",
+        "preflight": "pipeline-preflight",
+    }
+    if command is None:
+        return "pipeline-cli"
+    return mapping.get(command, "pipeline-cli")
+
+
+def cli_fail_result(
+    *,
+    check: str,
+    reason: str,
+    command: str,
+    error_type: str | None = None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "check": check,
+        "status": "fail",
+        "command": command,
+        "reason": redact_text(reason),
+    }
+    if error_type is not None:
+        result["errorType"] = error_type
+    return result
+
+
+def redact_text(text: str) -> str:
+    compact = " ".join(text.strip().split())
+    compact = SENSITIVE_TOKEN_PATTERN.sub(r"\1***", compact)
+    compact = SENSITIVE_QUERY_PATTERN.sub(r"\1***", compact)
+    return compact
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    try:
+        args = parser.parse_args(argv)
+    except CliInputError as exc:
+        result = cli_fail_result(check="pipeline-cli", reason=str(exc), command="parse")
+        print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+        return 1
+    except SystemExit as exc:
+        if exc.code == 0:
+            raise
+        result = cli_fail_result(
+            check="pipeline-cli",
+            reason="argument parsing failed",
+            command="parse",
+        )
+        print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+        return 1
     try:
         result = asyncio.run(args.command_handler(args))
-    except argparse.ArgumentTypeError as exc:
-        parser.error(str(exc))
+    except CliInputError as exc:
+        result = cli_fail_result(
+            check=command_check_name(args.command),
+            reason=str(exc),
+            command=args.command,
+        )
+    except Exception as exc:  # pragma: no cover - integration behavior asserted by CLI tests
+        result = cli_fail_result(
+            check=command_check_name(args.command),
+            reason=str(exc),
+            command=args.command,
+            error_type=type(exc).__name__,
+        )
     print(json.dumps(result, sort_keys=True, separators=(",", ":")))
     return 0 if result["status"] == "ok" else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="scraper-pipeline")
+    parser = PipelineArgumentParser(prog="scraper-pipeline")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     run_parser = subparsers.add_parser("run")
@@ -179,11 +266,26 @@ def build_parser() -> argparse.ArgumentParser:
         default=1.0,
     )
     staging_parser.set_defaults(command_handler=run_staging_report)
+
+    preflight_parser = subparsers.add_parser("preflight")
+    preflight_parser.add_argument("--stage", choices=STAGE_CHOICES, default="full")
+    preflight_parser.add_argument("--source", choices=SOURCE_CHOICES, default="all")
+    preflight_parser.add_argument("--env-file", default=None)
+    preflight_parser.add_argument("--fixture-root", default=str(DEFAULT_FIXTURE_ROOT))
+    mode_group = preflight_parser.add_mutually_exclusive_group(required=True)
+    mode_group.add_argument("--dry-run", action="store_true")
+    mode_group.add_argument("--execute", action="store_true")
+    preflight_parser.set_defaults(command_handler=run_preflight)
     return parser
 
 
 async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
     settings = load_settings(args.env_file)
+    source_selection = select_sources(
+        source=args.source,
+        settings=settings,
+        execute=args.execute,
+    )
     keywords = resolve_keywords(args, settings)
     limit = args.limit or settings.scraper_max_items_per_keyword
     recency_mode = "latest" if args.latest else settings.scraper_recency_mode.value
@@ -206,6 +308,7 @@ async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             recency_days=recency_days_value,
             execute=args.execute,
             run_id=args.run_id,
+            source_selection=source_selection,
         )
         result = await guard.run(stage_for_guard(args.stage), runner.run_stage)
         if not result.accepted:
@@ -221,6 +324,58 @@ async def run_pipeline(args: argparse.Namespace) -> dict[str, Any]:
             "reason": "pipeline produced no output",
             "stage": args.stage,
         }
+
+
+async def run_preflight(args: argparse.Namespace) -> dict[str, Any]:
+    settings = load_settings(args.env_file)
+    source_selection = select_sources(
+        source=args.source,
+        settings=settings,
+        execute=args.execute,
+    )
+    fixture_root = Path(args.fixture_root)
+    fixture_check = fixture_availability(source_selection.requested, fixture_root=fixture_root)
+    migration_check = migration_target_check()
+    backend_mode = backend_sync_mode(settings, execute=args.execute)
+
+    checks = [
+        {"name": "env", "passed": True},
+        {"name": "migrationTarget", "passed": migration_check["status"] == "ok"},
+        {
+            "name": "sourceSelection",
+            "passed": bool(source_selection.executed),
+        },
+        {"name": "fixtures", "passed": fixture_check["status"] == "ok"},
+        {"name": "backendSyncMode", "passed": backend_mode["status"] == "ok"},
+        {"name": "secretRedaction", "passed": True},
+    ]
+    failed = sum(1 for check in checks if not check["passed"])
+    return {
+        "check": "pipeline-preflight",
+        "status": "ok" if failed == 0 else "fail",
+        "mode": "execute" if args.execute else "dry-run",
+        "stage": args.stage,
+        "source": args.source,
+        "requestedSources": list(source_selection.requested),
+        "executedSources": list(source_selection.executed),
+        "skippedSources": list(source_selection.skipped),
+        "env": {
+            "appEnv": settings.app_env.value,
+            "port": settings.port,
+            "backendSyncEnabled": settings.backend_sync_enabled,
+            "aiEnrichmentEnabled": settings.ai_enrichment_enabled,
+        },
+        "migrationTarget": migration_check,
+        "fixtures": fixture_check,
+        "backendSyncMode": backend_mode,
+        "redactedEvidencePreview": {
+            "scraperDatabaseUrl": redact_database_url(settings.scraper_database_url),
+            "backendDatabaseUrl": redact_database_url(settings.backend_database_url),
+            "backendBaseUrl": settings.backend_sync_base_url,
+            "jobstreetTokenConfigured": settings.jobstreet_bearer_token is not None,
+        },
+        "checks": checks,
+    }
 
 
 async def run_status(args: argparse.Namespace) -> dict[str, Any]:
@@ -1101,6 +1256,7 @@ class ManualPipelineRunner:
         recency_days: int,
         execute: bool,
         run_id: str | None,
+        source_selection: SourceSelection,
     ) -> None:
         self.session = session
         self.settings = settings
@@ -1113,6 +1269,7 @@ class ManualPipelineRunner:
         self.recency_days = recency_days
         self.execute = execute
         self.run_id = run_id
+        self.source_selection = source_selection
         self.output: dict[str, Any] | None = None
         self.stage_run_ids: dict[str, str] = {}
 
@@ -1137,6 +1294,7 @@ class ManualPipelineRunner:
             recency_mode=self.recency_mode,
             recency_days=self.recency_days,
             stage_run_ids=self.stage_run_ids,
+            source_selection=self.source_selection,
         )
 
     async def run_named_stage(self, stage: str) -> None:
@@ -1221,7 +1379,7 @@ class ManualPipelineRunner:
                 client=backend_sync_client,
                 events=SyncEventRepository(self.session),
             )
-            max_jobs = self.limit * source_count(self.source) * len(self.keywords)
+            max_jobs = self.limit * len(self.source_selection.executed) * len(self.keywords)
             result = await worker.sync_eligible_jobs(
                 scrape_run_id=run_id,
                 limit=max_jobs,
@@ -1245,7 +1403,7 @@ class ManualPipelineRunner:
 
         return PipelineOrchestrator(
             sources=pipeline_sources(
-                source=self.source,
+                selected_platforms=self.source_selection.executed,
                 keywords=self.keywords,
                 settings=self.settings,
                 fixture_root=self.fixture_root,
@@ -1483,7 +1641,7 @@ class LivePipelineSource:
 
 def pipeline_sources(
     *,
-    source: str,
+    selected_platforms: tuple[str, ...],
     keywords: tuple[str, ...],
     settings: Settings,
     fixture_root: Path,
@@ -1494,8 +1652,7 @@ def pipeline_sources(
 ) -> list[FixturePipelineSource | LivePipelineSource]:
     if not execute:
         return fixture_sources(
-            source=source,
-            settings=settings,
+            selected_platforms=selected_platforms,
             keywords=keywords,
             fixture_root=fixture_root,
             limit=limit,
@@ -1503,7 +1660,7 @@ def pipeline_sources(
             recency_days=recency_days,
         )
     return live_sources(
-        source=source,
+        selected_platforms=selected_platforms,
         keywords=keywords,
         settings=settings,
         limit=limit,
@@ -1512,16 +1669,45 @@ def pipeline_sources(
     )
 
 
+def select_sources(*, source: str, settings: Settings, execute: bool) -> SourceSelection:
+    if execute and source == "jobstreet" and not settings.jobstreet_enabled:
+        raise CliInputError(
+            "JobStreet source is disabled (JOBSTREET_ENABLED=false). "
+            "Use --dry-run for fixture validation or enable JobStreet for live execute."
+        )
+    requested = tuple(PLATFORM_SOURCES) if source == "all" else (source,)
+    executed: list[str] = []
+    skipped: list[dict[str, str]] = []
+    for platform in requested:
+        if execute and platform == "jobstreet" and not settings.jobstreet_enabled:
+            skipped.append(
+                {
+                    "source": platform,
+                    "reason": "disabled (JOBSTREET_ENABLED=false)",
+                }
+            )
+            continue
+        executed.append(platform)
+    if not executed:
+        skipped_sources = ", ".join(item["source"] for item in skipped) or source
+        mode = "execute" if execute else "dry-run"
+        raise CliInputError(f"no executable sources for mode {mode}: {skipped_sources}")
+    return SourceSelection(
+        requested=requested,
+        executed=tuple(executed),
+        skipped=tuple(skipped),
+    )
+
+
 def live_sources(
     *,
-    source: str,
+    selected_platforms: tuple[str, ...],
     keywords: tuple[str, ...],
     settings: Settings,
     limit: int,
     recency_mode: str,
     recency_days: int,
 ) -> list[LivePipelineSource]:
-    selected = live_platforms(source, settings)
     factories = {
         "dealls": build_live_dealls_source,
         "glints": build_live_glints_source,
@@ -1536,21 +1722,13 @@ def live_sources(
             recency_days=recency_days,
             settings=settings,
         )
-        for platform in selected
+        for platform in selected_platforms
         for keyword in keywords
     ]
 
 
 def live_platforms(source: str, settings: Settings) -> tuple[str, ...]:
-    if source == "all":
-        return tuple(
-            platform
-            for platform in SOURCE_CHOICES[1:]
-            if platform != "jobstreet" or settings.jobstreet_enabled
-        )
-    if source == "jobstreet" and not settings.jobstreet_enabled:
-        raise ValueError("JobStreet source is disabled")
-    return (source,)
+    return select_sources(source=source, settings=settings, execute=True).executed
 
 
 def build_live_dealls_source(
@@ -1821,15 +1999,13 @@ def build_handoff_client(
 
 def fixture_sources(
     *,
-    source: str,
-    settings: Settings,
+    selected_platforms: tuple[str, ...],
     keywords: tuple[str, ...],
     fixture_root: Path,
     limit: int,
     recency_mode: str,
     recency_days: int,
 ) -> list[FixturePipelineSource]:
-    selected = live_platforms(source, settings)
     return [
         FixturePipelineSource(
             platform,
@@ -1839,13 +2015,88 @@ def fixture_sources(
             recency_mode,
             recency_days,
         )
-        for platform in selected
+        for platform in selected_platforms
         for keyword in keywords
     ]
 
 
-def source_count(source: str) -> int:
-    return len(SOURCE_CHOICES) - 1 if source == "all" else 1
+def fixture_availability(
+    requested_sources: tuple[str, ...],
+    *,
+    fixture_root: Path,
+) -> dict[str, Any]:
+    found: list[str] = []
+    missing: list[str] = []
+    for source in requested_sources:
+        if (fixture_root / source / "sample.json").is_file():
+            found.append(source)
+        else:
+            missing.append(source)
+    return {
+        "status": "ok" if not missing else "fail",
+        "fixtureRoot": str(fixture_root),
+        "availableSources": found,
+        "missingSources": missing,
+    }
+
+
+def migration_target_check() -> dict[str, Any]:
+    try:
+        config = Config("alembic.ini")
+        script = ScriptDirectory.from_config(config)
+        heads = list(script.get_heads())
+        current_head = script.get_current_head()
+        if not heads:
+            return {
+                "status": "fail",
+                "reason": "alembic script directory has no head revisions",
+            }
+        return {
+            "status": "ok",
+            "scriptLocation": config.get_main_option("script_location"),
+            "heads": heads,
+            "currentHead": current_head,
+        }
+    except Exception as exc:
+        return {
+            "status": "fail",
+            "reason": redact_text(str(exc)),
+        }
+
+
+def backend_sync_mode(settings: Settings, *, execute: bool) -> dict[str, Any]:
+    if not execute:
+        return {
+            "status": "ok",
+            "mode": "recording",
+            "reason": "dry-run mode always uses recording sync/handoff clients",
+        }
+    if not settings.backend_sync_enabled:
+        return {
+            "status": "ok",
+            "mode": "recording",
+            "reason": "BACKEND_SYNC_ENABLED=false",
+        }
+    if settings.backend_sync_base_url is None or settings.backend_sync_service_token is None:
+        return {
+            "status": "fail",
+            "mode": "live",
+            "reason": "backend sync enabled but base URL or service token is missing",
+        }
+    return {
+        "status": "ok",
+        "mode": "live",
+        "baseUrl": settings.backend_sync_base_url,
+    }
+
+
+def redact_database_url(value: str | None) -> str | None:
+    if value is None:
+        return None
+    try:
+        return make_url(value).render_as_string(hide_password=True)
+    except Exception:
+        return redact_text(value)
 
 
 def build_ai_normalization_client(
@@ -1907,7 +2158,11 @@ def output_from_result(
     recency_mode: str,
     recency_days: int,
     stage_run_ids: dict[str, str] | None = None,
+    source_selection: SourceSelection | None = None,
 ) -> dict[str, Any]:
+    requested_sources = list(source_selection.requested) if source_selection else []
+    executed_sources = list(source_selection.executed) if source_selection else []
+    skipped_sources = list(source_selection.skipped) if source_selection else []
     return {
         "check": "pipeline-run",
         "status": "ok" if result.status in {"completed", "partial"} else "fail",
@@ -1922,6 +2177,9 @@ def output_from_result(
         "limit": limit,
         "recencyMode": recency_mode,
         "recencyDays": recency_days,
+        "requestedSources": requested_sources,
+        "executedSources": executed_sources,
+        "skippedSources": skipped_sources,
         "counts": result.counts.model_dump(),
         "sources": [
             {

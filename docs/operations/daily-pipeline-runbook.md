@@ -46,6 +46,9 @@ Use the smoke command for a narrow parser check. It uses a sanitized Dealls fixt
 
 ```bash
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source glints --stage scrape
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source jobstreet --stage scrape
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source kalibrr --stage scrape
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage normalize
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage enrich
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage sync
@@ -55,6 +58,7 @@ PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage notify
 Use the pipeline command for an operator-style end-to-end dry run. Use explicit `--dry-run` mode with sanitized fixtures and an in-memory database, so it does not mutate staging or production data.
 
 ```bash
+PYTHONPATH=src uv run python -m cli.pipeline preflight --stage full --source all --dry-run --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --dry-run --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --limit 5 --dry-run --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 5 --latest --recency-days 7 --dry-run --env-file .env.example
@@ -90,6 +94,8 @@ Pipeline command rules:
 - `--latest` forces latest retrieval mode.
 - `--recency-days` must be between `1` and `365`; when absent, the command uses `SCRAPER_RECENCY_DAYS`.
 - Dry-run output is compact JSON and must not print service tokens, bearer tokens, cookies, raw headers, database passwords, or raw payload bodies.
+- Dry-run output includes `requestedSources`, `executedSources`, and `skippedSources` so operators can see disabled-source skips explicitly.
+- `preflight` validates env loading, migration target head, source enablement, fixture availability, backend sync mode, and redacted evidence preview before an operator run.
 - Dry-run output includes source and keyword summaries with requested limit and newest/oldest source timestamps when available.
 - Full-stage run status is `completed`, `partial`, or `failed`; treat `failed` as hard failure even when prior stages succeeded.
 - Manual runs share the scheduler guard so only one in-process operator run is accepted at a time.
@@ -102,6 +108,26 @@ Pipeline command rules:
 - Source HTTP circuit breaker is retryable and auto-recovers after cooldown; if still open after repeated cooldown windows, treat as active incident and escalate.
 
 The HTTP trigger route is still not exposed. Operators should use the CLI until the internal run API is implemented.
+
+## Production Read-Only Verification
+
+Run these checks without mutating data:
+
+```bash
+curl --fail http://127.0.0.1:${APP_PORT:-3003}/health/live
+curl --fail http://127.0.0.1:${APP_PORT:-3003}/health/ready
+docker compose -f docker-compose.yml --env-file .env.production ps
+docker compose -f docker-compose.yml --env-file .env.production port app 3003
+docker compose -f docker-compose.yml --env-file .env.production ps scheduler
+git rev-parse HEAD
+```
+
+Expected:
+
+- app health endpoints return `200`.
+- published app port is `127.0.0.1:3003->3003/tcp`.
+- scheduler is running and healthy.
+- deployed git SHA matches immutable deployment SHA reference.
 
 ## Recovery
 

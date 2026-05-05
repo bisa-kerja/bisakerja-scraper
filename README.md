@@ -111,12 +111,16 @@ Run smoke checks:
 PYTHONPATH=src uv run python -m cli.smoke config --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source glints
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source jobstreet
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source kalibrr
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape
+PYTHONPATH=src uv run python -m cli.pipeline preflight --stage full --source all --dry-run --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --dry-run --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --dry-run --env-file .env.example
 ```
 
-The smoke dry-run command is fixture-backed and network-free. It validates parsing and mapping for a bounded Dealls fixture only. The pipeline command requires explicit mode: `--dry-run` or `--execute`.
+The smoke dry-run command is fixture-backed and network-free. It validates parsing and mapping for Dealls, Glints, JobStreet, and Kalibrr fixtures. The pipeline command requires explicit mode: `--dry-run` or `--execute`.
 
 `cli.pipeline run --execute` has two sync modes:
 
@@ -145,7 +149,7 @@ PYTHONPATH=src uv run uvicorn api.app:create_app --factory --host 0.0.0.0 --port
 Default local API:
 
 ```text
-http://localhost:8000
+http://localhost:3003
 ```
 
 ## Environment Configuration
@@ -193,7 +197,8 @@ Do not commit real secrets, cookies, bearer tokens, source sessions, or database
 | `uv run python scripts/prepare_docs_sync_bundle.py` | Build central-docs sync bundle             |
 | `PYTHONPATH=src uv run python -m cli.smoke config --env-file .env.example` | Validate config loading |
 | `PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example` | Validate app liveness wiring |
-| `PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape` | Run fixture-backed smoke dry-run for one stage |
+| `PYTHONPATH=src uv run python -m cli.smoke dry-run --source <dealls|glints|jobstreet|kalibrr> --stage scrape` | Run fixture-backed smoke dry-run for one source and one stage |
+| `PYTHONPATH=src uv run python -m cli.pipeline preflight --stage full --source all --dry-run --env-file .env.example` | Validate env, migration target, source enablement, fixture availability, backend sync mode, and safe redacted evidence preview |
 | `PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --dry-run --env-file .env.example` | Run offline fixture-backed manual pipeline |
 | `PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --dry-run --env-file .env.example` | Run multi-keyword latest scrape dry-run |
 | `PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 3 --run-id local-e2e-<timestamp> --execute --env-file .env` | Run controlled execute pipeline (real source fetch and DB writes; backend sync/handoff real only when `BACKEND_SYNC_ENABLED=true`) |
@@ -202,7 +207,7 @@ Do not commit real secrets, cookies, bearer tokens, source sessions, or database
 | `PYTHONPATH=src uv run python -m cli.pipeline staging-report --run-id <run-id-prefix> --env-file .env` | Build operational report with latency, retry, consistency, and backend-read evidence |
 | `PYTHONPATH=src uv run python -m cli.daemon --env-file .env.production` | Run scheduled stage daemon (scrape, normalize, enrich, sync, notify-handoff) |
 
-`cli.smoke dry-run` validates a narrow Dealls fixture path. `cli.pipeline run` prints compact JSON without secrets or raw payload bodies and requires mode selection (`--dry-run` or `--execute`). `--dry-run` uses sanitized fixtures with in-memory DB. Keyword flags override `SCRAPER_KEYWORDS`; otherwise the env list is used. `--limit` applies per keyword. Add `--execute` only for an operator-controlled environment with a migrated, non-production database.
+`cli.smoke dry-run` validates one source fixture path per command across all supported sources. `cli.pipeline preflight` provides a read-only local readiness check before operator runs. `cli.pipeline run` prints compact JSON without secrets or raw payload bodies and requires mode selection (`--dry-run` or `--execute`). `--dry-run` uses sanitized fixtures with in-memory DB and can validate JobStreet fixture flow even when `JOBSTREET_ENABLED=false` for live mode. Keyword flags override `SCRAPER_KEYWORDS`; otherwise the env list is used. `--limit` applies per keyword. Add `--execute` only for an operator-controlled environment with a migrated, non-production database.
 
 Execute mode behavior:
 
@@ -246,7 +251,7 @@ docker build -t bisakerja-scraper:local .
 Run with an env file:
 
 ```bash
-docker run --rm --env-file .env -p 8000:8000 bisakerja-scraper:local
+docker run --rm --env-file .env -p 3003:3003 bisakerja-scraper:local
 ```
 
 Run Compose with a published image:

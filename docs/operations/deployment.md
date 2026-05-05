@@ -57,7 +57,7 @@ docker build -t bisakerja-scraper:local .
 Run the API with an explicit env file:
 
 ```bash
-docker run --rm --env-file .env -p 8000:8000 bisakerja-scraper:local
+docker run --rm --env-file .env -p 3003:3003 bisakerja-scraper:local
 ```
 
 Run the published image through Compose:
@@ -186,6 +186,46 @@ Use hotfix only when production freshness or sync is materially degraded.
 | Log redaction | No token/cookie/session strings appear |
 | First production run | Counts are plausible and failures are isolated |
 | Freshness | `lastSeenAt` and stale counts match policy |
+
+## Production Read-Only Verification Checklist
+
+Run these checks on the deployment host after `docker compose up -d --wait`:
+
+```bash
+curl --fail http://127.0.0.1:${APP_PORT:-3003}/health/live
+curl --fail http://127.0.0.1:${APP_PORT:-3003}/health/ready
+docker compose -f docker-compose.yml --env-file .env.production ps
+docker compose -f docker-compose.yml --env-file .env.production port app 3003
+docker compose -f docker-compose.yml --env-file .env.production ps scheduler
+docker compose -f docker-compose.yml --env-file .env.production logs --tail=50 scheduler
+git -C "${DEPLOY_REMOTE_PATH:-.}" rev-parse HEAD
+```
+
+Expected evidence:
+
+- `/health/live` returns HTTP `200`.
+- `/health/ready` returns HTTP `200`.
+- Compose port shows `127.0.0.1:3003->3003/tcp` for `app`.
+- `scheduler` container state is `Up` and healthy.
+- `git rev-parse HEAD` matches deployed immutable SHA tag (`sha-<commit>`).
+- Scheduler logs show latest scheduled stage status and run id without secret values.
+
+## Reverse Proxy Empty Reply Troubleshooting
+
+If public domain checks return `Empty reply from server` while local container health is `200`, use this sequence:
+
+1. Confirm app container is serving on host port `3003`:
+   - `docker compose -f docker-compose.yml --env-file .env.production port app 3003`
+2. Confirm reverse proxy target points to `127.0.0.1:3003` (aaPanel or equivalent).
+3. Confirm current runtime env still sets `PORT=3003` and `APP_PORT=3003`.
+4. Recreate services with current config:
+   - `docker compose -f docker-compose.yml --env-file .env.production up -d --force-recreate app scheduler`
+5. Re-check local health:
+   - `curl --fail http://127.0.0.1:3003/health/live`
+   - `curl --fail http://127.0.0.1:3003/health/ready`
+6. Reload reverse proxy after container health is confirmed.
+
+Do not publish internal service tokens, cookies, or full source request headers in troubleshooting evidence.
 
 ## Recovery Rules
 

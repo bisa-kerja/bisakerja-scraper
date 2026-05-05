@@ -39,14 +39,29 @@ def test_dry_run_maps_one_dealls_fixture_job(capsys) -> None:
     assert main(["dry-run", "--source", "dealls"]) == 0
 
     output = json.loads(capsys.readouterr().out)
-    assert output == {
-        "check": "dry-run",
-        "firstExternalJobId": "69f30ce4b9f8ed001233b47c",
-        "inputJobs": 2,
-        "mappedJobs": 1,
-        "source": "dealls",
-        "status": "ok",
+    assert output["check"] == "dry-run"
+    assert output["status"] == "ok"
+    assert output["source"] == "dealls"
+    assert output["inputJobs"] == 2
+    assert output["mappedJobs"] == 1
+    assert output["firstExternalJobId"] == "69f30ce4b9f8ed001233b47c"
+
+
+def test_dry_run_maps_one_fixture_job_for_all_supported_sources(capsys) -> None:
+    expected_external_ids = {
+        "dealls": "69f30ce4b9f8ed001233b47c",
+        "glints": "aaed8a7f-de12-479c-8df8-56f26b35bed9",
+        "jobstreet": "91789576",
+        "kalibrr": "265196",
     }
+    for source, external_id in expected_external_ids.items():
+        assert main(["dry-run", "--source", source]) == 0
+        output = json.loads(capsys.readouterr().out)
+        assert output["check"] == "dry-run"
+        assert output["status"] == "ok"
+        assert output["source"] == source
+        assert output["mappedJobs"] == 1
+        assert output["firstExternalJobId"] == external_id
 
 
 def apply_env(monkeypatch) -> None:  # noqa: ANN001

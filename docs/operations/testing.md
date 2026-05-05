@@ -141,7 +141,11 @@ Smoke checks are available through the scraper CLI and do not require external n
 PYTHONPATH=src uv run python -m cli.smoke config --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source glints
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source jobstreet
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source kalibrr
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape
+PYTHONPATH=src uv run python -m cli.pipeline preflight --stage full --source all --dry-run --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --dry-run --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --limit 1 --dry-run --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --dry-run --env-file .env.example
@@ -153,7 +157,7 @@ uv run pytest tests/smoke
 Uvicorn local boot verification:
 
 ```bash
-PYTHONPATH=src uv run uvicorn api.app:create_app --factory --host 127.0.0.1 --port 8000
+PYTHONPATH=src uv run uvicorn api.app:create_app --factory --host 127.0.0.1 --port 3003
 ```
 
 The automated smoke suite includes a runtime boot regression check:
@@ -162,7 +166,7 @@ The automated smoke suite includes a runtime boot regression check:
 uv run pytest tests/smoke/test_runtime_boot.py
 ```
 
-The smoke dry-run command reads the sanitized Dealls fixture, parses the list payload, maps one job into the canonical schema, and prints a compact JSON result.
+The smoke dry-run command reads sanitized fixtures per source, parses list payloads, maps one job into the canonical schema, and prints a compact JSON result.
 
 The pipeline command requires explicit mode selection (`--dry-run` or `--execute`). Dry-run mode uses sanitized fixtures and in-memory storage. It exercises scrape, normalize, enrichment staging, backend sync handoff preparation, and notification handoff preparation without external network access or production database mutation.
 

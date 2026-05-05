@@ -11,6 +11,7 @@ from cli.pipeline import (
     ManualPipelineRunner,
     RecordingBackendClient,
     RecordingHandoffClient,
+    SourceSelection,
     build_backend_sync_client,
     build_handoff_client,
     live_platforms,
@@ -55,13 +56,17 @@ def test_pipeline_full_dry_run_uses_fixture_flow(monkeypatch, capsys) -> None:
     assert output["limit"] == 1
     assert output["recencyMode"] == "latest"
     assert output["recencyDays"] == 7
-    assert output["counts"]["persisted"] == 3
+    assert output["counts"]["persisted"] == 4
+    assert output["requestedSources"] == ["dealls", "glints", "jobstreet", "kalibrr"]
+    assert output["executedSources"] == ["dealls", "glints", "jobstreet", "kalibrr"]
+    assert output["skippedSources"] == []
     assert {item["source"] for item in output["sources"]} == {
         "dealls",
         "glints",
+        "jobstreet",
         "kalibrr",
     }
-    assert len(output["sources"]) == 3
+    assert len(output["sources"]) == 4
     assert "password" not in json.dumps(output).lower()
 
 
@@ -195,19 +200,90 @@ def test_pipeline_keyword_override_deduplicates_case_insensitive(monkeypatch, ca
 def test_pipeline_rejects_invalid_stage(monkeypatch) -> None:
     apply_env(monkeypatch)
 
-    with pytest.raises(SystemExit) as exc:
-        main(["run", "--stage", "invalid", "--dry-run"])
-
-    assert exc.value.code == 2
+    assert main(["run", "--stage", "invalid", "--dry-run"]) == 1
 
 
-def test_pipeline_requires_explicit_mode(monkeypatch) -> None:
+def test_pipeline_requires_explicit_mode(monkeypatch, capsys) -> None:
     apply_env(monkeypatch)
 
-    with pytest.raises(SystemExit) as exc:
-        main(["run", "--stage", "scrape", "--source", "dealls"])
+    assert main(["run", "--stage", "scrape", "--source", "dealls"]) == 1
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "fail"
+    assert output["check"] == "pipeline-cli"
 
-    assert exc.value.code == 2
+
+def test_pipeline_execute_jobstreet_disabled_returns_json_failure(monkeypatch, capsys) -> None:
+    apply_env(monkeypatch)
+
+    assert (
+        main(
+            [
+                "run",
+                "--stage",
+                "scrape",
+                "--source",
+                "jobstreet",
+                "--execute",
+            ]
+        )
+        == 1
+    )
+    output_text = capsys.readouterr().out
+    output = json.loads(output_text)
+    assert output["status"] == "fail"
+    assert output["check"] == "pipeline-run"
+    assert "disabled" in output["reason"].lower()
+    assert "traceback" not in output_text.lower()
+
+
+def test_pipeline_preflight_reports_source_and_fixture_state(monkeypatch, capsys) -> None:
+    apply_env(monkeypatch)
+
+    assert (
+        main(
+            [
+                "preflight",
+                "--stage",
+                "full",
+                "--source",
+                "all",
+                "--dry-run",
+            ]
+        )
+        == 0
+    )
+    output = json.loads(capsys.readouterr().out)
+    assert output["check"] == "pipeline-preflight"
+    assert output["status"] == "ok"
+    assert output["requestedSources"] == ["dealls", "glints", "jobstreet", "kalibrr"]
+    assert output["executedSources"] == ["dealls", "glints", "jobstreet", "kalibrr"]
+    assert output["fixtures"]["status"] == "ok"
+    assert output["migrationTarget"]["status"] == "ok"
+
+
+def test_pipeline_preflight_execute_all_reports_disabled_jobstreet(monkeypatch, capsys) -> None:
+    apply_env(monkeypatch)
+
+    assert (
+        main(
+            [
+                "preflight",
+                "--stage",
+                "full",
+                "--source",
+                "all",
+                "--execute",
+            ]
+        )
+        == 0
+    )
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "ok"
+    assert output["requestedSources"] == ["dealls", "glints", "jobstreet", "kalibrr"]
+    assert output["executedSources"] == ["dealls", "glints", "kalibrr"]
+    assert output["skippedSources"] == [
+        {"reason": "disabled (JOBSTREET_ENABLED=false)", "source": "jobstreet"}
+    ]
 
 
 def test_pipeline_execute_url_conversion_preserves_runtime_password() -> None:
@@ -271,6 +347,11 @@ async def test_manual_full_run_marks_failed_when_any_stage_failed() -> None:
         recency_days=7,
         execute=False,
         run_id=None,
+        source_selection=SourceSelection(
+            requested=("dealls",),
+            executed=("dealls",),
+            skipped=(),
+        ),
     )
 
     class FakeOrchestrator:

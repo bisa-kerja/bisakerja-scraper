@@ -58,10 +58,12 @@ This matrix defines the minimum evidence needed before scraper docs, code, or op
 | Fixture coverage | All supported sources have list, detail or fallback, mapper, malformed, and sanitization evidence |
 | Integration tests | Changed DB/sync behavior passes against isolated DB |
 | Smoke tests | Target runtime starts and processes fixture path |
+| Local preflight | `cli.pipeline preflight` passes env, migration target, source enablement, fixture availability, backend sync mode, and redaction checks |
 | E2E fixture pipeline | Raw fixtures produce normalized, enriched, synced, and handed-off jobs without network |
 | Staging validation report | Stage counts, latency percentiles, retries, consistency checks, and backend read sampling pass configured gates |
 | Observability | Run logs include `runId`, source, stage, status, counts, and duration |
 | Recovery | Rollback or retry path exists for changed operational behavior |
+| Production read-only checks | `/health/live`, `/health/ready`, Compose app port `3003`, scheduler health, deployed SHA, and latest scheduler log status are verified without data mutation |
 
 ## Failure Acceptance Rule
 
