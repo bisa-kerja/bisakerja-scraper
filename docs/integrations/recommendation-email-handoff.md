@@ -36,6 +36,8 @@ runId + sourcePlatform + externalJobId + target
 
 Repeating the same handoff reuses the existing event. Sent handoff events are not sent again. Failed events may retry until the configured attempt limit, then move to dead-letter for operator review.
 
+Large candidate sets are chunked before Backend API handoff. The default handoff chunk size is `1000`, matching the backend internal notification endpoint limit, so `2000` candidates are sent as multiple safe requests.
+
 ## Candidate Payload
 
 Default backend endpoint:

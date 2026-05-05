@@ -132,6 +132,38 @@ async def test_sync_worker_isolates_failed_chunk_and_continues() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sync_worker_sends_large_candidate_set_in_backend_safe_chunks() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        for index in range(205):
+            external_id = f"job-{index:03d}"
+            result = repository.write_job(
+                raw_input("run-1", external_id),
+                canonical_job(external_id),
+            )
+            result.normalized_job.status = "active"
+        client = RecordingBatchClient()
+        worker = BackendSyncWorker(
+            session=session,
+            client=client,
+            events=SyncEventRepository(session),
+        )
+
+        sync_result = await worker.sync_eligible_jobs(
+            scrape_run_id="run-1",
+            limit=205,
+            batch_size=100,
+        )
+
+        assert sync_result.attempted == 205
+        assert sync_result.sent == 205
+        assert sync_result.failed == 0
+        assert sync_result.chunks_attempted == 3
+        assert client.batch_sizes == [100, 100, 5]
+        assert len(client.external_ids) == 205
+
+
+@pytest.mark.asyncio
 async def test_sync_worker_resume_skips_sent_and_dead_letter_events() -> None:
     with session_scope() as session:
         repository = JobPersistenceRepository(session)
@@ -197,6 +229,16 @@ class RecordingClient:
             status_code=202,
             response_summary={"statusCode": 202, "statusClass": "2xx"},
         )
+
+
+class RecordingBatchClient(RecordingClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.batch_sizes: list[int] = []
+
+    async def sync_jobs(self, jobs: list[Any]) -> BackendSyncResult:
+        self.batch_sizes.append(len(jobs))
+        return await super().sync_jobs(jobs)
 
 
 class FailsFirstChunkClient:

@@ -137,6 +137,7 @@ Wizard guard rules:
 - When `BACKEND_SYNC_ENABLED=false`, sync and notification handoff use recording clients (no outbound backend API mutation).
 - When `BACKEND_SYNC_ENABLED=true`, sync and notification handoff use real backend API clients with `BACKEND_SYNC_BASE_URL` and `BACKEND_SYNC_SERVICE_TOKEN`.
 - Live backend mode calls `POST /api/v1/internal/scraper/jobs` and `POST /api/v1/internal/notification-events`; `BACKEND_SYNC_SERVICE_TOKEN` must match Backend API `SCRAPER_API_SERVICE_TOKEN`.
+- Large runs are split into backend-safe chunks: sync uses `BACKEND_SYNC_BATCH_SIZE` with a maximum of `100` jobs per request, and notification handoff uses candidate chunks with a maximum of `1000` candidates per request.
 
 Recommended controlled local execute sequence:
 
@@ -231,6 +232,7 @@ Execute mode behavior:
 - Normalize stage uses serial AI batch normalization with per-item partial handling. Batch size and fixed delay are controlled by `OPENAI_NORMALIZATION_BATCH_SIZE` and `OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS`.
 - `--execute` with `BACKEND_SYNC_ENABLED=false` keeps backend sync/handoff local (recording clients).
 - `--execute` with `BACKEND_SYNC_ENABLED=true` sends sync payloads to Backend API and sends notification handoff payloads to Backend API. Sync batches are capped at `100` jobs to match the Backend API internal endpoint.
+- A run can sync `1000`-`2000` total jobs when multiple source/keyword fan-out items produce that many rows; the scraper will send multiple backend requests instead of dropping overflow rows.
 - Execute runs stream stage and job progress logs to `stderr` while preserving JSON result output on `stdout`.
 
 ## Testing And Verification

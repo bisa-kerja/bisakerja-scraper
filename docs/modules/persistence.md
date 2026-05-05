@@ -62,6 +62,7 @@ Track:
 - Raw rows stored.
 - Staging rows written.
 - Sync chunks attempted/succeeded/failed.
+- Large backend sync runs are persisted per job while outbound requests are chunked, so one failed `100`-job backend request does not discard other chunks.
 - Transaction latency.
 - Constraint conflict count.
 - Retention cleanup count.

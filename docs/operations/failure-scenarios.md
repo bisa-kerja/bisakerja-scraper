@@ -139,6 +139,7 @@ Sync triage rules:
 - `404` on the configured sync path indicates a missing or wrong Backend API endpoint and is recorded as `backend_endpoint_not_found` so it can be retried after config or backend routing is fixed.
 - `429` and `5xx` responses may be retried within the configured limit.
 - Sync runs are chunked; a failed chunk should not mark later chunks failed.
+- Large sync runs should show multiple backend requests with chunk sizes at or below `BACKEND_SYNC_BATCH_SIZE` and never above `100`.
 - Repeating the same payload should reuse the same sync event.
 - Resume should process only pending events and retryable failed events.
 - `dead-letter` rows require operator review before replay.
@@ -158,6 +159,7 @@ Handoff triage rules:
 
 - Handoff only starts from `sent` sync events.
 - `404` on `/api/v1/internal/notification-events` indicates a missing or wrong Backend API notification handoff endpoint.
+- Large handoff runs are chunked; a failed candidate chunk should not discard successfully sent chunks.
 - Scraper must not read backend user preference tables to compensate for a backend failure.
 - Repeating the same run/source/job target should reuse the same handoff event.
 - Dead-letter handoff rows require operator review before replay.

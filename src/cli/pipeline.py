@@ -2296,11 +2296,12 @@ class ManualPipelineRunner:
                 events=SyncEventRepository(self.session),
             )
             max_jobs = self.limit * len(self.source_selection.executed) * len(self.keywords)
-            self.emit_progress(f"sync start limit={max_jobs}")
+            sync_batch_size = min(max_jobs, self.settings.backend_sync_batch_size)
+            self.emit_progress(f"sync start limit={max_jobs} batch_size={sync_batch_size}")
             result = await worker.sync_eligible_jobs(
                 scrape_run_id=run_id,
                 limit=max_jobs,
-                batch_size=min(max_jobs, 100),
+                batch_size=sync_batch_size,
             )
             self.session.commit()
             if result.failed:

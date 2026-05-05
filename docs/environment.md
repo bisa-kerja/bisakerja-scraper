@@ -97,7 +97,7 @@ Keyword rules:
 - Keep internal spaces and search operators such as `/`, `+`, and `-`.
 - Deduplicate case-insensitively while preserving the first spelling sent to sources.
 
-The scraper fans out scrape work by `source x keyword`. The per-keyword limit applies to every fan-out item, not to the whole run. Job deduplication still uses `sourcePlatform + externalJobId`; the search keyword is audit metadata and must not become part of job identity.
+The scraper fans out scrape work by `source x keyword`. The per-keyword limit applies to every fan-out item, not to the whole run. Total rows can exceed `100` when multiple sources and keywords run together. Job deduplication still uses `sourcePlatform + externalJobId`; the search keyword is audit metadata and must not become part of job identity.
 
 Latest mode requests newest listings first when a source supports it. If a source only supports sorting, the scraper reads newest-first pages and stops locally by limit or recency threshold.
 
@@ -111,6 +111,8 @@ Latest mode requests newest listings first when a source supports it. If a sourc
 | `BACKEND_SYNC_BATCH_SIZE` | Yes | Positive batch size, maximum `100` to match Backend API internal sync limit |
 | `FRESHNESS_STALE_AFTER_HOURS` | Yes | Positive threshold for stale listings |
 | `FRESHNESS_EXPIRED_AFTER_HOURS` | Yes | Positive threshold greater than stale threshold |
+
+Backend sync can process large candidate sets such as `1000`-`2000` normalized jobs in one stage run. The scraper splits outbound sync calls into repeated `BACKEND_SYNC_BATCH_SIZE` chunks, so no single request exceeds the Backend API `100` job limit. Notification handoff is also chunked before calling the Backend API candidate endpoint.
 
 ## AI Provider Variables
 

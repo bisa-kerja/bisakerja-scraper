@@ -90,13 +90,14 @@ Execute sync semantics:
 - When `BACKEND_SYNC_ENABLED=false`, sync and notification handoff use recording clients (no outbound backend API mutation).
 - When `BACKEND_SYNC_ENABLED=true`, sync and notification handoff call backend internal endpoints using `BACKEND_SYNC_BASE_URL` and `BACKEND_SYNC_SERVICE_TOKEN`.
 - Backend must expose `POST /api/v1/internal/scraper/jobs` and `POST /api/v1/internal/notification-events`; `BACKEND_SYNC_SERVICE_TOKEN` must match Backend API `SCRAPER_API_SERVICE_TOKEN`.
+- Large runs are safe for Backend API: sync sends repeated `BACKEND_SYNC_BATCH_SIZE` chunks (maximum `100` jobs per request), and notification handoff sends repeated candidate chunks (maximum `1000` candidates per request).
 
 Pipeline command rules:
 
 - `--stage` accepts `full`, `scrape`, `normalize`, `enrich`, `sync`, and `notify-handoff`.
 - `--source` accepts `all`, `dealls`, `glints`, `jobstreet`, and `kalibrr`.
 - exactly one mode flag is required: `--dry-run` or `--execute`.
-- `--limit` must be between `1` and `100` and limits each keyword, not the whole run.
+- `--limit` must be between `1` and `100` and limits each keyword, not the whole run. Total fetched/synced rows may be much larger because the run fans out across sources and keywords.
 - `--keyword` may be repeated for individual keyword overrides.
 - `--keywords` accepts a comma-separated keyword override.
 - When keyword flags are absent, the command uses `SCRAPER_KEYWORDS`.
@@ -162,6 +163,7 @@ Expected:
 - Healthy sources may continue when one source fails.
 - Failed source runs must not expire unseen jobs for that source.
 - Failed sync chunks must not block later chunks.
+- No sync chunk may exceed the Backend API `100` job request cap.
 - Sent sync and handoff events must be idempotent on replay.
 - Dead-letter rows require operator review before replay.
 

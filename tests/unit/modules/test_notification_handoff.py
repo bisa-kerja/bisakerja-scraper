@@ -69,6 +69,37 @@ async def test_handoff_is_idempotent_by_run_source_job_target() -> None:
 
 
 @pytest.mark.asyncio
+async def test_handoff_sends_large_candidate_set_in_backend_safe_chunks() -> None:
+    with session_scope() as session:
+        persistence = JobPersistenceRepository(session)
+        sync_events = SyncEventRepository(session)
+        for index in range(5):
+            external_id = f"synced-{index}"
+            synced = persistence.write_job(
+                raw_input("run-1", external_id),
+                canonical_job(external_id),
+            )
+            sent_event = sync_events.prepare_event(synced.normalized_job, scrape_run_id="run-1")
+            sync_events.record_success(sent_event, SyncSuccess({"statusCode": 202}))
+        client = RecordingHandoffClient()
+        worker = RecommendationHandoffWorker(
+            session=session,
+            repository=NotificationHandoffRepository(session),
+            client=client,
+            batch_size=2,
+        )
+
+        result = await worker.handoff_synced_jobs(scrape_run_id="run-1")
+
+        assert result.attempted == 5
+        assert result.sent == 5
+        assert result.failed == 0
+        assert result.chunks_attempted == 3
+        assert [len(payload["candidates"]) for payload in client.payloads] == [2, 2, 1]
+        assert session.query(NotificationHandoffEvent).filter_by(status="sent").count() == 5
+
+
+@pytest.mark.asyncio
 async def test_handoff_records_safe_backend_response_summary() -> None:
     with session_scope() as session:
         persistence = JobPersistenceRepository(session)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -17,6 +18,7 @@ from modules.persistence import (
 
 DEFAULT_HANDOFF_TARGET = "backend-notifications"
 SYNC_SENT_STATUS = "sent"
+DEFAULT_HANDOFF_BATCH_SIZE = 1000
 
 
 class HandoffStatus(StrEnum):
@@ -43,6 +45,8 @@ class HandoffWorkerResult:
     attempted: int
     sent: int
     failed: int
+    chunks_attempted: int = 0
+    chunks_failed: int = 0
 
 
 class HandoffClient(Protocol):
@@ -163,11 +167,15 @@ class RecommendationHandoffWorker:
         repository: NotificationHandoffRepository,
         client: HandoffClient,
         max_attempts: int = 3,
+        batch_size: int = DEFAULT_HANDOFF_BATCH_SIZE,
     ) -> None:
         self.session = session
         self.repository = repository
         self.client = client
         self.max_attempts = max_attempts
+        if batch_size < 1:
+            raise ValueError("batch_size must be at least 1")
+        self.batch_size = batch_size
 
     async def handoff_synced_jobs(self, *, scrape_run_id: str) -> HandoffWorkerResult:
         sync_events = self.repository.list_synced_jobs_for_run(scrape_run_id=scrape_run_id)
@@ -178,36 +186,54 @@ class RecommendationHandoffWorker:
         if not retryable_events:
             return HandoffWorkerResult(attempted=0, sent=0, failed=0)
 
-        payload = {
-            "runId": scrape_run_id,
-            "candidates": [event.payload_json for event in retryable_events],
-        }
-        try:
-            result = await self.client.send_candidates(payload)
-        except Exception as exc:
-            response_summary = getattr(exc, "response_summary", None)
-            failure = HandoffFailure(
-                category=exc.__class__.__name__,
-                message=str(exc),
-                response_summary=response_summary if isinstance(response_summary, dict) else None,
-            )
-            for event in retryable_events:
-                self.repository.record_failure(event, failure, max_attempts=self.max_attempts)
-            self.session.flush()
-            return HandoffWorkerResult(
-                attempted=len(retryable_events),
-                sent=0,
-                failed=len(retryable_events),
-            )
+        sent = 0
+        failed = 0
+        chunks_attempted = 0
+        chunks_failed = 0
+        for chunk_events in chunks(retryable_events, self.batch_size):
+            chunks_attempted += 1
+            payload = {
+                "runId": scrape_run_id,
+                "candidates": [event.payload_json for event in chunk_events],
+            }
+            try:
+                result = await self.client.send_candidates(payload)
+            except Exception as exc:
+                response_summary = getattr(exc, "response_summary", None)
+                failure = HandoffFailure(
+                    category=exc.__class__.__name__,
+                    message=str(exc),
+                    response_summary=(
+                        response_summary if isinstance(response_summary, dict) else None
+                    ),
+                )
+                for event in chunk_events:
+                    self.repository.record_failure(event, failure, max_attempts=self.max_attempts)
+                    failed += 1
+                chunks_failed += 1
+                continue
 
-        for event in retryable_events:
-            self.repository.record_success(event, result)
+            for event in chunk_events:
+                self.repository.record_success(event, result)
+                sent += 1
         self.session.flush()
         return HandoffWorkerResult(
             attempted=len(retryable_events),
-            sent=len(retryable_events),
-            failed=0,
+            sent=sent,
+            failed=failed,
+            chunks_attempted=chunks_attempted,
+            chunks_failed=chunks_failed,
         )
+
+
+def chunks(
+    values: list[NotificationHandoffEvent],
+    size: int,
+) -> Iterable[list[NotificationHandoffEvent]]:
+    if size <= 0:
+        raise ValueError("chunk size must be greater than zero")
+    for index in range(0, len(values), size):
+        yield values[index : index + size]
 
 
 def candidate_payload_from(sync_event: SyncEvent, job: NormalizedJob) -> dict[str, Any]:

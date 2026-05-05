@@ -120,6 +120,7 @@ Behavior rules:
 - `4xx` responses are treated as rejected payloads and are not retried automatically.
 - `429` and `5xx` responses may be retried up to the configured limit.
 - Sync batches must contain `1` to `100` jobs.
+- Large sync runs are split into repeated requests. For example, `205` jobs with `BACKEND_SYNC_BATCH_SIZE=100` sends three Backend API requests with `100`, `100`, and `5` jobs.
 - For list-only sources such as current Glints capture, `description` may stay `null` and `requirementSummary` may stay `null` or safe list-derived summary text.
 - `externalApplyUrl` must be present; when source apply URL is unavailable, fallback to `sourceUrl`.
 - Foreign-key, missing source platform, and company resolution mismatches are recorded as sync failures with safe response summaries.
@@ -183,6 +184,7 @@ Behavior rules:
 
 - Current Backend API success response is `200` with a standard success envelope.
 - Notification candidate batches may contain up to `1000` candidates.
+- Large notification handoff runs are split into repeated candidate requests so one request never exceeds the Backend API limit.
 - Non-`2xx` responses mark handoff events failed or dead-letter based on attempt count.
 - Response summaries store status code, status class, stable error code, message, and endpoint path only.
 
