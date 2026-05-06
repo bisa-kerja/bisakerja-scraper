@@ -62,8 +62,31 @@ class SyncEventRepository:
                 break
         return candidates
 
-    def find_event(self, job: NormalizedJob, *, target: str = "backend") -> SyncEvent | None:
-        payload_hash = stable_payload_hash(job.normalized_payload)
+    def list_eligible_jobs(
+        self,
+        *,
+        eligible_statuses: set[str],
+    ) -> list[NormalizedJob]:
+        return list(
+            self.session.scalars(
+                select(NormalizedJob)
+                .options(
+                    selectinload(NormalizedJob.skills_staging),
+                    selectinload(NormalizedJob.requirements_staging),
+                )
+                .where(NormalizedJob.status.in_(eligible_statuses))
+                .order_by(NormalizedJob.last_seen_at.desc(), NormalizedJob.id.asc())
+            ).all()
+        )
+
+    def find_event(
+        self,
+        job: NormalizedJob,
+        *,
+        target: str = "backend",
+        payload_hash: str | None = None,
+    ) -> SyncEvent | None:
+        payload_hash = payload_hash or stable_payload_hash(job.normalized_payload)
         return self.session.scalar(
             select(SyncEvent).where(
                 SyncEvent.target == target,
@@ -78,9 +101,10 @@ class SyncEventRepository:
         *,
         scrape_run_id: str | None,
         target: str = "backend",
+        payload_hash: str | None = None,
     ) -> SyncEvent:
-        payload_hash = stable_payload_hash(job.normalized_payload)
-        existing = self.find_event(job, target=target)
+        payload_hash = payload_hash or stable_payload_hash(job.normalized_payload)
+        existing = self.find_event(job, target=target, payload_hash=payload_hash)
         if existing is not None:
             existing.scrape_run_id = scrape_run_id
             existing.attempted_at = utc_now()

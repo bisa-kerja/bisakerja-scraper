@@ -9,7 +9,7 @@ from integrations.backend import BackendSyncClient, BackendSyncClientError, Back
 from integrations.backend.payloads import BackendPayloadValidationError, build_backend_job_payload
 from modules.jobs.schemas import CanonicalJobStatus
 from modules.persistence import NormalizedJob, stable_payload_hash
-from modules.sync.events import SyncEventRepository, SyncFailure, SyncSuccess
+from modules.sync.events import SyncEventRepository, SyncFailure, SyncSuccess, is_retryable_event
 
 SYNC_ELIGIBLE_STATUSES = {
     CanonicalJobStatus.ACTIVE.value,
@@ -48,11 +48,7 @@ class BackendSyncWorker:
         limit: int,
         batch_size: int | None = None,
     ) -> BackendSyncWorkerResult:
-        jobs = self.events.list_resume_candidates(
-            eligible_statuses=SYNC_ELIGIBLE_STATUSES,
-            limit=limit,
-            max_attempts=self.max_attempts,
-        )
+        jobs = self._list_backend_payload_candidates(limit=limit)
         chunk_size = batch_size or limit
         sent = 0
         failed = 0
@@ -78,6 +74,24 @@ class BackendSyncWorker:
             chunks_failed=chunks_failed,
         )
 
+    def _list_backend_payload_candidates(self, *, limit: int) -> list[NormalizedJob]:
+        candidates: list[NormalizedJob] = []
+        for job in self.events.list_eligible_jobs(eligible_statuses=SYNC_ELIGIBLE_STATUSES):
+            try:
+                payload = build_backend_job_payload(job).model_dump(mode="json", by_alias=True)
+            except BackendPayloadValidationError:
+                candidates.append(job)
+            else:
+                event = self.events.find_event(
+                    job,
+                    payload_hash=stable_payload_hash(payload),
+                )
+                if event is None or is_retryable_event(event, max_attempts=self.max_attempts):
+                    candidates.append(job)
+            if len(candidates) >= limit:
+                break
+        return candidates
+
     async def _sync_chunk(
         self,
         jobs: list[NormalizedJob],
@@ -90,24 +104,13 @@ class BackendSyncWorker:
 
         sent = 0
         failed = 0
-        chunk_payload_hash = stable_payload_hash({"jobs": [job.normalized_payload for job in jobs]})
-        events = []
-        for job in jobs:
-            event = self.events.prepare_event(job, scrape_run_id=scrape_run_id)
-            self.events.attach_chunk_metadata(
-                event,
-                chunk_id=chunk_id,
-                chunk_payload_hash=chunk_payload_hash,
-                chunk_size=len(jobs),
-            )
-            events.append(event)
-
         valid_events = []
         payload_jobs: list[dict[str, object]] = []
-        for event, job in zip(events, jobs, strict=True):
+        for job in jobs:
             try:
                 payload = build_backend_job_payload(job).model_dump(mode="json", by_alias=True)
             except BackendPayloadValidationError as exc:
+                event = self.events.prepare_event(job, scrape_run_id=scrape_run_id)
                 self.events.record_failure(
                     event,
                     SyncFailure(
@@ -119,11 +122,25 @@ class BackendSyncWorker:
                 )
                 failed += 1
                 continue
+            event = self.events.prepare_event(
+                job,
+                scrape_run_id=scrape_run_id,
+                payload_hash=stable_payload_hash(payload),
+            )
             valid_events.append(event)
             payload_jobs.append(payload)
 
         if not payload_jobs:
             return sent, failed
+
+        chunk_payload_hash = stable_payload_hash({"jobs": payload_jobs})
+        for event in valid_events:
+            self.events.attach_chunk_metadata(
+                event,
+                chunk_id=chunk_id,
+                chunk_payload_hash=chunk_payload_hash,
+                chunk_size=len(payload_jobs),
+            )
 
         try:
             result = await self.client.sync_jobs(payload_jobs)

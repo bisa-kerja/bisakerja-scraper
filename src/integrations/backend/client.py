@@ -134,4 +134,15 @@ def summarize_response(response: httpx.Response) -> dict[str, Any]:
         error = body.get("error")
         if isinstance(error, dict):
             summary["errorCode"] = error.get("code")
+            details = error.get("details")
+            if isinstance(details, list):
+                summary["validationErrors"] = [
+                    {
+                        "path": item.get("path"),
+                        "code": item.get("code"),
+                        "message": item.get("message"),
+                    }
+                    for item in details[:10]
+                    if isinstance(item, dict)
+                ]
     return summary

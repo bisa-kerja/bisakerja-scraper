@@ -8,7 +8,14 @@ from sqlalchemy.orm import Session
 from tests.unit.modules.test_persistence_repositories import canonical_job, raw_input
 
 from integrations.backend import BackendSyncClientError, BackendSyncResult, BackendSyncServerError
-from modules.persistence import Base, JobPersistenceRepository, SyncEvent
+from integrations.backend.payloads import build_backend_job_payload
+from modules.persistence import (
+    Base,
+    JobPersistenceRepository,
+    NormalizedJob,
+    SyncEvent,
+    stable_payload_hash,
+)
 from modules.sync import (
     BackendSyncWorker,
     SyncEventRepository,
@@ -173,15 +180,27 @@ async def test_sync_worker_resume_skips_sent_and_dead_letter_events() -> None:
         for result in (sent, retryable, dead):
             result.normalized_job.status = "active"
         events = SyncEventRepository(session)
-        sent_event = events.prepare_event(sent.normalized_job, scrape_run_id="run-1")
+        sent_event = events.prepare_event(
+            sent.normalized_job,
+            scrape_run_id="run-1",
+            payload_hash=backend_payload_hash(sent.normalized_job),
+        )
         events.record_success(sent_event, SyncSuccess({"statusCode": 202}))
-        retry_event = events.prepare_event(retryable.normalized_job, scrape_run_id="run-1")
+        retry_event = events.prepare_event(
+            retryable.normalized_job,
+            scrape_run_id="run-1",
+            payload_hash=backend_payload_hash(retryable.normalized_job),
+        )
         events.record_failure(
             retry_event,
             SyncFailure(category="backend_5xx", message="retry"),
             max_attempts=3,
         )
-        dead_event = events.prepare_event(dead.normalized_job, scrape_run_id="run-1")
+        dead_event = events.prepare_event(
+            dead.normalized_job,
+            scrape_run_id="run-1",
+            payload_hash=backend_payload_hash(dead.normalized_job),
+        )
         events.record_failure(
             dead_event,
             SyncFailure(category="backend_5xx", message="dead"),
@@ -199,6 +218,34 @@ async def test_sync_worker_resume_skips_sent_and_dead_letter_events() -> None:
             retry_event.id
             == session.scalar(select(SyncEvent).where(SyncEvent.external_id == "retry")).id
         )
+
+
+@pytest.mark.asyncio
+async def test_sync_worker_retries_after_backend_payload_serializer_changes() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        result = repository.write_job(raw_input("run-1", "job-1"), canonical_job("job-1"))
+        result.normalized_job.status = "active"
+        events = SyncEventRepository(session)
+        old_event = events.prepare_event(result.normalized_job, scrape_run_id="run-1")
+        events.record_failure(
+            old_event,
+            SyncFailure(category="backend_rejected_payload", message="old serializer"),
+            max_attempts=1,
+        )
+        client = RecordingClient()
+        worker = BackendSyncWorker(session=session, client=client, events=events)
+
+        sync_result = await worker.sync_eligible_jobs(scrape_run_id="run-2", limit=10)
+
+        sync_events = list(session.scalars(select(SyncEvent)).all())
+        assert sync_result.sent == 1
+        assert len(sync_events) == 2
+        assert sorted(event.status for event in sync_events) == [
+            SyncEventStatus.DEAD_LETTER.value,
+            SyncEventStatus.SENT.value,
+        ]
+        assert client.external_ids == ["job-1"]
 
 
 class RejectingClient:
@@ -260,3 +307,8 @@ def session_scope():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     return Session(engine)
+
+
+def backend_payload_hash(job: NormalizedJob) -> str:
+    payload = build_backend_job_payload(job).model_dump(mode="json", by_alias=True)
+    return stable_payload_hash(payload)

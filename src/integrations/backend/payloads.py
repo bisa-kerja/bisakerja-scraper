@@ -169,7 +169,12 @@ class BackendJobListingPayload(BackendPayloadModel):
     city: str | None = Field(default=None, max_length=120)
     salary_min: int | None = Field(default=None, ge=0, serialization_alias="salaryMin")
     salary_max: int | None = Field(default=None, ge=0, serialization_alias="salaryMax")
-    salary_currency: str = Field(default="IDR", min_length=3, max_length=3)
+    salary_currency: str = Field(
+        default="IDR",
+        min_length=3,
+        max_length=3,
+        serialization_alias="salaryCurrency",
+    )
     salary_period: PrismaSalaryPeriod | None = Field(
         default=None,
         serialization_alias="salaryPeriod",

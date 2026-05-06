@@ -240,9 +240,9 @@ Each normalized job handoff records an auditable sync event.
 | --- | --- |
 | `target` | Downstream system name, usually `backend` |
 | `normalizedJobId` | Local normalized job record |
-| `payloadHash` | Stable hash of the normalized payload sent downstream |
+| `payloadHash` | Stable hash of the serialized backend payload sent downstream |
 | `status` | `pending`, `sent`, `failed`, or `dead-letter` |
 | `attemptCount` | Number of recorded send attempts |
 | `responseSummary` | Safe response metadata for audit and triage |
 
-The idempotency key is `target + normalizedJobId + payloadHash`. Retrying the same payload reuses the existing event; changing the normalized payload creates a new event.
+The idempotency key is `target + normalizedJobId + payloadHash`. Retrying the same serialized backend payload reuses the existing event; changing normalized data or backend serialization creates a new event.

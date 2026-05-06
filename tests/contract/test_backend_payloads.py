@@ -60,6 +60,8 @@ def test_backend_payload_maps_company_listing_skills_and_requirements() -> None:
         assert payload["jobListing"]["employmentType"] == "FULL_TIME"
         assert payload["jobListing"]["workType"] == "REMOTE"
         assert payload["jobListing"]["status"] == "ACTIVE"
+        assert payload["jobListing"]["salaryCurrency"] == "IDR"
+        assert "salary_currency" not in payload["jobListing"]
         assert payload["skills"] == [{"name": "Python", "confidence": 0.9, "source": "ai"}]
         assert payload["requirements"] == [
             {

@@ -111,7 +111,7 @@ Audit fields:
 
 | Field | Rule |
 | --- | --- |
-| `payload_hash` | Stable hash of the normalized payload sent downstream |
+| `payload_hash` | Stable hash of the serialized backend payload sent downstream |
 | `attempt_count` | Incremented once per recorded send attempt |
 | `response_summary` | Safe status code, status class, message, or stable error code |
 | `error_category` | Sanitized failure class such as `backend_5xx` or `validation_error` |

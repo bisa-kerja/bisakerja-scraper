@@ -36,7 +36,21 @@ async def test_backend_sync_client_does_not_retry_4xx() -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
-        return httpx.Response(400, json={"error": {"code": "VALIDATION_ERROR"}})
+        return httpx.Response(
+            400,
+            json={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "details": [
+                        {
+                            "path": "jobs.0.jobListing.salaryCurrency",
+                            "message": "Required",
+                            "code": "invalid_type",
+                        }
+                    ],
+                }
+            },
+        )
 
     with pytest.raises(BackendSyncClientError) as exc_info:
         await make_client(handler).sync_jobs([{"id": "job-1"}])
@@ -47,6 +61,13 @@ async def test_backend_sync_client_does_not_retry_4xx() -> None:
         "statusCode": 400,
         "statusClass": "4xx",
         "errorCode": "VALIDATION_ERROR",
+        "validationErrors": [
+            {
+                "path": "jobs.0.jobListing.salaryCurrency",
+                "message": "Required",
+                "code": "invalid_type",
+            }
+        ],
         "endpointPath": "/api/v1/internal/scraper/jobs",
     }
     assert "secret-token" not in str(exc_info.value)
