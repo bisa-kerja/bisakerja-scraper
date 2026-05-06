@@ -1,6 +1,6 @@
 ---
 title: Source Field Mapping Matrix
-description: Cross-source mapping from Dealls, Glints, JobStreet, and Kalibrr raw fields into the normalized scraper job schema.
+description: Cross-source mapping from Dealls, Glints, JobStreet, Kalibrr, and planned Kitalulus raw fields into the normalized scraper job schema.
 owner: data-ingestion-owner
 reviewers:
   - platform-docs-maintainer
@@ -15,29 +15,29 @@ This matrix keeps mapper work tied to observed payload fields.
 
 ## Canonical Mapping
 
-| Normalized field | Dealls | Glints | JobStreet | Kalibrr |
-| --- | --- | --- | --- | --- |
-| `sourcePlatform` | constant `dealls` | constant `glints` | constant `jobstreet` | constant `kalibrr` |
-| `externalJobId` | `id` | `id` | `id` | `id` |
-| `sourceSlug` | `slug` | not captured | URL path when available | `slug` |
-| `title` | `role` | `title` | `title` | `name` |
-| `company.name` | `company.name` | `company.name` | detail `companyProfile.name`, detail `advertiser.name`, or list `companyName` | `companyName` or `company.name` |
-| `company.logoUrl` | `company.logoUrl` | `company.logo` | list `branding.serpLogoUrl`, detail product logo, or company profile logo | `company.logoSmall` |
-| `company.industry` | `company.sector` | `company.industry.name` | detail `companyProfile.overview.industry` when available | `company.industry` |
-| `location.display` | `city.name`, `country.name` | `location.formattedName` | detail `job.location.label` or list `locations[].label` | `googleLocation.addressComponents` |
-| `employmentType` | `employmentTypes[]` | `type` | `workTypes[]` | `tenure` |
-| `workType` | `workplaceType` | `workArrangementOption` | `workArrangements.displayText` | `isHybrid`, `isWorkFromHome` |
-| `salary.min` | `salaryRange.start` | `salaries[].minAmount` | parsed `salaryLabel` only if reliable | `baseSalary` |
-| `salary.max` | `salaryRange.end` | `salaries[].maxAmount` | parsed `salaryLabel` only if reliable | `maximumSalary` |
-| `salary.currency` | infer configured source currency if numeric salary exists | `salaries[].CurrencyCode` | parse label only if reliable | `salaryCurrency` |
-| `salary.period` | configured/monthly when source semantics confirm | `salaries[].salaryMode` | parse label only if reliable | `salaryInterval` |
-| `salary.display` | derived safe label or null | derived safe label or null | `salaryLabel` | derived safe label or null |
-| `description` | detail `description` if fetched | factual source-limited summary from list evidence when detail unavailable | detail `job.content` clean text or list `teaser` | `description` HTML clean text |
-| `requirements` | detail `requirements` if fetched | safe summary from list `minYearsOfExperience`, `maxYearsOfExperience`, `hierarchicalJobCategory.name`, `skills[].skill.name` when available | detail `job.products.bullets` or list `bulletPoints[]` | `qualifications` HTML clean text |
-| `skills` | `skills[].name` | `skills[].skill.name` | enrichment or tags only if mapped | enrichment or detail-derived |
-| `postedAt` | `publishedAt` | `createdAt` | `listingDate.dateTimeUtc` | `activationDate` or `createdAt` |
-| `sourceUpdatedAt` | source update field if present | `updatedAt` | source update field if present | `activationDate` |
-| `lastSeenAt` | scrape time | scrape time | scrape time | scrape time |
+| Normalized field | Dealls | Glints | JobStreet | Kalibrr | Kitalulus |
+| --- | --- | --- | --- | --- | --- |
+| `sourcePlatform` | constant `dealls` | constant `glints` | constant `jobstreet` | constant `kalibrr` | constant `kitalulus` |
+| `externalJobId` | `id` | `id` | `id` | `id` | `id` |
+| `sourceSlug` | `slug` | not captured | URL path when available | `slug` | `slug` |
+| `title` | `role` | `title` | `title` | `name` | `positionName` |
+| `company.name` | `company.name` | `company.name` | detail `companyProfile.name`, detail `advertiser.name`, or list `companyName` | `companyName` or `company.name` | `company.name` |
+| `company.logoUrl` | `company.logoUrl` | `company.logo` | list `branding.serpLogoUrl`, detail product logo, or company profile logo | `company.logoSmall` | `company.logoUrl` |
+| `company.industry` | `company.sector` | `company.industry.name` | detail `companyProfile.overview.industry` when available | `company.industry` | detail `company.companyIndustry.name` |
+| `location.display` | `city.name`, `country.name` | `location.formattedName` | detail `job.location.label` or list `locations[].label` | `googleLocation.addressComponents` | `province.name`, `city.name` |
+| `employmentType` | `employmentTypes[]` | `type` | `workTypes[]` | `tenure` | `typeStr`, `googleType` |
+| `workType` | `workplaceType` | `workArrangementOption` | `workArrangements.displayText` | `isHybrid`, `isWorkFromHome` | `locationSiteStr` |
+| `salary.min` | `salaryRange.start` | `salaries[].minAmount` | parsed `salaryLabel` only if reliable | `baseSalary` | `salaryLowerBound`; `0` means unknown |
+| `salary.max` | `salaryRange.end` | `salaries[].maxAmount` | parsed `salaryLabel` only if reliable | `maximumSalary` | `salaryUpperBound`; `0` means unknown |
+| `salary.currency` | infer configured source currency if numeric salary exists | `salaries[].CurrencyCode` | parse label only if reliable | `salaryCurrency` | infer `IDR` only when numeric salary exists |
+| `salary.period` | configured/monthly when source semantics confirm | `salaries[].salaryMode` | parse label only if reliable | `salaryInterval` | monthly when source semantics confirm |
+| `salary.display` | derived safe label or null | derived safe label or null | `salaryLabel` | derived safe label or null | derived safe label or null |
+| `description` | detail `description` if fetched | factual source-limited summary from list evidence when detail unavailable | detail `job.content` clean text or list `teaser` | `description` HTML clean text | detail `formattedDescription` sanitized or `description` clean text |
+| `requirements` | detail `requirements` if fetched | safe summary from list `minYearsOfExperience`, `maxYearsOfExperience`, `hierarchicalJobCategory.name`, `skills[].skill.name` when available | detail `job.products.bullets` or list `bulletPoints[]` | `qualifications` HTML clean text | detail `formattedDescription`/`description`; exclude `benefits[]` |
+| `skills` | `skills[].name` | `skills[].skill.name` | enrichment or tags only if mapped | enrichment or detail-derived | detail `skillTags[]` |
+| `postedAt` | `publishedAt` | `createdAt` | `listingDate.dateTimeUtc` | `activationDate` or `createdAt` | detail `updatedAt` as best available source timestamp |
+| `sourceUpdatedAt` | source update field if present | `updatedAt` | source update field if present | `activationDate` | detail `updatedAt` |
+| `lastSeenAt` | scrape time | scrape time | scrape time | scrape time | scrape time |
 
 ## Latest Timestamp Fallbacks
 
@@ -47,6 +47,7 @@ This matrix keeps mapper work tied to observed payload fields.
 | Glints | `createdAt` | `updatedAt` |
 | JobStreet | `listingDate.dateTimeUtc` | detail `listedAt.dateTimeUtc` |
 | Kalibrr | `activationDate` | `createdAt`, then `updatedAt` |
+| Kitalulus | detail `updatedAt` | `updatedAtStr` as display-only label |
 
 ## Transform Rules
 
@@ -59,6 +60,7 @@ This matrix keeps mapper work tied to observed payload fields.
 - For Glints records, set `detailCoverage=unavailable` and `detailCompleteness=partial`.
 - For Dealls/JobStreet detail failures, keep list record with `detailCoverage=missing`, explicit `missingReason`, and `attempted=true`.
 - For Kalibrr records, set `detailCoverage=embedded` and `detailCompleteness=complete`.
+- For Kitalulus records, set `detailCoverage=available` when `VacancyBySlug` succeeds; benefits are not requirements.
 
 ## Detail Capability Matrix
 
@@ -68,6 +70,7 @@ This matrix keeps mapper work tied to observed payload fields.
 | Glints | public detail unavailable | `detailCoverage=unavailable`, `detailCompleteness=partial`, `attempted=false` |
 | JobStreet | GraphQL `jobDetails` by id | `detailCoverage=available` when fetched, otherwise `missing` + reason |
 | Kalibrr | embedded detail in list payload | `detailCoverage=embedded`, `detailCompleteness=complete` |
+| Kitalulus | GraphQL `VacancyBySlug` by slug | `detailCoverage=available` when fetched, otherwise `missing` + reason |
 
 ## Dedup Matrix
 
@@ -77,5 +80,6 @@ This matrix keeps mapper work tied to observed payload fields.
 | Glints | `glints + id` |
 | JobStreet | `jobstreet + id` |
 | Kalibrr | `kalibrr + id` |
+| Kitalulus | `kitalulus + id` |
 
 Cross-source duplicate detection is not MVP behavior.

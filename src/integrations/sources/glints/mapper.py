@@ -141,15 +141,27 @@ def _build_requirements_summary(raw: dict[str, Any]) -> str | None:
     minimum = _as_non_negative_int(raw.get("minYearsOfExperience"))
     maximum = _as_non_negative_int(raw.get("maxYearsOfExperience"))
     if minimum is not None and maximum is not None:
-        parts.append(f"Experience: {minimum}-{maximum} years.")
+        low, high = sorted((minimum, maximum))
+        if _is_absurd_experience_range(low, high):
+            parts.append("Pengalaman: relevan sesuai kebutuhan posisi.")
+        elif low == 0 and high <= 1:
+            parts.append("Pengalaman: terbuka untuk kandidat pemula hingga 1 tahun.")
+        else:
+            parts.append(f"Pengalaman: {low}-{high} tahun.")
     elif minimum is not None:
-        parts.append(f"Experience: minimum {minimum} years.")
+        if minimum > 30:
+            parts.append("Pengalaman: relevan sesuai kebutuhan posisi.")
+        else:
+            parts.append(f"Pengalaman: minimal {minimum} tahun.")
     elif maximum is not None:
-        parts.append(f"Experience: up to {maximum} years.")
+        if maximum > 30:
+            parts.append("Pengalaman: relevan sesuai kebutuhan posisi.")
+        else:
+            parts.append(f"Pengalaman: hingga {maximum} tahun.")
 
     category = _dict_value(raw.get("hierarchicalJobCategory")).get("name")
     if isinstance(category, str) and category.strip():
-        parts.append(f"Category: {category.strip()}.")
+        parts.append(f"Kategori: {category.strip()}.")
 
     skills = unique_texts(
         [
@@ -159,8 +171,16 @@ def _build_requirements_summary(raw: dict[str, Any]) -> str | None:
         ]
     )
     if skills:
-        parts.append(f"Skills: {', '.join(skills)}.")
+        parts.append(f"Keahlian: {', '.join(skills)}.")
     return " ".join(parts) if parts else None
+
+
+def _is_absurd_experience_range(minimum: int, maximum: int) -> bool:
+    if maximum > 30:
+        return True
+    if maximum - minimum > 15:
+        return True
+    return minimum == 0 and maximum >= 10
 
 
 def _as_non_negative_int(value: Any) -> int | None:

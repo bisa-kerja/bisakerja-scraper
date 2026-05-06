@@ -20,12 +20,109 @@ from modules.jobs.schemas import CanonicalJobSchema, SourcePlatform
 from shared.text import clean_text, html_to_text
 
 _HTML_LIKE_PATTERN = re.compile(r"<[^>]+>")
+_VISUAL_NOISE_PATTERN = re.compile(r"[\u2600-\u27BF\U0001F300-\U0001FAFF]")
+_INVISIBLE_NOISE_PATTERN = re.compile(r"[\u200B-\u200F\u2060\uFE0E\uFE0F]")
 _SOURCE_DETAIL_KEYS = {
     "description",
     "responsibilities",
     "requirements",
     "qualifications",
     "content",
+}
+_DESCRIPTION_KEYS = {"description", "responsibilities", "job_description", "about", "content"}
+_SKILL_LIST_KEYS = {"skills", "skill", "technologies", "technology", "tech_stack", "tags"}
+_REQUIREMENT_KEYS = {"requirements", "qualification", "qualifications", "requirement_summary"}
+_FOREIGN_COUNTRY_HINTS = {
+    "singapore",
+    "malaysia",
+    "philippines",
+    "thailand",
+    "vietnam",
+    "india",
+    "china",
+    "japan",
+    "korea",
+    "taiwan",
+    "hong kong",
+    "australia",
+    "new zealand",
+    "united states",
+    "usa",
+    "canada",
+    "united kingdom",
+    "uk",
+    "germany",
+    "france",
+    "netherlands",
+}
+_TECH_TOKEN_PATTERN = re.compile(
+    r"\b("
+    r"python|java(?:script)?|typescript|go(?:lang)?|php|ruby|kotlin|swift|rust|"
+    r"c\+\+|c#|sql|postgres(?:ql)?|mysql|mariadb|mongodb|redis|oracle|"
+    r"docker|kubernetes|terraform|ansible|linux|git|"
+    r"node(?:\.js)?|react(?:\.js)?|vue(?:\.js)?|angular|next(?:\.js)?|nuxt(?:\.js)?|"
+    r"laravel|django|flask|fastapi|spring(?: boot)?|express(?:\.js)?|"
+    r"aws|gcp|azure|"
+    r"rest(?:ful)?\s*api|graphql|ci/cd|microservices?"
+    r")\b",
+    re.IGNORECASE,
+)
+_TECH_CANONICAL_MAP = {
+    "python": "Python",
+    "java": "Java",
+    "javascript": "JavaScript",
+    "typescript": "TypeScript",
+    "go": "Go",
+    "golang": "Go",
+    "php": "PHP",
+    "ruby": "Ruby",
+    "kotlin": "Kotlin",
+    "swift": "Swift",
+    "rust": "Rust",
+    "c++": "C++",
+    "c#": "C#",
+    "sql": "SQL",
+    "postgres": "PostgreSQL",
+    "postgresql": "PostgreSQL",
+    "mysql": "MySQL",
+    "mariadb": "MariaDB",
+    "mongodb": "MongoDB",
+    "redis": "Redis",
+    "oracle": "Oracle",
+    "docker": "Docker",
+    "kubernetes": "Kubernetes",
+    "terraform": "Terraform",
+    "ansible": "Ansible",
+    "linux": "Linux",
+    "git": "Git",
+    "node": "Node.js",
+    "node.js": "Node.js",
+    "react": "React",
+    "react.js": "React",
+    "vue": "Vue",
+    "vue.js": "Vue",
+    "angular": "Angular",
+    "next": "Next.js",
+    "next.js": "Next.js",
+    "nuxt": "Nuxt.js",
+    "nuxt.js": "Nuxt.js",
+    "laravel": "Laravel",
+    "django": "Django",
+    "flask": "Flask",
+    "fastapi": "FastAPI",
+    "spring": "Spring",
+    "spring boot": "Spring Boot",
+    "express": "Express.js",
+    "express.js": "Express.js",
+    "aws": "AWS",
+    "gcp": "GCP",
+    "azure": "Azure",
+    "rest api": "REST API",
+    "restful api": "REST API",
+    "graphql": "GraphQL",
+    "ci/cd": "CI/CD",
+    "microservice": "Microservices",
+    "microservices": "Microservices",
 }
 
 
@@ -376,6 +473,13 @@ def _apply_defaults(
             is_remote=location.get("is_remote"),
         )
         location.update(normalized_location)
+        location["country"] = _country_with_indonesia_default(
+            source_platform=prompt_input.source_platform,
+            country=location.get("country"),
+            city=location.get("city"),
+            region=location.get("region"),
+            display=location.get("display"),
+        )
 
     payload["work_type"] = default_work_type(payload.get("work_type"))
     payload["employment_types"] = default_employment_types(payload.get("employment_types"))
@@ -403,6 +507,7 @@ def _apply_defaults(
             source_platform=prompt_input.source_platform.value,
         )
 
+    payload = _apply_quality_guards(payload, prompt_input=prompt_input)
     return CanonicalJobSchema.model_validate(payload)
 
 
@@ -449,9 +554,244 @@ def _normalize_text(value: Any) -> str | None:
         return None
     if not value.strip():
         return None
+    cleaned_value = _remove_visual_noise(value)
     if _HTML_LIKE_PATTERN.search(value):
-        return html_to_text(value)
-    return clean_text(value)
+        return clean_text(_remove_visual_noise(html_to_text(cleaned_value)))
+    return clean_text(cleaned_value)
+
+
+def _remove_visual_noise(value: str) -> str:
+    # Remove emoji/dingbat-like symbols and normalize decorative bullets.
+    cleaned = _VISUAL_NOISE_PATTERN.sub(" ", value)
+    cleaned = _INVISIBLE_NOISE_PATTERN.sub("", cleaned)
+    cleaned = cleaned.replace("•", " ").replace("▪", " ").replace("◦", " ")
+    return cleaned
+
+
+def _apply_quality_guards(
+    payload: dict[str, Any],
+    *,
+    prompt_input: AINormalizationPromptInput,
+) -> dict[str, Any]:
+    description_text = _normalize_text(payload.get("description"))
+    requirements_text = _normalize_text(payload.get("requirements"))
+    skills = payload.get("skills")
+    current_skills = (
+        [item for item in skills if isinstance(item, str) and item.strip()]
+        if isinstance(skills, list)
+        else []
+    )
+    evidence_description, evidence_requirements, evidence_skills = _evidence_from_raw_payload(
+        prompt_input.raw_payload_subset
+    )
+
+    if description_text is None:
+        generated_description = _build_description_from_evidence(
+            payload=payload,
+            evidence_description=evidence_description,
+            evidence_requirements=evidence_requirements,
+            evidence_skills=evidence_skills,
+        )
+        if generated_description:
+            payload["description"] = generated_description
+    if requirements_text is None and evidence_requirements:
+        payload["requirements"] = evidence_requirements
+    if not current_skills and evidence_skills:
+        payload["skills"] = evidence_skills
+    return payload
+
+
+def _evidence_from_raw_payload(
+    raw_payload_subset: dict[str, Any],
+) -> tuple[str | None, str | None, list[str]]:
+    description_candidates: list[str] = []
+    requirement_candidates: list[str] = []
+    skill_candidates: list[str] = []
+    _collect_evidence_strings(
+        value=raw_payload_subset.get("payload", raw_payload_subset),
+        description_candidates=description_candidates,
+        requirement_candidates=requirement_candidates,
+        skill_candidates=skill_candidates,
+    )
+    description = _best_description_text(description_candidates)
+    requirements = _best_requirement_text(requirement_candidates)
+    skills = _dedupe_texts(skill_candidates)
+    if not skills:
+        skills = _derive_skills_from_text(
+            [text for text in (requirements, description) if isinstance(text, str)]
+        )
+    skills = skills[:20]
+    return description, requirements, skills
+
+
+def _collect_evidence_strings(
+    *,
+    value: Any,
+    description_candidates: list[str],
+    requirement_candidates: list[str],
+    skill_candidates: list[str],
+    parent_key: str | None = None,
+    description_mode: bool = False,
+    requirement_mode: bool = False,
+    skill_mode: bool = False,
+) -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            lowered = key.casefold()
+            next_description_mode = description_mode or lowered in _DESCRIPTION_KEYS
+            next_requirement_mode = requirement_mode or lowered in _REQUIREMENT_KEYS
+            next_skill_mode = skill_mode or lowered in _SKILL_LIST_KEYS
+            _collect_evidence_strings(
+                value=item,
+                description_candidates=description_candidates,
+                requirement_candidates=requirement_candidates,
+                skill_candidates=skill_candidates,
+                parent_key=lowered,
+                description_mode=next_description_mode,
+                requirement_mode=next_requirement_mode,
+                skill_mode=next_skill_mode,
+            )
+        return
+
+    if isinstance(value, list):
+        for item in value:
+            _collect_evidence_strings(
+                value=item,
+                description_candidates=description_candidates,
+                requirement_candidates=requirement_candidates,
+                skill_candidates=skill_candidates,
+                parent_key=parent_key,
+                description_mode=description_mode,
+                requirement_mode=requirement_mode,
+                skill_mode=skill_mode,
+            )
+        return
+
+    if not isinstance(value, str):
+        return
+
+    text = _normalize_text(value)
+    if text is None or len(text) < 2:
+        return
+
+    key = parent_key or ""
+    if description_mode or key in _DESCRIPTION_KEYS:
+        description_candidates.append(text)
+    if requirement_mode or key in _REQUIREMENT_KEYS:
+        requirement_candidates.append(text)
+    if (skill_mode or key in _SKILL_LIST_KEYS) and len(text) <= 80:
+        skill_candidates.append(text)
+
+
+def _best_description_text(candidates: list[str]) -> str | None:
+    if not candidates:
+        return None
+    sorted_candidates = sorted(candidates, key=len, reverse=True)
+    return sorted_candidates[0]
+
+
+def _best_requirement_text(candidates: list[str]) -> str | None:
+    if not candidates:
+        return None
+    # Prefer richer requirement-like text when multiple candidates are present.
+    sorted_candidates = sorted(candidates, key=len, reverse=True)
+    return sorted_candidates[0]
+
+
+def _build_description_from_evidence(
+    *,
+    payload: dict[str, Any],
+    evidence_description: str | None,
+    evidence_requirements: str | None,
+    evidence_skills: list[str],
+) -> str | None:
+    if evidence_description:
+        return evidence_description
+
+    title = _normalize_text(payload.get("title"))
+    company = None
+    company_value = payload.get("company")
+    if isinstance(company_value, dict):
+        company = _normalize_text(company_value.get("name"))
+
+    if title is None:
+        return None
+    company_text = company or "perusahaan terkait"
+    sentences = [
+        (
+            f"Posisi {title} di {company_text} berfokus pada pelaksanaan tanggung jawab "
+            "teknis sesuai kebutuhan bisnis."
+        )
+    ]
+    if evidence_requirements:
+        sentences.append(f"Kualifikasi utama mencakup: {evidence_requirements}")
+    elif evidence_skills:
+        sentences.append(f"Keahlian yang dibutuhkan antara lain: {', '.join(evidence_skills[:8])}.")
+    return " ".join(sentences)
+
+
+def _dedupe_texts(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        key = value.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(value)
+    return deduped
+
+
+def _derive_skills_from_text(texts: list[str]) -> list[str]:
+    extracted: list[str] = []
+    for text in texts:
+        normalized = _normalize_text(text)
+        if normalized is None:
+            continue
+        for match in _TECH_TOKEN_PATTERN.findall(normalized):
+            candidate = _canonical_skill_name(match)
+            if candidate:
+                extracted.append(candidate)
+    return _dedupe_texts(extracted)
+
+
+def _canonical_skill_name(raw: str) -> str | None:
+    normalized = re.sub(r"\s+", " ", raw.strip().casefold())
+    return _TECH_CANONICAL_MAP.get(normalized)
+
+
+def _country_with_indonesia_default(
+    *,
+    source_platform: SourcePlatform,
+    country: Any,
+    city: Any,
+    region: Any,
+    display: Any,
+) -> str | None:
+    country_text = _normalize_text(country)
+    if country_text:
+        return country_text
+    if source_platform not in {
+        SourcePlatform.DEALLS,
+        SourcePlatform.GLINTS,
+        SourcePlatform.JOBSTREET,
+        SourcePlatform.KALIBRR,
+    }:
+        return None
+    joined = " ".join(
+        item
+        for item in (
+            _normalize_text(city),
+            _normalize_text(region),
+            _normalize_text(display),
+        )
+        if item
+    ).casefold()
+    if not joined:
+        return "Indonesia"
+    if any(hint in joined for hint in _FOREIGN_COUNTRY_HINTS):
+        return None
+    return "Indonesia"
 
 
 def _source_context(prompt_input: AINormalizationPromptInput) -> dict[str, Any]:
@@ -528,11 +868,41 @@ Rules:
 8. Map location into display, city, region, and country when evidence exists.
    City/province resolution is open-world (not whitelist-based).
    Use reliable geographic reasoning when source fields are ambiguous.
+   Indonesia-first context: when city/province evidence is clearly Indonesian,
+   set country to Indonesia unless source explicitly states otherwise.
 9. Keep Glints list records partial when detail data is unavailable.
    Use factual source-limited description summary; never invent official detail content.
 10. external_apply_url must fall back to source_url when missing.
 11. Prefer explicit defaults aligned with backendSchemaContext default policy.
 12. Keep unknown values null instead of placeholders such as '-', 'N/A', or 'unknown text'.
+13. For generated or normalized prose fields, use Bahasa Indonesia that is concise and natural.
+14. requirement summary text should be Bahasa Indonesia when it is generated/paraphrased by model.
+15. When requirement or skill evidence exists in source data,
+    avoid empty requirements/skills output.
+16. Keep generated requirement text factual, short, and ready for downstream requirement extraction.
+17. Keep generated/paraphrased human-readable fields in Bahasa Indonesia.
+    Avoid English paraphrase unless direct verbatim source evidence is intentionally preserved.
+18. salary.display consistency rule:
+    when salary min/max values are present, salary display must not be placeholder text.
+19. Description writing standard:
+    - write concise, useful, and professional Indonesian prose;
+    - when detail.description is missing but detail.responsibilities exists (common in Dealls),
+      build description from responsibilities without hallucination;
+    - avoid one-line vague text; include role focus and execution context when evidence allows.
+20. Final quality check before output:
+    - if evidence exists for requirements, requirements must not be empty;
+    - if evidence exists for skills, skills must not be empty;
+    - generated prose must be Bahasa Indonesia;
+    - location should keep Indonesia context when evidence is Indonesian;
+    - avoid icons, emoji, and decorative symbols in human-readable fields.
+21. Field-specific output standards:
+    - description: 2-5 concise Indonesian sentences, include role focus
+      and execution context when evidence exists;
+    - requirement_summary/requirements: factual Indonesian phrasing, readable and non-duplicative;
+    - skills: specific technology/domain terms only, deduplicated, no generic filler.
+22. Minimum coverage rule for sync completeness:
+    - produce at least one requirement and one skill when role evidence exists
+      even if detail payload is sparse.
 """
 
 
@@ -548,6 +918,15 @@ Rules:
    enums, and relation safety.
 7. Fill as many fields as evidence permits; keep null only when evidence is truly absent.
 8. Output JSON only. No prose, markdown, comments, code fences, or extra keys.
+9. For generated/paraphrased prose fields use Bahasa Indonesia.
+10. When evidence for requirements or skills exists, do not return both as empty.
+11. When salary min/max are present, avoid placeholder salary display text.
+12. For Dealls-like payloads, use responsibilities as description evidence
+    when description is missing.
+13. Avoid icons, emoji, and decorative symbols in human-readable fields.
+14. Keep description/requirements concise and useful in Bahasa Indonesia.
+15. Keep skills specific and deduplicated; avoid generic filler skills.
+16. Keep minimum one requirement and one skill when role evidence is present.
 """
 
 
@@ -577,6 +956,17 @@ COMPLETION_POLICY: dict[str, Any] = {
         "deterministic mapper baseline second",
         "derived values only when evidence is sufficient",
     ],
+    "completenessPolicy": {
+        "requirementsAndSkills": (
+            "if source evidence exists for requirements or skills, "
+            "output should not be empty for both"
+        ),
+        "preferFactualCoverageOverNulls": True,
+        "minimumRelationCoverage": {
+            "requirementsMinItemsWhenRoleEvidenceExists": 1,
+            "skillsMinItemsWhenRoleEvidenceExists": 1,
+        },
+    },
     "disallowedPlaceholders": ["-", "--", "N/A", "unknown", ""],
     "defaults": {
         "workType": "onsite",
@@ -594,6 +984,7 @@ COMPLETION_POLICY: dict[str, Any] = {
         ],
         "openWorld": True,
         "noStaticCityWhitelist": True,
+        "countryPreference": "Indonesia when evidence indicates Indonesian geography",
         "rules": [
             "never force province from hardcoded local dictionary",
             "normalize formatting only; keep factual geography",
@@ -609,6 +1000,81 @@ COMPLETION_POLICY: dict[str, Any] = {
         "when detail capability is unavailable, description must be factual "
         "source-limited summary and explicitly non-official detail text"
     ),
+    "languagePolicy": {
+        "generatedProse": "Bahasa Indonesia",
+        "appliesTo": [
+            "description_generated",
+            "requirements_generated",
+            "requirement_summary_generated",
+            "presentation_labels_generated",
+        ],
+        "notes": [
+            "keep source-native proper nouns and technology names",
+            "if text is copied verbatim from source evidence, preserve source language",
+            "do not paraphrase generated prose in English",
+        ],
+    },
+    "contentStructurePolicy": {
+        "description": {
+            "goal": "clear role overview in natural Bahasa Indonesia",
+            "lengthGuidance": "2-5 sentences, avoid vague one-liners",
+            "mustIncludeWhenEvidenceExists": [
+                "role focus or core responsibilities",
+                "execution context (product/system/team/process)",
+            ],
+            "mustAvoid": [
+                "claims not supported by source evidence",
+                "empty boilerplate wording",
+            ],
+        },
+        "requirementSummary": {
+            "goal": "display-ready summary of key qualifications",
+            "style": "professional, concise, factual Bahasa Indonesia",
+            "prefixRule": "prefer 'Kualifikasi utama:' when text is summarized/paraphrased",
+            "mustIncludeWhenEvidenceExists": [
+                "experience",
+                "core competencies",
+            ],
+        },
+        "requirements": {
+            "goal": "clean requirement text for downstream extraction",
+            "style": "factual, non-fabricated, no raw HTML",
+            "normalizationHints": [
+                "remove duplicate sentences",
+                "convert fragmented bullets into readable sentences",
+            ],
+        },
+        "skills": {
+            "goal": "actionable, specific skill list",
+            "rules": [
+                "use technology/domain terms explicitly present in source",
+                "dedupe case-insensitive",
+                "avoid overly generic skills without direct evidence",
+            ],
+        },
+        "cleanPresentation": {
+            "rule": "no icons, emoji, decorative symbols, or noisy visual markers",
+            "appliesTo": [
+                "description",
+                "requirementSummary",
+                "requirements",
+                "skills",
+            ],
+        },
+    },
+    "salaryPresentationPolicy": {
+        "placeholderDisallowedWhenNumericExists": True,
+        "allowedPlaceholdersOnlyWhenNoNumericEvidence": ["Tidak dicantumkan"],
+    },
+    "finalQualityChecklist": [
+        "description should be informative and not vague one-liner when evidence exists",
+        "requirements non-empty when evidence exists",
+        "skills non-empty when evidence exists",
+        "generated prose in Bahasa Indonesia",
+        "salary display non-placeholder when numeric salary exists",
+        "Indonesia context preserved when geography evidence is Indonesian",
+        "description/requirement_summary/requirements/skills contain no icon or emoji noise",
+    ],
 }
 
 
@@ -879,8 +1345,14 @@ NORMALIZATION_OUTPUT_EXAMPLES: dict[str, Any] = {
         },
         "employment_types": ["full_time"],
         "work_type": "onsite",
-        "description": None,
-        "requirements": None,
+        "description": (
+            "Posisi Programmer di Gamma Persada berfokus pada pengembangan sistem aplikasi "
+            "dan peningkatan stabilitas layanan."
+        ),
+        "requirements": (
+            "Kualifikasi utama: memiliki pengalaman relevan dalam pengembangan perangkat lunak, "
+            "mampu bekerja kolaboratif, dan memahami praktik coding yang baik."
+        ),
         "skills": [],
         "posted_at": "2026-05-01T00:00:00Z",
         "last_seen_at": "2026-05-04T09:00:00Z",
@@ -927,8 +1399,14 @@ NORMALIZATION_OUTPUT_EXAMPLES: dict[str, Any] = {
         },
         "employment_types": ["full_time"],
         "work_type": "remote",
-        "description": "Build and maintain backend APIs and data pipelines.",
-        "requirements": "3+ years backend experience, Python, SQL, cloud services.",
+        "description": (
+            "Posisi Backend Engineer berfokus pada pengembangan dan pemeliharaan API, "
+            "pipeline data, serta peningkatan keandalan layanan backend."
+        ),
+        "requirements": (
+            "Kualifikasi utama: memiliki pengalaman backend minimal 3 tahun, "
+            "menguasai Python dan SQL, serta memahami layanan cloud."
+        ),
         "skills": ["Python", "PostgreSQL", "FastAPI", "Docker"],
         "posted_at": "2026-05-02T08:00:00Z",
         "last_seen_at": "2026-05-04T09:15:00Z",

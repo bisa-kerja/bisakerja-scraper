@@ -1,6 +1,6 @@
 ---
 title: Raw Payload Contract
-description: Frozen raw payload evidence, source coverage, required fields, nullability, and redaction requirements for scraper mappers.
+description: Frozen raw payload evidence, source coverage, planned Kitalulus support, required fields, nullability, and redaction requirements for scraper mappers.
 owner: data-ingestion-owner
 reviewers:
   - platform-docs-maintainer
@@ -21,6 +21,7 @@ Raw payload contracts are based on captured source list/detail responses. They d
 | Glints | `data.searchJobsV3.jobsInPage[]` | Yes | Not captured |
 | JobStreet | `data.jobSearchV6.data[]`; detail `data.jobDetails.job` | Yes | Yes, by job id |
 | Kalibrr | `pageProps.jobs[]` | Yes | Included in each job object |
+| Kitalulus | `data.vacanciesV4.list[]`; detail `data.vacancyBySlug` | Yes | Yes, by slug |
 
 ## Required Raw Identity
 
@@ -30,6 +31,7 @@ Raw payload contracts are based on captured source list/detail responses. They d
 | Glints | `id` | none captured as canonical |
 | JobStreet | `id` | source URL path when available |
 | Kalibrr | `id` | `slug` |
+| Kitalulus | `id` | `slug` |
 
 Rows without required raw identity must be quarantined.
 
@@ -42,7 +44,7 @@ Rows without required raw identity must be quarantined.
 | Location | City/province can be partial | Preserve display; normalize best-effort |
 | Description | Glints list may lack full detail; JobStreet and Kalibrr detail can contain HTML | Missing detail allowed; HTML sanitized before display, enrichment, or model input |
 | Requirement summary | Glints list exposes bounded experience, category, and skill hints | `requirements` may be `null` or summary from explicit list fields only; no inferred detail text |
-| Dates | JobStreet includes timestamp plus relative label; other sources expose source timestamps | Prefer timestamp; labels are display-only |
+| Dates | JobStreet and Kitalulus include timestamp/label combinations; other sources expose source timestamps | Prefer timestamp; labels are display-only |
 | Skills | Present in Dealls/Glints; may be absent elsewhere | Optional; enrichment can fill later |
 
 ## Raw-to-Normalized Gate

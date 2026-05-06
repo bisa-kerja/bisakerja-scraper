@@ -9,6 +9,7 @@ from modules.enrichment.repositories import (
     AIRequestLogInput,
     AIRequestLogRepository,
     AIRequestStatus,
+    EnrichmentSource,
     EnrichmentStagingRepository,
 )
 from modules.enrichment.schemas import (
@@ -95,6 +96,37 @@ def test_staging_upsert_is_idempotent() -> None:
 
         assert len(session.scalars(select(JobSkillStaging)).all()) == 1
         assert len(session.scalars(select(JobRequirementStaging)).all()) == 1
+
+
+def test_list_unenriched_jobs_includes_missing_requirements_or_skills() -> None:
+    with session_scope() as session:
+        repository = EnrichmentStagingRepository(session)
+        job_missing_requirements = normalized_job("job-missing-req")
+        job_missing_skills = normalized_job("job-missing-skill")
+        session.add_all([job_missing_requirements, job_missing_skills])
+        session.flush()
+
+        repository.upsert_skill(
+            job_missing_requirements,
+            value="Python",
+            confidence=0.8,
+            ai_request_log_id=None,
+            source=EnrichmentSource.AI,
+        )
+        repository.upsert_requirement(
+            job_missing_skills,
+            requirement_type=RequirementType.OTHER,
+            value="Bersedia bekerja full time",
+            confidence=0.7,
+            ai_request_log_id=None,
+            source=EnrichmentSource.AI,
+        )
+        session.flush()
+
+        jobs = repository.list_unenriched_jobs(limit=10)
+        job_ids = {job.id for job in jobs}
+        assert job_missing_requirements.id in job_ids
+        assert job_missing_skills.id in job_ids
 
 
 def session_scope() -> Session:

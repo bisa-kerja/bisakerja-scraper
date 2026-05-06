@@ -37,8 +37,8 @@ def map_dealls_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = None)
         list_payload.get("updatedAt")
     )
 
-    description = html_to_text(_value_from_detail(detail_payload, "description"))
-    requirements = html_to_text(_value_from_detail(detail_payload, "requirements"))
+    description = _compose_dealls_description(detail_payload)
+    requirements = _compose_dealls_requirements(detail_payload)
 
     payload = {
         "source": {
@@ -114,8 +114,8 @@ def map_dealls_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = None)
             "company.name": "list.company.name",
             "location.display": "list.city.name + list.country.name",
             "salary": "list.salaryRange",
-            "description": "detail.description",
-            "requirements": "detail.requirements",
+            "description": "detail.description/detail.responsibilities",
+            "requirements": "detail.requirements/detail.qualifications",
         },
     )
 
@@ -128,6 +128,24 @@ def _value_from_detail(detail_payload: dict[str, Any] | None, field: str) -> Any
     if detail_payload is None:
         return None
     return detail_payload.get(field)
+
+
+def _compose_dealls_description(detail_payload: dict[str, Any] | None) -> str | None:
+    description = html_to_text(_value_from_detail(detail_payload, "description"))
+    responsibilities = html_to_text(_value_from_detail(detail_payload, "responsibilities"))
+    if description and responsibilities:
+        if responsibilities in description:
+            return description
+        if description in responsibilities:
+            return responsibilities
+        return f"{description}\n\n{responsibilities}"
+    return description or responsibilities
+
+
+def _compose_dealls_requirements(detail_payload: dict[str, Any] | None) -> str | None:
+    requirements = html_to_text(_value_from_detail(detail_payload, "requirements"))
+    qualifications = html_to_text(_value_from_detail(detail_payload, "qualifications"))
+    return requirements or qualifications
 
 
 def _badges(payload: dict[str, Any]) -> list[str]:

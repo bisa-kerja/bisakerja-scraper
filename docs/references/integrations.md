@@ -1,6 +1,6 @@
 ---
 title: Integration References
-description: Index of scraper integration contracts, source adapters, raw payload contracts, and field mapping references.
+description: Index of scraper integration contracts, source adapters, raw payload contracts, planned Kitalulus support, and field mapping references.
 owner: data-ingestion-owner
 reviewers:
   - platform-docs-maintainer
@@ -21,6 +21,7 @@ Use these references when changing source adapters, mappers, or sync behavior.
 | Glints | [Glints Source Contract](../integrations/sources/glints.md) | Unofficial GraphQL, list-first |
 | JobStreet | [JobStreet Source Contract](../integrations/sources/jobstreet.md) | GraphQL with bearer auth |
 | Kalibrr | [Kalibrr Source Contract](../integrations/sources/kalibrr.md) | Next.js data, dynamic `buildId`, HTML detail fields |
+| Kitalulus | [Kitalulus Source Contract](../integrations/sources/kitalulus.md) | Planned GraphQL source, list and detail by slug |
 
 ## Shared Contracts
 

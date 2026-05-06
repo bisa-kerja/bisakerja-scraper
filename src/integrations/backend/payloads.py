@@ -20,8 +20,145 @@ from modules.persistence import JobRequirementStaging, JobSkillStaging, Normaliz
 
 MONTHLY_PATTERN = re.compile(r"\b(month|monthly|bulan|bulanan)\b", re.IGNORECASE)
 YEARLY_PATTERN = re.compile(r"\b(year|yearly|tahun|tahunan)\b", re.IGNORECASE)
+VISUAL_NOISE_PATTERN = re.compile(r"[\u2600-\u27BF\U0001F300-\U0001FAFF]")
+INVISIBLE_NOISE_PATTERN = re.compile(r"[\u200B-\u200F\u2060\uFE0E\uFE0F]")
 MAX_JOBS_PER_BACKEND_BATCH = 100
 MAX_RELATIONS_PER_BACKEND_JOB = 100
+SALARY_PLACEHOLDER_TEXTS = {"tidak dicantumkan", "not specified", "not disclosed"}
+INDONESIAN_MARKERS = {
+    "dan",
+    "dengan",
+    "pengalaman",
+    "kualifikasi",
+    "minimal",
+    "menguasai",
+    "mampu",
+    "lulusan",
+    "sarjana",
+    "tahun",
+    "bulan",
+    "lokasi",
+    "indonesia",
+}
+REQUIREMENT_REPLACEMENTS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\bexperience\s*:\s*", re.IGNORECASE), "Pengalaman: "),
+    (re.compile(r"\bcategory\s*:\s*", re.IGNORECASE), "Kategori: "),
+    (re.compile(r"\bskills?\s*:\s*", re.IGNORECASE), "Keahlian: "),
+    (re.compile(r"\bminimum\s+(\d+)\s+years?\b", re.IGNORECASE), r"minimal \1 tahun"),
+    (re.compile(r"\bup to\s+(\d+)\s+years?\b", re.IGNORECASE), r"hingga \1 tahun"),
+    (re.compile(r"\b(\d+)\s*-\s*(\d+)\s+years?\b", re.IGNORECASE), r"\1-\2 tahun"),
+    (re.compile(r"\byears?\b", re.IGNORECASE), "tahun"),
+    (re.compile(r"\band\b", re.IGNORECASE), "dan"),
+)
+TECH_SKILL_PATTERN = re.compile(
+    r"\b("
+    r"python|java(?:script)?|typescript|go(?:lang)?|php|ruby|kotlin|swift|rust|"
+    r"c\+\+|c#|sql|postgres(?:ql)?|mysql|mariadb|mongodb|redis|oracle|"
+    r"docker|kubernetes|terraform|ansible|linux|git|"
+    r"node(?:\.js)?|react(?:\.js)?|vue(?:\.js)?|angular|next(?:\.js)?|nuxt(?:\.js)?|"
+    r"laravel|django|flask|fastapi|spring(?: boot)?|express(?:\.js)?|"
+    r"aws|gcp|azure|"
+    r"rest(?:ful)?\s*api|graphql|ci/cd|microservices?"
+    r")\b",
+    re.IGNORECASE,
+)
+ROLE_BASED_SKILL_FALLBACKS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(
+            r"\b(engineer|developer|programmer|software|backend|frontend|full stack)\b",
+            re.IGNORECASE,
+        ),
+        "Pemrograman",
+    ),
+    (
+        re.compile(
+            r"\b(sales|business development|account executive|telemarketing)\b",
+            re.IGNORECASE,
+        ),
+        "Negosiasi",
+    ),
+    (
+        re.compile(r"\b(marketing|brand|content|social media|seo|sem)\b", re.IGNORECASE),
+        "Pemasaran Digital",
+    ),
+    (
+        re.compile(r"\b(customer service|customer support|helpdesk|call center)\b", re.IGNORECASE),
+        "Pelayanan Pelanggan",
+    ),
+    (
+        re.compile(r"\b(finance|accounting|akuntan|tax|auditor)\b", re.IGNORECASE),
+        "Analisis Keuangan",
+    ),
+    (
+        re.compile(r"\b(hr|recruiter|talent acquisition|people)\b", re.IGNORECASE),
+        "Komunikasi Interpersonal",
+    ),
+    (
+        re.compile(r"\b(operation|logistic|warehouse|supply chain)\b", re.IGNORECASE),
+        "Manajemen Operasional",
+    ),
+    (
+        re.compile(r"\b(product manager|product owner|project manager)\b", re.IGNORECASE),
+        "Manajemen Proyek",
+    ),
+)
+TECH_SKILL_CANONICAL_MAP = {
+    "python": "Python",
+    "java": "Java",
+    "javascript": "JavaScript",
+    "typescript": "TypeScript",
+    "go": "Go",
+    "golang": "Go",
+    "php": "PHP",
+    "ruby": "Ruby",
+    "kotlin": "Kotlin",
+    "swift": "Swift",
+    "rust": "Rust",
+    "c++": "C++",
+    "c#": "C#",
+    "sql": "SQL",
+    "postgres": "PostgreSQL",
+    "postgresql": "PostgreSQL",
+    "mysql": "MySQL",
+    "mariadb": "MariaDB",
+    "mongodb": "MongoDB",
+    "redis": "Redis",
+    "oracle": "Oracle",
+    "docker": "Docker",
+    "kubernetes": "Kubernetes",
+    "terraform": "Terraform",
+    "ansible": "Ansible",
+    "linux": "Linux",
+    "git": "Git",
+    "node": "Node.js",
+    "node.js": "Node.js",
+    "react": "React",
+    "react.js": "React",
+    "vue": "Vue",
+    "vue.js": "Vue",
+    "angular": "Angular",
+    "next": "Next.js",
+    "next.js": "Next.js",
+    "nuxt": "Nuxt.js",
+    "nuxt.js": "Nuxt.js",
+    "laravel": "Laravel",
+    "django": "Django",
+    "flask": "Flask",
+    "fastapi": "FastAPI",
+    "spring": "Spring",
+    "spring boot": "Spring Boot",
+    "express": "Express.js",
+    "express.js": "Express.js",
+    "aws": "AWS",
+    "gcp": "GCP",
+    "azure": "Azure",
+    "rest api": "REST API",
+    "restful api": "REST API",
+    "graphql": "GraphQL",
+    "ci/cd": "CI/CD",
+    "microservice": "Microservices",
+    "microservices": "Microservices",
+}
 
 
 class PrismaWorkType(StrEnum):
@@ -276,15 +413,33 @@ def build_backend_job_payload(job: NormalizedJob) -> BackendJobPayload:
     location_city = optional_text(normalized_location.get("city"))
     location_region = optional_text(normalized_location.get("region"))
 
+    company_name = first_non_empty([company.get("name"), job.company_name])
     description = clean_description(payload.get("description"))
     if description is None and job.source_platform.strip().lower() == "glints":
         description = build_source_limited_summary(
             title=job.title,
-            company=first_non_empty([company.get("name"), job.company_name]),
+            company=company_name,
             location=location_display,
             source_platform=job.source_platform,
         )
-    requirement_summary = clean_description(payload.get("requirements"))
+    raw_skills = payload.get("skills")
+    normalized_skills = (
+        [item.strip() for item in raw_skills if isinstance(item, str) and item.strip()]
+        if isinstance(raw_skills, list)
+        else []
+    )
+    requirement_summary = improve_requirement_summary(
+        clean_description(payload.get("requirements")),
+        skills=normalized_skills,
+    )
+    description = improve_description(
+        description,
+        title=job.title,
+        company_name=company_name,
+        location_display=location_display,
+        requirement_summary=requirement_summary,
+        skills=normalized_skills,
+    )
 
     employment_type = (
         map_employment_type(payload.get("employment_types")) or PrismaEmploymentType.FULL_TIME
@@ -307,13 +462,28 @@ def build_backend_job_payload(job: NormalizedJob) -> BackendJobPayload:
         parse_source_datetime(payload.get("posted_at"))
     )
     source_updated_at = iso_or_none(parse_source_datetime(source.get("source_updated_at")))
+    salary_min = optional_int(salary.get("min_amount"))
+    salary_max = optional_int(salary.get("max_amount"))
     salary_display = optional_text(salary.get("display"))
     salary_period = map_salary_period(salary.get("period"), salary_display)
     if salary_period is None:
         salary_period = PrismaSalaryPeriod.MONTHLY
+    salary_currency = normalized_currency(salary.get("currency")) or "IDR"
+    if (
+        salary_display is not None
+        and (salary_min is not None or salary_max is not None)
+        and salary_display.casefold() in SALARY_PLACEHOLDER_TEXTS
+    ):
+        salary_display = None
+    if salary_display is None:
+        salary_display = build_salary_display_fallback(
+            min_amount=salary_min,
+            max_amount=salary_max,
+            currency=salary_currency,
+            period=salary_period,
+        )
     if salary_display is None:
         salary_display = "Tidak dicantumkan"
-    salary_currency = normalized_currency(salary.get("currency")) or "IDR"
 
     try:
         return BackendJobPayload(
@@ -322,7 +492,7 @@ def build_backend_job_payload(job: NormalizedJob) -> BackendJobPayload:
                 name=platform_display_name(job.source_platform),
             ),
             company=BackendCompanyPayload(
-                name=first_non_empty([company.get("name"), job.company_name]) or "",
+                name=company_name or "",
                 source_company_id=optional_text(company.get("source_company_id")),
                 source_slug=optional_text(company.get("source_slug")),
                 logo_url=optional_text(company.get("logo_url")),
@@ -343,8 +513,8 @@ def build_backend_job_payload(job: NormalizedJob) -> BackendJobPayload:
                 location_display=location_display,
                 province=location_region,
                 city=location_city,
-                salary_min=optional_int(salary.get("min_amount")),
-                salary_max=optional_int(salary.get("max_amount")),
+                salary_min=salary_min,
+                salary_max=salary_max,
                 salary_currency=salary_currency,
                 salary_period=salary_period,
                 salary_display=salary_display,
@@ -388,11 +558,24 @@ def build_skill_payloads(job: NormalizedJob) -> list[BackendSkillPayload]:
     staged = list(getattr(job, "skills_staging", []) or [])
     if staged:
         return [skill_payload_from_staging(job, skill) for skill in staged]
-    return [
+
+    payload = job.normalized_payload if isinstance(job.normalized_payload, dict) else {}
+    normalized_skills = [
         BackendSkillPayload(name=value, source="normalized")
-        for value in job.normalized_payload.get("skills", [])
+        for value in payload.get("skills", [])
         if isinstance(value, str) and value.strip()
     ]
+    if normalized_skills:
+        return dedupe_skill_payloads(normalized_skills)
+
+    derived_skills = derive_fallback_skills(job)
+    if derived_skills:
+        return dedupe_skill_payloads(
+            [BackendSkillPayload(name=value, source="normalized") for value in derived_skills]
+        )
+
+    # Global non-empty fallback for downstream sync completeness.
+    return [BackendSkillPayload(name="Komunikasi", source="normalized")]
 
 
 def skill_payload_from_staging(job: NormalizedJob, skill: JobSkillStaging) -> BackendSkillPayload:
@@ -410,7 +593,18 @@ def skill_payload_from_staging(job: NormalizedJob, skill: JobSkillStaging) -> Ba
 
 def build_requirement_payloads(job: NormalizedJob) -> list[BackendRequirementPayload]:
     staged = list(getattr(job, "requirements_staging", []) or [])
-    return [requirement_payload_from_staging(job, requirement) for requirement in staged]
+    if staged:
+        return [requirement_payload_from_staging(job, requirement) for requirement in staged]
+
+    normalized_requirement = derive_fallback_requirement(job)
+    return [
+        BackendRequirementPayload(
+            type=PrismaRequirementType.OTHER,
+            value=normalized_requirement,
+            confidence=None,
+            source="normalized",
+        )
+    ]
 
 
 def requirement_payload_from_staging(
@@ -436,6 +630,80 @@ def requirement_payload_from_staging(
         confidence=requirement.confidence,
         source=requirement.source,
     )
+
+
+def dedupe_skill_payloads(values: list[BackendSkillPayload]) -> list[BackendSkillPayload]:
+    deduped: list[BackendSkillPayload] = []
+    seen: set[str] = set()
+    for skill in values:
+        key = skill.name.casefold().strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(skill)
+    return deduped
+
+
+def derive_fallback_requirement(job: NormalizedJob) -> str:
+    payload = job.normalized_payload if isinstance(job.normalized_payload, dict) else {}
+    requirement_text = normalize_text_block(optional_text(payload.get("requirements")))
+    if requirement_text:
+        return requirement_text
+
+    description = normalize_text_block(optional_text(payload.get("description")))
+    if description:
+        brief = description[:260].strip()
+        return f"Memiliki kompetensi yang relevan untuk menjalankan peran ini: {brief}"
+
+    title = optional_text(payload.get("title")) or job.title
+    return f"Memiliki kompetensi inti yang sesuai untuk posisi {title}."
+
+
+def derive_fallback_skills(job: NormalizedJob) -> list[str]:
+    payload = job.normalized_payload if isinstance(job.normalized_payload, dict) else {}
+    texts = [
+        optional_text(payload.get("requirements")),
+        optional_text(payload.get("description")),
+        optional_text(payload.get("title")),
+        job.title,
+    ]
+    derived_tech = derive_tech_skills_from_texts([text for text in texts if text])
+    if derived_tech:
+        return derived_tech[:8]
+
+    joined = " ".join(text for text in texts if text).strip()
+    if not joined:
+        return []
+
+    for pattern, fallback in ROLE_BASED_SKILL_FALLBACKS:
+        if pattern.search(joined):
+            return [fallback]
+    return []
+
+
+def derive_tech_skills_from_texts(texts: list[str]) -> list[str]:
+    found: list[str] = []
+    for value in texts:
+        normalized = normalize_text_block(value)
+        if normalized is None:
+            continue
+        for token in TECH_SKILL_PATTERN.findall(normalized):
+            canonical = TECH_SKILL_CANONICAL_MAP.get(token.strip().casefold())
+            if canonical:
+                found.append(canonical)
+    return dedupe_strings(found)
+
+
+def dedupe_strings(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        key = value.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(value)
+    return deduped
 
 
 def map_work_type(value: Any) -> PrismaWorkType | None:
@@ -550,6 +818,127 @@ def optional_int(value: Any) -> int | None:
     if isinstance(value, str) and value.isdigit():
         return int(value)
     return None
+
+
+def improve_requirement_summary(value: str | None, *, skills: list[str]) -> str | None:
+    text = normalize_text_block(value)
+    if text is None and skills:
+        text = f"Menguasai {', '.join(skills[:6])}."
+    if text is None:
+        return None
+    text = normalize_requirement_language(text)
+    if text.casefold().startswith("kualifikasi utama: kualifikasi utama:"):
+        text = text[len("Kualifikasi utama: ") :]
+    if text.casefold().startswith(("kualifikasi", "persyaratan")):
+        return text
+    return f"Kualifikasi utama: {text}"
+
+
+def improve_description(
+    value: str | None,
+    *,
+    title: str,
+    company_name: str | None,
+    location_display: str | None,
+    requirement_summary: str | None,
+    skills: list[str],
+) -> str | None:
+    text = normalize_text_block(value)
+    if text is not None:
+        return text
+
+    company_text = company_name or "perusahaan terkait"
+    location_text = f" di {location_display}" if location_display else ""
+    overview = (
+        f"Posisi {title} di {company_text}{location_text} berfokus pada pelaksanaan tanggung jawab "
+        "teknis sesuai kebutuhan bisnis."
+    )
+    details: list[str] = [overview]
+
+    if requirement_summary:
+        details.append(f"Ringkasan kualifikasi: {requirement_summary}")
+    elif skills:
+        details.append(f"Kompetensi yang dibutuhkan antara lain {', '.join(skills[:8])}.")
+
+    if not looks_like_indonesian(" ".join(details)):
+        details.insert(0, "Deskripsi peran ini disusun ulang dalam Bahasa Indonesia.")
+    return " ".join(details)
+
+
+def normalize_text_block(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = strip_visual_noise(value)
+    cleaned = " ".join(cleaned.split())
+    if not cleaned:
+        return None
+    cleaned = cleaned.replace("•", ". ").replace(" - ", ". ")
+    cleaned = " ".join(cleaned.split())
+    return cleaned
+
+
+def strip_visual_noise(value: str) -> str:
+    cleaned = VISUAL_NOISE_PATTERN.sub(" ", value)
+    cleaned = INVISIBLE_NOISE_PATTERN.sub("", cleaned)
+    return cleaned.replace("▪", " ").replace("◦", " ")
+
+
+def normalize_requirement_language(value: str) -> str:
+    normalized = value
+    for pattern, replacement in REQUIREMENT_REPLACEMENTS:
+        normalized = pattern.sub(replacement, normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized
+
+
+def looks_like_indonesian(value: str) -> bool:
+    lowered = value.casefold()
+    return sum(marker in lowered for marker in INDONESIAN_MARKERS) >= 2
+
+
+def build_salary_display_fallback(
+    *,
+    min_amount: int | None,
+    max_amount: int | None,
+    currency: str,
+    period: PrismaSalaryPeriod | None,
+) -> str | None:
+    if min_amount is None and max_amount is None:
+        return None
+
+    low = min_amount
+    high = max_amount
+    if low is not None and high is not None and low > high:
+        low, high = high, low
+
+    if low is not None and high is not None:
+        amount_text = (
+            f"{format_salary_amount(low, currency)} - {format_salary_amount(high, currency)}"
+        )
+    else:
+        single = low if low is not None else high
+        if single is None:
+            return None
+        amount_text = format_salary_amount(single, currency)
+
+    period_text = period_suffix(period)
+    if period_text:
+        return f"{amount_text} {period_text}"
+    return amount_text
+
+
+def format_salary_amount(value: int, currency: str) -> str:
+    if currency == "IDR":
+        return f"Rp {value:,}".replace(",", ".")
+    return f"{currency} {value:,}"
+
+
+def period_suffix(period: PrismaSalaryPeriod | None) -> str:
+    if period is PrismaSalaryPeriod.MONTHLY:
+        return "per bulan"
+    if period is PrismaSalaryPeriod.YEARLY:
+        return "per tahun"
+    return ""
 
 
 def normalized_currency(value: Any) -> str | None:

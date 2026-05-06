@@ -49,8 +49,30 @@ The normalization system prompt enforces:
 - Salary parsing may use numeric fields or salary labels.
 - Unknown values remain `null`.
 - Glints list data stays partial when detail fields are absent and must use transparent source-limited summary text.
+- Generated/paraphrased prose fields use Bahasa Indonesia for consistent downstream UX.
+- Generated/paraphrased prose fields must be Bahasa Indonesia; English paraphrase is disallowed unless verbatim source text is intentionally preserved.
 - `external_apply_url` falls back to `source_url` when unavailable.
+- When salary numeric evidence exists (`minAmount`/`maxAmount`), `salary.display` must not be placeholder text.
+- Location uses open-world city/province resolution and Indonesia-first country context when geography evidence is Indonesian.
+- Post-validation quality guard may backfill missing `requirements` or `skills` from explicit raw evidence when model output leaves them empty.
+- When explicit skill list evidence is absent but requirement/description text clearly mentions technologies or tools, post-validation quality guard may derive deterministic skills from that text.
+- Post-validation quality guard may backfill missing `description` from explicit responsibilities/detail evidence when available.
+- Visual cleanup includes emoji/icon removal and residual invisible symbol stripping (for example variation selectors) on human-readable text fields.
+- Sync-safe minimum relation fallback is enforced downstream so each job keeps at least one requirement and one skill relation, including sparse source records.
 - Contract is standalone and must not depend on external repositories or runtime file reads.
+
+## Explicit Content Expectations
+
+Expected content structure is explicit so output stays consistent across sources.
+
+| Field | Target shape | Minimum expectation |
+| --- | --- | --- |
+| `description` | 2-5 kalimat Bahasa Indonesia, informatif, bukan one-liner generik | Menyebut fokus peran/tanggung jawab utama dan konteks eksekusi kerja bila evidence tersedia |
+| `requirement_summary` | Ringkasan singkat siap tampil, gaya profesional Bahasa Indonesia | Saat diringkas/parafrase, gunakan prefiks `Kualifikasi utama:` dan pertahankan poin pengalaman + kompetensi inti |
+| `requirements` | Teks requirement bersih untuk ekstraksi lanjutan | Factual, tanpa HTML mentah, tanpa duplikasi kalimat, tidak mengada-ada |
+| `skills` | Daftar skill spesifik berbasis evidence | Dedupe case-insensitive, utamakan teknologi/domain eksplisit, hindari skill terlalu abstrak tanpa evidence |
+
+All four fields must avoid emoji, decorative icons, and noisy visual symbols.
 
 Implementation source: `src/modules/jobs/ai_normalization.py`.
 
@@ -70,6 +92,7 @@ AI output is accepted only when:
    - experience level uses deterministic inference and safe fallback.
    - location display/city/region use open-world resolver policy (no static city whitelist).
    - province/city finalization is AI-led from source evidence and geographic reasoning with uncertainty fallback to `null`.
+   - when salary numeric evidence exists, salary display is finalized as non-placeholder presentation text for downstream sync.
 5. Source policy checks pass:
    - Glints list payloads without detail evidence must produce transparent source-limited description summary.
 
@@ -140,6 +163,8 @@ Contract tests:
 
 ## Official References
 
+- OpenAI prompt engineering:
+  - `https://developers.openai.com/api/docs/guides/prompt-engineering`
 - OpenAI Structured Outputs:
   - `https://developers.openai.com/api/docs/guides/structured-outputs`
 - OpenAI rate-limit handling guidance:

@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import Any
 from urllib.parse import urlparse
 
-from sqlalchemy import select
+from sqlalchemy import not_, or_, select
 from sqlalchemy.orm import Session
 
 from modules.enrichment.schemas import EnrichmentJobInput, EnrichmentOutput, RequirementType
@@ -82,10 +82,26 @@ class EnrichmentStagingRepository:
         self.session = session
 
     def list_unenriched_jobs(self, *, limit: int) -> list[NormalizedJob]:
+        successful_enrichment_exists = (
+            select(AIRequestLog.id)
+            .where(
+                AIRequestLog.normalized_job_id == NormalizedJob.id,
+                AIRequestLog.status == AIRequestStatus.SUCCESS.value,
+            )
+            .exists()
+        )
         statement = (
             select(NormalizedJob)
             .outerjoin(JobSkillStaging, JobSkillStaging.normalized_job_id == NormalizedJob.id)
-            .where(JobSkillStaging.id.is_(None))
+            .outerjoin(
+                JobRequirementStaging,
+                JobRequirementStaging.normalized_job_id == NormalizedJob.id,
+            )
+            .where(
+                not_(successful_enrichment_exists),
+                or_(JobSkillStaging.id.is_(None), JobRequirementStaging.id.is_(None)),
+            )
+            .distinct()
             .order_by(NormalizedJob.last_seen_at.desc(), NormalizedJob.id.asc())
             .limit(limit)
         )

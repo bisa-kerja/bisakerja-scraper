@@ -121,6 +121,39 @@ def test_prompt_contract_includes_schema_and_strict_rules() -> None:
     assert "completionPolicy" in payload
     assert payload["completionPolicy"]["locationResolutionPolicy"]["openWorld"] is True
     assert payload["completionPolicy"]["locationResolutionPolicy"]["noStaticCityWhitelist"] is True
+    assert (
+        payload["completionPolicy"]["locationResolutionPolicy"]["countryPreference"]
+        == "Indonesia when evidence indicates Indonesian geography"
+    )
+    assert payload["completionPolicy"]["languagePolicy"]["generatedProse"] == "Bahasa Indonesia"
+    assert (
+        payload["completionPolicy"]["completenessPolicy"]["preferFactualCoverageOverNulls"] is True
+    )
+    assert (
+        payload["completionPolicy"]["completenessPolicy"]["minimumRelationCoverage"][
+            "requirementsMinItemsWhenRoleEvidenceExists"
+        ]
+        == 1
+    )
+    assert (
+        payload["completionPolicy"]["completenessPolicy"]["minimumRelationCoverage"][
+            "skillsMinItemsWhenRoleEvidenceExists"
+        ]
+        == 1
+    )
+    assert payload["completionPolicy"]["salaryPresentationPolicy"][
+        "placeholderDisallowedWhenNumericExists"
+    ]
+    assert "finalQualityChecklist" in payload["completionPolicy"]
+    assert "contentStructurePolicy" in payload["completionPolicy"]
+    assert (
+        payload["completionPolicy"]["contentStructurePolicy"]["description"]["goal"]
+        == "clear role overview in natural Bahasa Indonesia"
+    )
+    assert (
+        payload["completionPolicy"]["contentStructurePolicy"]["cleanPresentation"]["rule"]
+        == "no icons, emoji, decorative symbols, or noisy visual markers"
+    )
     assert "backend-references/prisma/schema.prisma" not in json.dumps(payload)
     assert (
         payload["backendSchemaContext"]["reference"]["source"]
@@ -243,3 +276,145 @@ def test_batch_output_rejects_item_order_mismatch() -> None:
             },
             prompt_input=prompt_input,
         )
+
+
+def test_quality_guard_backfills_requirements_and_skills_from_evidence() -> None:
+    prompt_input = AINormalizationPromptInput(
+        source_platform=SourcePlatform.DEALLS,
+        endpoint_type=NormalizationEndpointType.DETAIL,
+        raw_payload_subset={
+            "payload": {
+                "requirements": "Minimal 2 tahun pengalaman backend dan memahami REST API.",
+                "skills": ["Python", "PostgreSQL"],
+            }
+        },
+    )
+    output = {
+        "source": {
+            "platform": "dealls",
+            "external_job_id": "job-123",
+            "source_url": "https://dealls.com/jobs/job-123",
+            "external_apply_url": "https://dealls.com/jobs/job-123",
+            "scraped_at": "2026-05-06T00:00:00Z",
+            "source_updated_at": None,
+        },
+        "title": "Backend Engineer",
+        "company": {"name": "Bisakerja"},
+        "location": {"display": "Jakarta"},
+        "salary": None,
+        "employment_types": [],
+        "work_type": "unknown",
+        "description": None,
+        "requirements": None,
+        "skills": [],
+        "posted_at": None,
+        "last_seen_at": "2026-05-06T00:00:00Z",
+        "status": "active",
+        "presentation": {
+            "posted_label": None,
+            "salary_label": None,
+            "badges": [],
+            "source_labels": {},
+        },
+    }
+    normalized = validate_ai_normalization_output(output, prompt_input=prompt_input)
+    assert normalized.requirements is not None
+    assert "pengalaman backend" in normalized.requirements.casefold()
+    assert "Python" in normalized.skills
+
+
+def test_quality_guard_derives_skills_from_requirement_text_when_skill_list_missing() -> None:
+    prompt_input = AINormalizationPromptInput(
+        source_platform=SourcePlatform.JOBSTREET,
+        endpoint_type=NormalizationEndpointType.DETAIL,
+        raw_payload_subset={
+            "payload": {
+                "requirements": (
+                    "Minimal 3 tahun pengalaman backend, menguasai Python, PostgreSQL, "
+                    "dan Docker untuk API service."
+                ),
+                "skills": [],
+            }
+        },
+    )
+    output = {
+        "source": {
+            "platform": "jobstreet",
+            "external_job_id": "job-200",
+            "source_url": "https://jobstreet.test/jobs/200",
+            "external_apply_url": "https://jobstreet.test/jobs/200",
+            "scraped_at": "2026-05-06T00:00:00Z",
+            "source_updated_at": None,
+        },
+        "title": "Backend Engineer",
+        "company": {"name": "Bisakerja"},
+        "location": {"display": "Jakarta"},
+        "salary": None,
+        "employment_types": [],
+        "work_type": "unknown",
+        "description": None,
+        "requirements": None,
+        "skills": [],
+        "posted_at": None,
+        "last_seen_at": "2026-05-06T00:00:00Z",
+        "status": "active",
+        "presentation": {
+            "posted_label": None,
+            "salary_label": None,
+            "badges": [],
+            "source_labels": {},
+        },
+    }
+
+    normalized = validate_ai_normalization_output(output, prompt_input=prompt_input)
+    assert "Python" in normalized.skills
+    assert "PostgreSQL" in normalized.skills
+    assert "Docker" in normalized.skills
+
+
+def test_quality_guard_builds_description_from_responsibilities_evidence() -> None:
+    prompt_input = AINormalizationPromptInput(
+        source_platform=SourcePlatform.DEALLS,
+        endpoint_type=NormalizationEndpointType.DETAIL,
+        raw_payload_subset={
+            "payload": {
+                "detail": {
+                    "description": None,
+                    "responsibilities": (
+                        "Membangun dan memelihara dashboard frontend untuk kebutuhan operasional."
+                    ),
+                }
+            }
+        },
+    )
+    output = {
+        "source": {
+            "platform": "dealls",
+            "external_job_id": "job-321",
+            "source_url": "https://dealls.com/jobs/job-321",
+            "external_apply_url": "https://dealls.com/jobs/job-321",
+            "scraped_at": "2026-05-06T00:00:00Z",
+            "source_updated_at": None,
+        },
+        "title": "Frontend Engineer",
+        "company": {"name": "Bisakerja"},
+        "location": {"display": "Jakarta"},
+        "salary": None,
+        "employment_types": [],
+        "work_type": "unknown",
+        "description": None,
+        "requirements": None,
+        "skills": [],
+        "posted_at": None,
+        "last_seen_at": "2026-05-06T00:00:00Z",
+        "status": "active",
+        "presentation": {
+            "posted_label": None,
+            "salary_label": None,
+            "badges": [],
+            "source_labels": {},
+        },
+    }
+    normalized = validate_ai_normalization_output(output, prompt_input=prompt_input)
+    assert normalized.description is not None
+    assert "dashboard frontend" in normalized.description.casefold()

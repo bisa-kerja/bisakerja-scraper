@@ -97,7 +97,8 @@ If the detail endpoint returns a missing record, the job remains valid with the 
 | `company.logoUrl` | `company.logoUrl` | Optional |
 | `city.name`, `country.name` | `location` | Preserve partial |
 | `skills[].name` | `skills[]` | Normalize names |
-| `requirements` | `requirements` | Detail text when available |
+| `description`, `responsibilities` | `description` | Use `description` first; fallback to `responsibilities` when `description` is empty |
+| `requirements`, `qualifications` | `requirements` | Use `requirements` first; fallback to `qualifications` |
 | `publishedAt` | `postedAt` | ISO timestamp |
 
 ## Error Behavior

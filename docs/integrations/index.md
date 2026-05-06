@@ -1,6 +1,6 @@
 ---
 title: Integrations
-description: Integration entry point for scraper source contracts, internal data handoff, and source-specific adapter references.
+description: Integration entry point for scraper source contracts, planned Kitalulus support, internal data handoff, and source-specific adapter references.
 owner: data-ingestion-owner
 reviewers:
   - platform-docs-maintainer
@@ -22,6 +22,7 @@ This section documents scraper-owned integration contracts.
 - [Glints](./sources/glints.md)
 - [JobStreet](./sources/jobstreet.md)
 - [Kalibrr](./sources/kalibrr.md)
+- [Kitalulus](./sources/kitalulus.md)
 
 ## Rule
 

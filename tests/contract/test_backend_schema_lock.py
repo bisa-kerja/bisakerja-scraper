@@ -227,6 +227,28 @@ def test_backend_payload_contract_applies_completion_defaults_for_high_value_fie
     assert "level listing" in listing["description"]
 
 
+def test_backend_payload_contract_builds_salary_display_from_numeric_salary() -> None:
+    job = normalized_job_for_contract(
+        normalized_payload={
+            "source": {"source_url": "https://dealls.com/jobs/job-2"},
+            "company": {"name": "Bisakerja"},
+            "salary": {
+                "min_amount": 6000000,
+                "max_amount": 7500000,
+                "currency": "IDR",
+                "period": "monthly",
+                "display": "Tidak dicantumkan",
+            },
+        },
+    )
+
+    payload = build_backend_job_payload(job).model_dump(mode="json", by_alias=True)
+    listing = payload["jobListing"]
+    assert listing["salaryMin"] == 6000000
+    assert listing["salaryMax"] == 7500000
+    assert listing["salaryDisplay"] == "Rp 6.000.000 - Rp 7.500.000 per bulan"
+
+
 def mapped_jobs_from_fixtures() -> list[Any]:
     dealls_list = parse_dealls_list_payload(load_fixture("dealls/sample.json"))
     dealls_detail = parse_dealls_detail_payload(load_fixture("dealls/detail.json"))

@@ -32,7 +32,7 @@ This page locks the initial documentation boundary for the Bisakerja Scraper ser
 | In MVP | Future or external |
 | --- | --- |
 | Aggregate jobs from 1-2 initial sources while keeping four-source schema support | Cross-source duplicate merge |
-| Preserve all four source slugs: `dealls`, `glints`, `jobstreet`, `kalibrr` | Direct ATS integration |
+| Preserve all current source slugs: `dealls`, `glints`, `jobstreet`, `kalibrr`; add planned `kitalulus` behind an enablement flag | Direct ATS integration |
 | Normalize list/detail fields into Backend API-compatible job records | Auto-apply |
 | Use source-local identity: `sourcePlatform + externalJobId/slug/id` | Employer dashboard |
 | Store raw payloads for replay/debug with secret redaction | Native mobile support |
@@ -46,6 +46,7 @@ This page locks the initial documentation boundary for the Bisakerja Scraper ser
 | Glints | Unofficial GraphQL `searchJobsV3` | No API key seen; browser headers required; cookies optional and must not be documented raw | Available | Detail endpoint not visible in capture | GraphQL job `id` | Treat as list-first source; fallback detail URL; expect API drift |
 | JobStreet | GraphQL `JobSearchV6` | Bearer auth and session cookies observed; must be configured securely and redacted | Available | Detail data available through captured GraphQL shape and source URL path assumptions | numeric `id` | `salaryLabel` can be empty; relative labels need parsed timestamp source; response has UI noise |
 | Kalibrr | Next.js `_next/data/{buildId}` JSON | Public-like, requires `x-nextjs-data: 1`; browser headers recommended | Available | Detail fields included in `jobs[]` payload | numeric `id` plus `slug` | Dynamic `buildId`; `description` and `qualifications` are HTML; salary fields can be null |
+| Kitalulus | GraphQL `Vacancies` and `VacancyBySlug` | No auth captured; browser headers, origin/referer, and `x-channel` observed | Available | Available by slug | string `id` plus `slug` | Salary bounds may be `0`; detail `formattedDescription` contains HTML; benefits must not become requirements |
 
 ## Field Handling Rules
 
@@ -75,6 +76,7 @@ This page locks the initial documentation boundary for the Bisakerja Scraper ser
 | `raw-response-glints.txt` | Real header/query/payload evidence for Glints |
 | `raw-response-jobstreet.txt` | Real header/query/payload evidence for JobStreet, including redaction requirement |
 | `raw-response-kalibrr.txt` | Real header/query/payload evidence for Kalibrr |
+| `raw-response-kitalulus.txt` | Real header/query/payload evidence for planned Kitalulus list/detail support |
 
 ## Coverage Plan
 

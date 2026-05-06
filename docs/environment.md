@@ -158,17 +158,26 @@ Baseline schedule:
 
 | Variable | Required | Rule |
 | --- | --- | --- |
+| `DEALLS_ENABLED` | Planned | Explicit `true` or `false`; target source enablement flag |
 | `DEALLS_BASE_URL` | Yes | Public/semi-public REST base URL |
 | `DEALLS_RATE_LIMIT_PER_MINUTE` | Yes | Bounded source request rate |
+| `GLINTS_ENABLED` | Planned | Explicit `true` or `false`; target source enablement flag |
 | `GLINTS_GRAPHQL_URL` | Yes | GraphQL endpoint |
 | `GLINTS_COUNTRY_CODE` | Yes | Example: `ID` |
 | `GLINTS_RATE_LIMIT_PER_MINUTE` | Yes | Bounded source request rate |
+| `JOBSTREET_ENABLED` | Yes | Explicit `true` or `false`; current live JobStreet enablement flag |
 | `JOBSTREET_GRAPHQL_URL` | Yes | GraphQL endpoint |
 | `JOBSTREET_BEARER_TOKEN` | Yes when JobStreet enabled | Secret store only |
 | `JOBSTREET_RATE_LIMIT_PER_MINUTE` | Yes | Bounded source request rate |
+| `KALIBRR_ENABLED` | Planned | Explicit `true` or `false`; target source enablement flag |
 | `KALIBRR_BASE_URL` | Yes | Public web base URL |
 | `KALIBRR_BUILD_ID_REFRESH_ENABLED` | Yes | Explicit `true` or `false` |
 | `KALIBRR_RATE_LIMIT_PER_MINUTE` | Yes | Bounded source request rate |
+| `KITALULUS_ENABLED` | Planned | Explicit `true` or `false`; target source enablement flag |
+| `KITALULUS_GRAPHQL_URL` | Planned | GraphQL endpoint |
+| `KITALULUS_RATE_LIMIT_PER_MINUTE` | Planned | Bounded source request rate |
+
+Planned enablement variables belong to Fase 94. Until that implementation lands, only `JOBSTREET_ENABLED` is enforced by runtime source selection.
 
 Header names may be documented. Real header values, bearer tokens, cookies, session ids, visitor ids, and device ids must stay in secret storage only.
 

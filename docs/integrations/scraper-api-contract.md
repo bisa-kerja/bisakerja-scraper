@@ -213,6 +213,15 @@ Input fields:
 | `company` | Required company name |
 | `source` | Required source platform |
 
+Content expectation for consistency:
+
+| Field | Expectation |
+| --- | --- |
+| `description` | Bahasa Indonesia, informatif, dan tidak berupa satu kalimat generik |
+| `requirementSummary` (downstream `jobListing.requirementSummary`) | Ringkasan kualifikasi inti yang mudah dibaca user |
+| `requirements` | Teks requirement faktual, bersih, dan siap diparsing |
+| `skills` | Skill spesifik berbasis evidence dan tanpa duplikasi |
+
 Output fields:
 
 | Field | Rule |
@@ -220,10 +229,10 @@ Output fields:
 | `skills[].name` | Skill name supported by input text |
 | `skills[].confidence` | Number from `0` to `1` |
 | `requirements[].type` | `SKILL`, `EXPERIENCE`, `EDUCATION`, or `OTHER` |
-| `requirements[].value` | Requirement text supported by input text |
+| `requirements[].value` | Requirement text supported by input text and written in natural Bahasa Indonesia for generated/paraphrased content |
 | `requirements[].confidence` | Number from `0` to `1` |
 | `confidence` | Overall confidence from `0` to `1` |
-| `warnings[]` | Safe notes about ambiguity or missing evidence |
+| `warnings[]` | Safe notes about ambiguity or missing evidence, written in Bahasa Indonesia |
 
 Invalid output handling:
 
@@ -231,6 +240,8 @@ Invalid output handling:
 - Invalid enums, missing required fields, extra fields, or malformed structured output are rejected.
 - Rejected enrichment output must not write unsupported facts into normalized job data.
 - Base normalized job sync may continue when required non-AI fields satisfy the visibility gate.
+- When requirement/skill evidence exists but output is empty, the result is treated as low-quality and should be retried or replaced by safe deterministic fallback.
+- For sync completeness, backend payload fallback enforces at least one requirement relation and one skill relation per job using conservative deterministic derivation when upstream evidence is sparse.
 
 ## Sync Event State
 

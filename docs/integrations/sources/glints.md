@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-04
+last_reviewed: 2026-05-06
 ---
 
 # Glints Source Contract
@@ -74,7 +74,7 @@ The parser reads jobs from `data.searchJobsV3.jobsInPage` and pagination continu
 | `salaries[].CurrencyCode` | `salary.currency` | Preserve |
 | `salaries[].salaryMode` | `salary.period` | Preserve/mapped |
 | `skills[].skill.name` | `skills[]` | Preserve `mustHave` when useful |
-| `minYearsOfExperience`, `maxYearsOfExperience`, `hierarchicalJobCategory.name`, `skills[]` | `requirementSummary` | Build safe partial summary only from explicit list fields |
+| `minYearsOfExperience`, `maxYearsOfExperience`, `hierarchicalJobCategory.name`, `skills[]` | `requirementSummary` | Build Bahasa Indonesia partial summary only from explicit list fields; avoid absurd experience ranges (for example wide/unrealistic bounds) by falling back to generic factual phrasing |
 
 ## Fallback
 
@@ -86,7 +86,7 @@ The parser reads jobs from `data.searchJobsV3.jobsInPage` and pagination continu
 - Mark detail completeness as `partial`.
 - Record field provenance for list-derived values such as title, company, location, salary, skills, and public URL.
 - `description` must remain `null` when detail text is unavailable.
-- `requirements` may be `null` or a safe summary built from explicit list fields (experience, category, skills).
+- `requirements` may be `null` or a safe Indonesian summary built from explicit list fields (experience, category, skills).
 - Missing description/requirements should not block list visibility if minimum fields exist.
 
 ## Error Behavior

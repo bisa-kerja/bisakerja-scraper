@@ -1,6 +1,6 @@
 ---
 title: Job Sources
-description: Source integration matrix for Dealls, Glints, JobStreet, and Kalibrr, including coverage, auth, field handling, and fallback rules.
+description: Source integration matrix for Dealls, Glints, JobStreet, Kalibrr, and planned Kitalulus support, including coverage, auth, field handling, and fallback rules.
 owner: data-ingestion-owner
 reviewers:
   - platform-docs-maintainer
@@ -11,7 +11,7 @@ last_reviewed: 2026-05-04
 
 # Job Sources
 
-The scraper supports four source adapters behind one normalized job contract.
+The scraper supports four implemented source adapters behind one normalized job contract. Kitalulus is documented as the next planned source.
 
 ## Source Matrix
 
@@ -21,6 +21,19 @@ The scraper supports four source adapters behind one normalized job contract.
 | Glints | GraphQL `searchJobsV3` | Browser headers and `x-glints-country-code`; cookies optional/redacted | Available | Not captured | job `id` |
 | JobStreet | GraphQL `JobSearchV6` | Bearer auth and session-like headers/cookies from configured secret flow | Available | Detail-ready fields/source URL assumptions | job `id` |
 | Kalibrr | Next.js `_next/data/{buildId}` JSON | `x-nextjs-data: 1`; browser headers recommended | Available | Included in `jobs[]` | numeric `id`, fallback `slug` |
+| Kitalulus | GraphQL `Vacancies` and `VacancyBySlug` | Browser headers, `origin`/`referer`, `x-channel: web`; no auth captured | Available | Available by slug | `id`, fallback `slug` |
+
+## Source Enablement Target
+
+Each source should have one explicit boolean enablement variable. Live execute mode must respect these flags; fixture dry-run may still validate disabled sources.
+
+| Source | Target flag |
+| --- | --- |
+| Dealls | `DEALLS_ENABLED` |
+| Glints | `GLINTS_ENABLED` |
+| JobStreet | `JOBSTREET_ENABLED` |
+| Kalibrr | `KALIBRR_ENABLED` |
+| Kitalulus | `KITALULUS_ENABLED` |
 
 ## Normalized Minimum
 
@@ -59,6 +72,7 @@ Every adapter should produce:
 | Glints | Standard HTTP timeout | Per-source request spacing from configuration | Retry network failures; isolate GraphQL schema errors |
 | JobStreet | Standard HTTP timeout | Per-source request spacing from configuration | Stop on auth failure until credential refresh; retry transient errors |
 | Kalibrr | Standard HTTP timeout | Per-source request spacing from configuration | Refresh dynamic `buildId` on 404/data miss; retry transient errors |
+| Kitalulus | Standard HTTP timeout | Per-source request spacing from configuration | Retry transient GraphQL/network failures; isolate schema errors |
 
 ## Backoff And Circuit Breaker
 
@@ -80,3 +94,4 @@ Circuit breaker state is local to the running client instance. Persistent recove
 - [Glints](./sources/glints.md)
 - [JobStreet](./sources/jobstreet.md)
 - [Kalibrr](./sources/kalibrr.md)
+- [Kitalulus](./sources/kitalulus.md)
