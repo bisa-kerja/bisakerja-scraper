@@ -121,7 +121,7 @@ Backend sync can process large candidate sets such as `1000`-`2000` normalized j
 | `AI_ENRICHMENT_ENABLED` | Yes | Explicit `true` or `false`; enables OpenAI provider usage for enrichment and AI-assisted normalization in execute mode |
 | `OPENAI_API_KEY` | Yes when AI enrichment is enabled | Secret store only |
 | `OPENAI_BASE_URL` | Yes when AI enrichment is enabled | Absolute OpenAI-compatible API base URL |
-| `OPENAI_MODEL` | Yes when AI enrichment is enabled | Model name supported by the configured provider |
+| `OPENAI_MODEL` | Yes when AI enrichment is enabled | Single model or comma-separated model list (for example `gpt-4o-mini,gpt-4.1-mini`) |
 | `OPENAI_TIMEOUT_SECONDS` | Yes | Positive provider request timeout |
 | `OPENAI_MAX_RETRIES` | Yes | Bounded retry count |
 | `OPENAI_BATCH_SIZE` | Yes | Positive batch size; baseline is `10` jobs |
@@ -129,6 +129,14 @@ Backend sync can process large candidate sets such as `1000`-`2000` normalized j
 | `OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS` | Yes | Fixed delay in milliseconds between normalization batch requests; baseline is `1000` |
 
 AI enrichment uses an OpenAI-compatible client boundary. The base URL supports the official OpenAI API and compatible providers that expose the same request shape. Logs must not include API keys. If the base URL contains tenant, account, or deployment-specific identifiers, treat it as sensitive operational metadata and redact it from logs.
+
+Model selection rules:
+
+- `OPENAI_MODEL` accepts one model or a comma-separated list.
+- Entries are trimmed per item and empty items are rejected.
+- Runtime uses deterministic round-robin across the configured order, for example `a,b,c -> a,b,c,a`.
+- Retry attempts may move to the next model in the same configured order.
+- This rotation spreads request load across configured models, but does not remove organization, project, key, or shared-model-family rate limits.
 
 Normalize stage in execute mode can also use the same OpenAI-compatible provider for AI-assisted normalization. The prompt contract is standalone and embedded in code, so runtime does not depend on external reference repositories.
 

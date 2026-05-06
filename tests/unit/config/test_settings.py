@@ -139,6 +139,7 @@ def test_ai_enrichment_disabled_does_not_require_openai_secrets() -> None:
     assert settings.openai_api_key is None
     assert settings.openai_base_url is None
     assert settings.openai_model is None
+    assert settings.openai_models == ()
 
 
 def test_ai_enrichment_requires_openai_key_base_url_and_model() -> None:
@@ -159,6 +160,22 @@ def test_ai_enrichment_accepts_custom_absolute_base_url() -> None:
     settings = Settings(**env, _env_file=None)
 
     assert str(settings.openai_base_url) == "https://openai-compatible.example.test/v1"
+    assert settings.openai_models == ("gpt-4o-mini",)
+
+
+def test_openai_model_parses_csv_and_trims_each_item() -> None:
+    settings = Settings(
+        **valid_env(
+            AI_ENRICHMENT_ENABLED="true",
+            OPENAI_API_KEY="test-openai-key",
+            OPENAI_BASE_URL="https://api.openai.com/v1",
+            OPENAI_MODEL=" gpt-4o-mini , gpt-4.1-mini , o4-mini ",
+        ),
+        _env_file=None,
+    )
+
+    assert settings.openai_model == "gpt-4o-mini,gpt-4.1-mini,o4-mini"
+    assert settings.openai_models == ("gpt-4o-mini", "gpt-4.1-mini", "o4-mini")
 
 
 def test_ai_enrichment_rejects_relative_base_url() -> None:
@@ -170,6 +187,18 @@ def test_ai_enrichment_rejects_relative_base_url() -> None:
     )
 
     with pytest.raises(ValidationError, match="OPENAI_BASE_URL"):
+        Settings(**env, _env_file=None)
+
+
+def test_openai_model_rejects_empty_csv_entries() -> None:
+    env = valid_env(
+        AI_ENRICHMENT_ENABLED="true",
+        OPENAI_API_KEY="test-openai-key",
+        OPENAI_BASE_URL="https://api.openai.com/v1",
+        OPENAI_MODEL="gpt-4o-mini,,gpt-4.1-mini",
+    )
+
+    with pytest.raises(ValidationError, match="OPENAI_MODEL"):
         Settings(**env, _env_file=None)
 
 

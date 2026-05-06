@@ -85,6 +85,10 @@ Supported batch error codes:
 - Execute normalize stage groups records into serial batches.
 - Batch size is controlled by `OPENAI_NORMALIZATION_BATCH_SIZE` (default `5`).
 - Fixed inter-batch delay is controlled by `OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS` and is always applied between batches.
+- Model selection is controlled by `OPENAI_MODEL`:
+  - single model: all requests use that model.
+  - multi model (comma-separated): requests rotate round-robin by configured order.
+  - retry attempts may continue on the next model in order.
 - Success path: AI per-item result replaces baseline mapper result.
 - Failure path:
   - fail-open mode persists mapper fallback.

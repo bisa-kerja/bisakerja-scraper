@@ -136,7 +136,10 @@ class EnrichmentService:
                         normalized_job_id=job.id,
                         scrape_run_id=scrape_run_id,
                         provider=self.config.provider,
-                        model=self.config.model or getattr(self.client, "model", "unknown"),
+                        model=selected_model_for_log(
+                            self.client,
+                            fallback=self.config.model or getattr(self.client, "model", "unknown"),
+                        ),
                         base_url=self.config.base_url,
                         latency_ms=latency_ms,
                         status=AIRequestStatus.SUCCESS,
@@ -164,7 +167,10 @@ class EnrichmentService:
                 normalized_job_id=job.id,
                 scrape_run_id=scrape_run_id,
                 provider=self.config.provider,
-                model=self.config.model or getattr(self.client, "model", "unknown"),
+                model=selected_model_for_log(
+                    self.client,
+                    fallback=self.config.model or getattr(self.client, "model", "unknown"),
+                ),
                 base_url=self.config.base_url,
                 latency_ms=latency_ms,
                 status=AIRequestStatus.FAILED,
@@ -229,3 +235,10 @@ def failed_request_input() -> EnrichmentJobInput:
         company="unavailable company",
         source="unavailable source",
     )
+
+
+def selected_model_for_log(client: EnrichmentClient, *, fallback: str) -> str:
+    selected = getattr(client, "last_model", None)
+    if isinstance(selected, str) and selected.strip():
+        return selected
+    return fallback

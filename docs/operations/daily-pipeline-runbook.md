@@ -34,7 +34,7 @@ Deployment default runs two containers:
 | -------------------- | ---------------------------------------------------------------------------------- |
 | Scrape               | Run record exists; per-source fetched counts are non-zero or intentionally partial |
 | Normalize            | Normalized count and quarantine count match source health                          |
-| Enrich               | AI request logs contain status, retry count, model, and safe base URL alias        |
+| Enrich               | AI request logs contain status, retry count, model, and safe base URL alias; model usage summary is available by model |
 | Sync                 | Sync events show `sent`, retryable `failed`, or reviewed `dead-letter` states      |
 | Notification handoff | Handoff events exist only for sent sync events                                     |
 
@@ -122,6 +122,8 @@ Pipeline command rules:
 - `staging-report` adds staging evidence checks for latency percentiles, retries, quarantine distribution, backend relation consistency, backend read-path sampling, strict invariants, and explicit `syncOutcome`/`notifyOutcome` zero-sent reasons.
 - Normalize stage AI processing is serial per batch (`OPENAI_NORMALIZATION_BATCH_SIZE`) and always waits fixed inter-batch delay (`OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS`).
 - Normalize and enrich stages use per-item partial handling; one failed item does not stop the whole stage.
+- `OPENAI_MODEL` may be single-model or comma-separated multi-model. Runtime rotates requests round-robin by configured order, and retry attempts may continue on the next model.
+- Multi-model rotation improves distribution but does not bypass organization/project/shared-family rate limits.
 - Execute mode streams progress logs to `stderr`; machine-readable final JSON stays on `stdout`.
 - Stage run-id derivation accepts base IDs and stage-suffixed IDs, including `-notify` and `-notify-handoff`.
 - Source HTTP circuit breaker is retryable and auto-recovers after cooldown; if still open after repeated cooldown windows, treat as active incident and escalate.

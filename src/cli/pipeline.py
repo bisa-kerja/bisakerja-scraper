@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from config.database_urls import to_sync_postgres_url
 from config.settings import Settings
-from integrations.ai import OpenAIEnrichmentClient, OpenAINormalizationClient
+from integrations.ai import OpenAIEnrichmentClient, OpenAIModelRotator, OpenAINormalizationClient
 from integrations.backend import (
     BackendNotificationHandoffClient,
     BackendSyncClient,
@@ -1166,6 +1166,7 @@ def build_staging_report(
         sync_zero_sent_reason=sync_reason,
         notify_zero_sent_reason=notify_reason,
     )
+    ai_by_model = ai_model_summary_from_logs(ai_logs)
 
     return {
         "check": "staging-report",
@@ -1183,6 +1184,7 @@ def build_staging_report(
             "quarantined": len(quarantine_rows),
             "errors": len(sync_failed) + len(handoff_failed) + len(ai_failed),
         },
+        "aiByModel": ai_by_model,
         "latency": {
             "stageDurationsMs": stage_timings,
             "stageP95Ms": stage_p95,
@@ -1909,6 +1911,26 @@ def run_summary_value(run: ScrapeRun, key: str) -> int:
     return value if isinstance(value, int) else 0
 
 
+def ai_model_summary_from_logs(ai_logs: Sequence[AIRequestLog]) -> dict[str, dict[str, int]]:
+    summary: dict[str, dict[str, int]] = {}
+    for log in ai_logs:
+        model = log.model.strip() if isinstance(log.model, str) else ""
+        if not model:
+            model = "unknown"
+        bucket = summary.setdefault(
+            model,
+            {"requests": 0, "successes": 0, "rate_limited": 0, "failed": 0},
+        )
+        bucket["requests"] += 1
+        if log.status == "success":
+            bucket["successes"] += 1
+        else:
+            bucket["failed"] += 1
+        if log.error_category == "OPENAI_RATE_LIMIT":
+            bucket["rate_limited"] += 1
+    return {model: summary[model] for model in sorted(summary)}
+
+
 def safe_json_dict(response: httpx.Response) -> dict[str, Any]:
     try:
         payload = response.json()
@@ -2014,6 +2036,7 @@ def verify_database_state(session: Session, *, run_id: str) -> dict[str, Any]:
         sync_zero_sent_reason=sync_zero_sent_reason,
         notify_zero_sent_reason=notify_zero_sent_reason,
     )
+    ai_by_model = ai_model_summary_from_logs(ai_logs)
     status = "ok" if runs and invariants["failed"] == 0 else "fail"
 
     return {
@@ -2037,6 +2060,7 @@ def verify_database_state(session: Session, *, run_id: str) -> dict[str, Any]:
         "normalizedRows": len(normalized_jobs),
         "quarantineRows": len(quarantine_rows),
         "aiRequestLogs": len(ai_logs),
+        "aiByModel": ai_by_model,
         "syncEvents": len(sync_events),
         "handoffEvents": len(handoff_events),
         "rawBySource": dict(sorted(raw_source_counts.items())),
@@ -2156,6 +2180,9 @@ class ManualPipelineRunner:
         self.stage_statuses: dict[str, str] = {}
         self.stage_count_breakdown: dict[str, dict[str, int]] = {}
         self.sync_diagnostics: dict[str, Any] = {}
+        self.ai_diagnostics: dict[str, Any] = {}
+        self._ai_normalization_client: OpenAINormalizationClient | None = None
+        self._ai_enrichment_client: OpenAIEnrichmentClient | None = None
 
     def emit_progress(self, message: str) -> None:
         if not self.execute:
@@ -2187,6 +2214,10 @@ class ManualPipelineRunner:
             )
             self.stage_statuses = {stage_value: result.status}
             self.stage_count_breakdown = {stage_value: result.counts.model_dump()}
+        self.ai_diagnostics = ai_diagnostics_from_clients(
+            normalization_client=self._ai_normalization_client,
+            enrichment_client=self._ai_enrichment_client,
+        )
         self.output = output_from_result(
             result,
             stage=stage_value,
@@ -2200,6 +2231,7 @@ class ManualPipelineRunner:
             stage_statuses=self.stage_statuses,
             stage_count_breakdown=self.stage_count_breakdown,
             sync_diagnostics=self.sync_diagnostics,
+            ai_diagnostics=self.ai_diagnostics,
             source_selection=self.source_selection,
         )
 
@@ -2208,14 +2240,19 @@ class ManualPipelineRunner:
 
     def build_orchestrator(self) -> PipelineOrchestrator:
         sync_run_id: dict[str, str] = {}
+        model_rotator = build_openai_model_rotator(self.settings, execute=self.execute)
         ai_normalization_client = build_ai_normalization_client(
             self.settings,
             execute=self.execute,
+            model_rotator=model_rotator,
         )
         ai_enrichment_client = build_ai_enrichment_client(
             self.settings,
             execute=self.execute,
+            model_rotator=model_rotator,
         )
+        self._ai_normalization_client = ai_normalization_client
+        self._ai_enrichment_client = ai_enrichment_client
         backend_sync_client = build_backend_sync_client(
             self.settings,
             execute=self.execute,
@@ -2252,7 +2289,7 @@ class ManualPipelineRunner:
                 client=ai_enrichment_client,
                 config=EnrichmentServiceConfig(
                     provider="openai-compatible",
-                    model=self.settings.openai_model or ai_enrichment_client.model,
+                    model=ai_enrichment_client.model,
                     base_url=(
                         str(self.settings.openai_base_url)
                         if self.settings.openai_base_url is not None
@@ -3117,10 +3154,77 @@ def redact_database_url(value: str | None) -> str | None:
         return redact_text(value)
 
 
+def build_openai_model_rotator(
+    settings: Settings,
+    *,
+    execute: bool,
+) -> OpenAIModelRotator | None:
+    if not execute:
+        return None
+    if not settings.ai_enrichment_enabled:
+        return None
+    if not settings.openai_models:
+        return None
+    return OpenAIModelRotator(settings.openai_models)
+
+
+def ai_diagnostics_from_clients(
+    *,
+    normalization_client: OpenAINormalizationClient | None,
+    enrichment_client: OpenAIEnrichmentClient | None,
+) -> dict[str, Any]:
+    snapshots = []
+    if normalization_client is not None and hasattr(normalization_client, "metrics_snapshot"):
+        snapshots.append(normalization_client.metrics_snapshot())
+    if enrichment_client is not None and hasattr(enrichment_client, "metrics_snapshot"):
+        snapshots.append(enrichment_client.metrics_snapshot())
+    if not snapshots:
+        return {}
+
+    model_names: set[str] = set()
+    for snapshot in snapshots:
+        model_names.update(snapshot.get("models", []))
+
+    def merge_metrics(items: list[dict[str, Any]], key: str) -> dict[str, dict[str, int]]:
+        merged: dict[str, dict[str, int]] = {}
+        for item in items:
+            source = item.get(key, {})
+            if not isinstance(source, dict):
+                continue
+            for name, metrics in source.items():
+                if not isinstance(metrics, dict):
+                    continue
+                bucket = merged.setdefault(
+                    str(name),
+                    {"requests": 0, "successes": 0, "rate_limited": 0, "failed": 0},
+                )
+                for metric_name in ("requests", "successes", "rate_limited", "failed"):
+                    value = metrics.get(metric_name)
+                    if isinstance(value, int):
+                        bucket[metric_name] += value
+        return {name: merged[name] for name in sorted(merged)}
+
+    by_model = merge_metrics(snapshots, "byModel")
+    for model_name in sorted(model_names):
+        by_model.setdefault(
+            model_name,
+            {"requests": 0, "successes": 0, "rate_limited": 0, "failed": 0},
+        )
+    by_request_type = merge_metrics(snapshots, "byRequestType")
+
+    return {
+        "configuredModels": sorted(model_names),
+        "byModel": by_model,
+        "byRequestType": by_request_type,
+        "retryPolicy": "each retry attempt may rotate to next model",
+    }
+
+
 def build_ai_normalization_client(
     settings: Settings,
     *,
     execute: bool,
+    model_rotator: OpenAIModelRotator | None = None,
 ) -> OpenAINormalizationClient | None:
     if not execute:
         return None
@@ -3129,15 +3233,16 @@ def build_ai_normalization_client(
     if (
         settings.openai_api_key is None
         or settings.openai_base_url is None
-        or settings.openai_model is None
+        or not settings.openai_models
     ):
         return None
     return OpenAINormalizationClient(
         api_key=settings.openai_api_key.get_secret_value(),
         base_url=str(settings.openai_base_url),
-        model=settings.openai_model,
+        model=settings.openai_models[0],
         timeout_seconds=settings.openai_timeout_seconds,
         max_retries=settings.openai_max_retries,
+        model_rotator=model_rotator,
     )
 
 
@@ -3145,6 +3250,7 @@ def build_ai_enrichment_client(
     settings: Settings,
     *,
     execute: bool,
+    model_rotator: OpenAIModelRotator | None = None,
 ) -> OpenAIEnrichmentClient | None:
     if not execute:
         return None
@@ -3153,15 +3259,16 @@ def build_ai_enrichment_client(
     if (
         settings.openai_api_key is None
         or settings.openai_base_url is None
-        or settings.openai_model is None
+        or not settings.openai_models
     ):
         return None
     return OpenAIEnrichmentClient(
         api_key=settings.openai_api_key.get_secret_value(),
         base_url=str(settings.openai_base_url),
-        model=settings.openai_model,
+        model=settings.openai_models[0],
         timeout_seconds=settings.openai_timeout_seconds,
         max_retries=settings.openai_max_retries,
+        model_rotator=model_rotator,
     )
 
 
@@ -3179,6 +3286,7 @@ def output_from_result(
     stage_statuses: dict[str, str] | None = None,
     stage_count_breakdown: dict[str, dict[str, int]] | None = None,
     sync_diagnostics: dict[str, Any] | None = None,
+    ai_diagnostics: dict[str, Any] | None = None,
     source_selection: SourceSelection | None = None,
 ) -> dict[str, Any]:
     requested_sources = list(source_selection.requested) if source_selection else []
@@ -3227,8 +3335,13 @@ def output_from_result(
         ],
         "events": result.stage_events,
     }
+    diagnostics: dict[str, Any] = {}
     if sync_diagnostics:
-        output["diagnostics"] = {"sync": sync_diagnostics}
+        diagnostics["sync"] = sync_diagnostics
+    if ai_diagnostics:
+        diagnostics["ai"] = ai_diagnostics
+    if diagnostics:
+        output["diagnostics"] = diagnostics
     return output
 
 

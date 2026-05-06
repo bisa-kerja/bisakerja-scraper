@@ -102,6 +102,12 @@ AI provider error classes:
 | `OPENAI_PROVIDER_UNAVAILABLE` | Provider connection failed or returned retryable server error | Yes |
 | `OPENAI_INVALID_RESPONSE` | Refusal, malformed structured output, unsupported fact, or non-schema response | No |
 
+Multi-model notes:
+
+- If `OPENAI_MODEL` is configured with multiple models, inspect failure distribution per model.
+- Round-robin model rotation can reduce concentration on one model, but shared organization/project limits can still trigger `OPENAI_RATE_LIMIT`.
+- Repeated `OPENAI_RATE_LIMIT` across all configured models should be treated as a capacity incident, not a single-model incident.
+
 Invalid enrichment output must not be written into normalized job data. Re-run only with safe normalized job text, never with raw source payloads or credentials.
 
 AI request audit rows store provider/model metadata, safe base host alias, latency, status, retry count, request hash, and response summary. They must not store API keys, raw prompts, raw source payloads, request headers, cookies, bearer tokens, or full provider responses.

@@ -118,6 +118,7 @@ class Settings(BaseSettings):
     )
     openai_base_url: AnyUrl | None = Field(default=None, validation_alias="OPENAI_BASE_URL")
     openai_model: NonEmptyStr | None = Field(default=None, validation_alias="OPENAI_MODEL")
+    openai_models: tuple[NonEmptyStr, ...] = ()
     openai_timeout_seconds: float = Field(validation_alias="OPENAI_TIMEOUT_SECONDS", gt=0)
     openai_max_retries: int = Field(validation_alias="OPENAI_MAX_RETRIES", ge=0, le=10)
     openai_batch_size: int = Field(validation_alias="OPENAI_BATCH_SIZE", ge=1, le=100)
@@ -237,6 +238,18 @@ class Settings(BaseSettings):
             raise ValueError("SCRAPER_KEYWORDS must contain at least one keyword")
         return tuple(keywords)
 
+    @field_validator("openai_model")
+    @classmethod
+    def validate_openai_model(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        models = [item.strip() for item in value.split(",")]
+        if any(not item for item in models):
+            raise ValueError("OPENAI_MODEL must not contain empty entries")
+        if not models:
+            raise ValueError("OPENAI_MODEL must contain at least one model")
+        return ",".join(models)
+
     @field_validator(
         "backend_sync_service_token",
         "jobstreet_bearer_token",
@@ -253,6 +266,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_conditional_secrets(self) -> "Settings":
+        self.openai_models = tuple(model for model in (self.openai_model or "").split(",") if model)
         if self.backend_sync_enabled:
             if self.backend_database_url is None:
                 raise ValueError("BACKEND_DATABASE_URL is required when backend sync is enabled")

@@ -22,6 +22,7 @@ from cli.pipeline import (
 from integrations.backend import BackendNotificationHandoffClient, BackendSyncClient
 from jobs.pipeline import PipelineResult, SourcePipelineResult
 from modules.persistence import (
+    AIRequestLog,
     Base,
     NormalizedJob,
     NotificationHandoffEvent,
@@ -719,6 +720,39 @@ def test_pipeline_verify_summarizes_database_without_raw_payload(
         )
         session.add(normalized)
         session.flush()
+        session.add_all(
+            [
+                AIRequestLog(
+                    scrape_run_id="phase82-enrich",
+                    normalized_job_id=normalized.id,
+                    provider="openai-compatible",
+                    model="gpt-4o-mini",
+                    base_url_alias="api.openai.com",
+                    latency_ms=120,
+                    status="success",
+                    retry_count=0,
+                    request_hash="ai-hash-1",
+                    response_summary={"skillsCount": 2},
+                    error_category=None,
+                    error_message=None,
+                ),
+                AIRequestLog(
+                    scrape_run_id="phase82-enrich",
+                    normalized_job_id=normalized.id,
+                    provider="openai-compatible",
+                    model="gpt-4o-mini",
+                    base_url_alias="api.openai.com",
+                    latency_ms=220,
+                    status="failed",
+                    retry_count=1,
+                    request_hash="ai-hash-2",
+                    response_summary={"errorCategory": "OPENAI_RATE_LIMIT"},
+                    error_category="OPENAI_RATE_LIMIT",
+                    error_message="rate limit",
+                ),
+            ]
+        )
+        session.flush()
         sync_event = SyncEvent(
             scrape_run_id="phase82-sync",
             normalized_job_id=normalized.id,
@@ -760,6 +794,14 @@ def test_pipeline_verify_summarizes_database_without_raw_payload(
     assert output["rawBySourceKeyword"] == {"dealls:developer": 1}
     assert output["duplicateRawIdentities"] == 0
     assert output["latestMetadata"]["requestedLimit"] == 50
+    assert output["aiByModel"] == {
+        "gpt-4o-mini": {
+            "failed": 1,
+            "rate_limited": 1,
+            "requests": 2,
+            "successes": 1,
+        }
+    }
     assert output["invariants"]["failed"] == 0
     assert "must-not-print" not in output_text
 

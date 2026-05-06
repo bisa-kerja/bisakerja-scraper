@@ -195,10 +195,11 @@ Execute sync semantics:
 
 The verify output must show zero duplicate raw and normalized identities. It must summarize source, keyword, sync, handoff, recency mode, recency days, requested limit, newest source timestamp, and oldest source timestamp without raw payload bodies or secrets.
 It must also include strict invariant checks and set overall status to fail when invariants fail.
+When AI enrichment logs exist, verify output must include per-model request summary (`requests`, `successes`, `rate_limited`, `failed`) without exposing API key, base URL path, or raw prompt payload.
 
 The staging-report output must include stage counts, latency percentiles, retry totals, quarantine summary, duplicate identity checks, backend relation consistency checks, and backend list/detail read checks without exposing secrets.
 It must also include partial-data metrics per source and the Glints partial-rate gate result.
-It must also include stage status summaries, strict invariant checks, and explicit sync/notify zero-sent reasons.
+It must also include stage status summaries, strict invariant checks, explicit sync/notify zero-sent reasons, and per-model AI request summary when AI logs exist.
 
 ## CI Verification
 
