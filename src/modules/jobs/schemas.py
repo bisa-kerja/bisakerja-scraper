@@ -40,6 +40,15 @@ class EmploymentType(StrEnum):
     UNKNOWN = "unknown"
 
 
+class ExperienceLevel(StrEnum):
+    ENTRY_LEVEL = "entry_level"
+    JUNIOR = "junior"
+    MID_LEVEL = "mid_level"
+    SENIOR = "senior"
+    LEAD = "lead"
+    UNKNOWN = "unknown"
+
+
 class SalaryPeriod(StrEnum):
     HOURLY = "hourly"
     DAILY = "daily"
@@ -112,11 +121,14 @@ class PresentationMetadataSchema(CanonicalModel):
 class CanonicalJobSchema(CanonicalModel):
     source: SourceMetadataSchema
     title: NonEmptyStr
+    normalized_title: str | None = None
+    category: str | None = None
     company: CompanySchema
     location: LocationSchema = Field(default_factory=LocationSchema)
     salary: SalarySchema | None = None
     employment_types: list[EmploymentType] = Field(default_factory=list)
     work_type: WorkType = WorkType.UNKNOWN
+    experience_level: ExperienceLevel = ExperienceLevel.UNKNOWN
     description: str | None = None
     requirements: str | None = None
     skills: list[str] = Field(default_factory=list)

@@ -45,14 +45,31 @@ class DeallsDetailAdapter:
     async def fetch_enriched_job(self, list_job: RawSourceJob) -> RawSourceJob:
         slug = _list_job_slug(list_job)
         if slug is None:
-            return merge_dealls_list_and_detail(list_job, None, missing_reason="missing_slug")
+            return merge_dealls_list_and_detail(
+                list_job,
+                None,
+                missing_reason="missing_slug",
+                detail_attempted=False,
+            )
 
         try:
             detail = await self.fetch_detail(slug)
         except FetchError as exc:
-            if exc.details.get("statusCode") == 404:
-                return merge_dealls_list_and_detail(list_job, None, missing_reason="not_found")
-            raise
+            return merge_dealls_list_and_detail(
+                list_job,
+                None,
+                missing_reason=_missing_reason_from_fetch_error(exc),
+                detail_attempted=True,
+                failure_retryable=exc.retryable,
+            )
+        except ParseError:
+            return merge_dealls_list_and_detail(
+                list_job,
+                None,
+                missing_reason="unavailable",
+                detail_attempted=True,
+                failure_retryable=False,
+            )
 
         return merge_dealls_list_and_detail(list_job, detail)
 
@@ -102,18 +119,26 @@ def merge_dealls_list_and_detail(
     detail: DeallsDetailResult | None,
     *,
     missing_reason: str | None = None,
+    detail_attempted: bool = True,
+    failure_retryable: bool | None = None,
 ) -> RawSourceJob:
     if detail is None:
         detail_metadata = {
             "coverage": "missing",
             "missingReason": missing_reason or "unavailable",
+            "detailCompleteness": "partial",
+            "attempted": detail_attempted,
         }
+        if failure_retryable is not None:
+            detail_metadata["failureRetryable"] = failure_retryable
         detail_payload: dict[str, Any] | None = None
         source_url = list_job.source_url
     else:
         detail_metadata = {
             "coverage": "available",
             "source": "detail",
+            "detailCompleteness": "complete",
+            "attempted": True,
         }
         detail_payload = detail.raw_payload
         source_url = detail.source_url
@@ -137,3 +162,14 @@ def _list_job_slug(list_job: RawSourceJob) -> str | None:
 
 def _optional_text(value: Any) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+def _missing_reason_from_fetch_error(exc: FetchError) -> str:
+    status_code = exc.details.get("statusCode")
+    if status_code == 404:
+        return "not_found"
+    if status_code in {401, 403}:
+        return "auth_required"
+    if status_code == 429:
+        return "rate_limited"
+    return "unavailable"

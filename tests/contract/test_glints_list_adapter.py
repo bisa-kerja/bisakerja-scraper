@@ -13,6 +13,7 @@ from integrations.sources.glints import (
     build_glints_detail_fallback,
     build_glints_list_request_body,
     extract_glints_source_timestamp,
+    merge_glints_list_with_fallback,
     parse_glints_list_payload,
 )
 
@@ -119,6 +120,20 @@ def test_glints_detail_fallback_keeps_job_valid_with_list_provenance() -> None:
     assert fallback.field_provenance["description"] == "unavailable"
     assert fallback.field_provenance["external_apply_url"] == "source_url_fallback"
     assert fallback.raw_payload["title"] == "Full Stack Developer"
+
+
+def test_glints_merge_wraps_list_payload_with_unavailable_detail_metadata() -> None:
+    result = parse_glints_list_payload(load_fixture("tests/fixtures/raw/glints/sample.json"))
+
+    wrapped = merge_glints_list_with_fallback(result.raw_jobs[0])
+
+    assert wrapped.raw_payload["detail"] is None
+    assert wrapped.raw_payload["detailMetadata"] == {
+        "coverage": "unavailable",
+        "detailCompleteness": "partial",
+        "missingReason": "unavailable",
+        "attempted": False,
+    }
 
 
 def test_parse_glints_list_payload_classifies_graphql_errors() -> None:

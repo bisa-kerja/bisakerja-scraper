@@ -31,6 +31,7 @@ from integrations.backend import (
     BackendSyncClient,
     BackendSyncResult,
 )
+from integrations.sources.dealls.detail import DeallsDetailAdapter
 from integrations.sources.dealls.list import (
     DeallsListAdapter,
     DeallsListQuery,
@@ -41,6 +42,7 @@ from integrations.sources.dealls.list import (
     RawSourceJob as DeallsRawSourceJob,
 )
 from integrations.sources.dealls.mapper import map_dealls_job
+from integrations.sources.glints.fallback import merge_glints_list_with_fallback
 from integrations.sources.glints.list import (
     GlintsListAdapter,
     GlintsListQuery,
@@ -51,6 +53,7 @@ from integrations.sources.glints.list import (
     RawSourceJob as GlintsRawSourceJob,
 )
 from integrations.sources.glints.mapper import map_glints_job
+from integrations.sources.jobstreet.detail import JobStreetDetailAdapter
 from integrations.sources.jobstreet.list import (
     JobStreetListQuery,
     build_jobstreet_http_client,
@@ -62,6 +65,7 @@ from integrations.sources.jobstreet.list import (
 )
 from integrations.sources.jobstreet.mapper import map_jobstreet_job
 from integrations.sources.kalibrr.build_id import KalibrrBuildIdResolver
+from integrations.sources.kalibrr.detail import merge_kalibrr_list_and_detail
 from integrations.sources.kalibrr.list import (
     KalibrrListAdapter,
     KalibrrListQuery,
@@ -142,6 +146,7 @@ def command_check_name(command: str | None) -> str:
         "run": "pipeline-run",
         "status": "pipeline-status",
         "verify": "pipeline-verify",
+        "data-quality": "pipeline-data-quality",
         "staging-report": "staging-report",
         "preflight": "pipeline-preflight",
         "wizard": "pipeline-wizard",
@@ -287,6 +292,11 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("--env-file", default=None)
     verify_parser.add_argument("--database-url", default=None)
     verify_parser.set_defaults(command_handler=run_verify)
+
+    quality_parser = subparsers.add_parser("data-quality")
+    quality_parser.add_argument("--env-file", default=None)
+    quality_parser.add_argument("--database-url", default=None)
+    quality_parser.set_defaults(command_handler=run_data_quality)
 
     staging_parser = subparsers.add_parser("staging-report")
     staging_parser.add_argument("--run-id", required=True)
@@ -931,6 +941,27 @@ async def run_verify(args: argparse.Namespace) -> dict[str, Any]:
         engine.dispose()
 
 
+async def run_data_quality(args: argparse.Namespace) -> dict[str, Any]:
+    settings = load_settings(args.env_file)
+    database_url = args.database_url or settings.backend_database_url
+    if not database_url:
+        raise CliInputError("data-quality requires BACKEND_DATABASE_URL or --database-url")
+    engine = create_engine(to_sync_url(database_url), pool_pre_ping=True)
+    try:
+        with engine.connect() as connection:
+            summary = build_backend_data_quality_summary(connection)
+    except Exception as exc:
+        raise CliInputError(f"failed to read backend data quality: {exc}") from exc
+    finally:
+        engine.dispose()
+    return {
+        "check": "pipeline-data-quality",
+        "status": "ok",
+        "database": {"url": redact_database_url(database_url)},
+        "summary": summary,
+    }
+
+
 async def run_staging_report(args: argparse.Namespace) -> dict[str, Any]:
     settings = load_settings(args.env_file)
     scraper_database_url = args.scraper_database_url or settings.scraper_database_url
@@ -993,6 +1024,192 @@ async def run_staging_report(args: argparse.Namespace) -> dict[str, Any]:
     invariant_failed = report.get("invariants", {}).get("failed", 0)
     report["status"] = "ok" if report["gates"]["failed"] == 0 and invariant_failed == 0 else "fail"
     return report
+
+
+def build_backend_data_quality_summary(connection) -> dict[str, Any]:  # noqa: ANN001
+    total_row = (
+        connection.execute(
+            text(
+                """
+            SELECT COUNT(*) AS total_jobs
+            FROM job_listings
+            """
+            )
+        )
+        .mappings()
+        .first()
+    )
+    total_jobs = int(total_row["total_jobs"]) if total_row else 0
+
+    null_blank_row = (
+        connection.execute(
+            text(
+                """
+            SELECT
+              SUM(CASE WHEN work_type IS NULL THEN 1 ELSE 0 END) AS null_work_type,
+              SUM(CASE WHEN employment_type IS NULL THEN 1 ELSE 0 END) AS null_employment_type,
+              SUM(CASE WHEN experience_level IS NULL THEN 1 ELSE 0 END) AS null_experience_level,
+              SUM(CASE WHEN TRIM(COALESCE(province, '')) = '' THEN 1 ELSE 0 END) AS blank_province,
+              SUM(CASE WHEN TRIM(COALESCE(city, '')) = '' THEN 1 ELSE 0 END) AS blank_city,
+              SUM(
+                CASE WHEN TRIM(COALESCE(salary_display, '')) = '' THEN 1 ELSE 0 END
+              ) AS blank_salary_display,
+              SUM(
+                CASE WHEN TRIM(COALESCE(description, '')) = '' THEN 1 ELSE 0 END
+              ) AS blank_description,
+              SUM(
+                CASE WHEN TRIM(COALESCE(requirement_summary, '')) = '' THEN 1 ELSE 0 END
+              ) AS blank_requirement_summary
+            FROM job_listings
+            """
+            )
+        )
+        .mappings()
+        .first()
+    )
+    null_blank = _mapping_to_int_dict(
+        null_blank_row,
+        keys=[
+            "null_work_type",
+            "null_employment_type",
+            "null_experience_level",
+            "blank_province",
+            "blank_city",
+            "blank_salary_display",
+            "blank_description",
+            "blank_requirement_summary",
+        ],
+    )
+
+    by_source_rows = (
+        connection.execute(
+            text(
+                """
+            SELECT
+              sp.slug AS source,
+              COUNT(*) AS total_jobs,
+              SUM(CASE WHEN jl.work_type IS NULL THEN 1 ELSE 0 END) AS null_work_type,
+              SUM(CASE WHEN jl.employment_type IS NULL THEN 1 ELSE 0 END) AS null_employment_type,
+              SUM(CASE WHEN jl.experience_level IS NULL THEN 1 ELSE 0 END) AS null_experience_level,
+              SUM(
+                CASE WHEN TRIM(COALESCE(jl.province, '')) = '' THEN 1 ELSE 0 END
+              ) AS blank_province,
+              SUM(
+                CASE WHEN TRIM(COALESCE(jl.salary_display, '')) = '' THEN 1 ELSE 0 END
+              ) AS blank_salary_display,
+              SUM(
+                CASE WHEN TRIM(COALESCE(jl.description, '')) = '' THEN 1 ELSE 0 END
+              ) AS blank_description
+            FROM job_listings jl
+            JOIN source_platforms sp ON sp.id = jl.source_platform_id
+            GROUP BY sp.slug
+            ORDER BY sp.slug
+            """
+            )
+        )
+        .mappings()
+        .all()
+    )
+
+    requirements_coverage_rows = (
+        connection.execute(
+            text(
+                """
+            SELECT
+              sp.slug AS source,
+              COUNT(*) AS total_jobs,
+              SUM(
+                CASE WHEN COALESCE(req.req_count, 0) > 0 THEN 1 ELSE 0 END
+              ) AS jobs_with_requirements
+            FROM job_listings jl
+            JOIN source_platforms sp ON sp.id = jl.source_platform_id
+            LEFT JOIN (
+              SELECT job_listing_id, COUNT(*) AS req_count
+              FROM job_requirements
+              GROUP BY job_listing_id
+            ) req ON req.job_listing_id = jl.id
+            GROUP BY sp.slug
+            ORDER BY sp.slug
+            """
+            )
+        )
+        .mappings()
+        .all()
+    )
+
+    skills_coverage_rows = (
+        connection.execute(
+            text(
+                """
+            SELECT
+              sp.slug AS source,
+              COUNT(*) AS total_jobs,
+              SUM(CASE WHEN COALESCE(js.skill_count, 0) > 0 THEN 1 ELSE 0 END) AS jobs_with_skills
+            FROM job_listings jl
+            JOIN source_platforms sp ON sp.id = jl.source_platform_id
+            LEFT JOIN (
+              SELECT job_listing_id, COUNT(*) AS skill_count
+              FROM job_skills
+              GROUP BY job_listing_id
+            ) js ON js.job_listing_id = jl.id
+            GROUP BY sp.slug
+            ORDER BY sp.slug
+            """
+            )
+        )
+        .mappings()
+        .all()
+    )
+
+    by_source: dict[str, dict[str, Any]] = {}
+    for row in by_source_rows:
+        source = str(row["source"])
+        total = int(row["total_jobs"] or 0)
+        by_source[source] = {
+            "totalJobs": total,
+            "nullWorkType": int(row["null_work_type"] or 0),
+            "nullEmploymentType": int(row["null_employment_type"] or 0),
+            "nullExperienceLevel": int(row["null_experience_level"] or 0),
+            "blankProvince": int(row["blank_province"] or 0),
+            "blankSalaryDisplay": int(row["blank_salary_display"] or 0),
+            "blankDescription": int(row["blank_description"] or 0),
+        }
+        by_source[source]["blankDescriptionRate"] = (
+            round(by_source[source]["blankDescription"] / total, 4) if total else 0.0
+        )
+
+    _merge_coverage_by_source(by_source, requirements_coverage_rows, key="requirements")
+    _merge_coverage_by_source(by_source, skills_coverage_rows, key="skills")
+
+    return {
+        "totalJobs": total_jobs,
+        "nullBlankCounts": null_blank,
+        "bySource": by_source,
+    }
+
+
+def _merge_coverage_by_source(
+    by_source: dict[str, dict[str, Any]],
+    rows: list[dict[str, Any]],
+    *,
+    key: str,
+) -> None:
+    value_field = "jobs_with_requirements" if key == "requirements" else "jobs_with_skills"
+    for row in rows:
+        source = str(row["source"])
+        total = int(row["total_jobs"] or 0)
+        covered = int(row[value_field] or 0)
+        source_entry = by_source.setdefault(source, {"totalJobs": total})
+        source_entry["totalJobs"] = total
+        source_entry[f"jobsWith{key.title()}"] = covered
+        source_entry[f"jobsWithout{key.title()}"] = max(total - covered, 0)
+        source_entry[f"{key}CoverageRate"] = round(covered / total, 4) if total else 0.0
+
+
+def _mapping_to_int_dict(mapping: dict[str, Any] | None, *, keys: list[str]) -> dict[str, int]:
+    if mapping is None:
+        return {key: 0 for key in keys}
+    return {key: int(mapping.get(key) or 0) for key in keys}
 
 
 def build_staging_report(
@@ -2802,10 +3019,13 @@ def build_live_dealls_source(
             max_response_bytes=settings.http_response_max_bytes,
             rate_limit_per_minute=settings.dealls_rate_limit_per_minute,
         ) as http_client:
-            result = await DeallsListAdapter(http_client).fetch_page(
+            list_result = await DeallsListAdapter(http_client).fetch_page(
                 DeallsListQuery(limit=limit, search=keyword)
             )
-            return result.raw_jobs
+            detail_adapter = DeallsDetailAdapter(http_client)
+            return [
+                await detail_adapter.fetch_enriched_job(raw_job) for raw_job in list_result.raw_jobs
+            ]
 
     return LivePipelineSource(
         source_platform="dealls",
@@ -2905,7 +3125,7 @@ def build_live_glints_source(
                     country_code=settings.glints_country_code,
                 )
             )
-            return result.raw_jobs
+            return [merge_glints_list_with_fallback(raw_job) for raw_job in result.raw_jobs]
 
     return LivePipelineSource(
         source_platform="glints",
@@ -2948,7 +3168,7 @@ def build_live_jobstreet_source(
                 headers={"accept": "text/html"},
             )
             payload = jobstreet_payload_from_search_page(html)
-            result = parse_jobstreet_list_payload(
+            list_result = parse_jobstreet_list_payload(
                 payload,
                 query=JobStreetListQuery(
                     keywords=keyword,
@@ -2956,7 +3176,10 @@ def build_live_jobstreet_source(
                     date_range=recency_days,
                 ),
             )
-            return result.raw_jobs
+            detail_adapter = JobStreetDetailAdapter(http_client)
+            return [
+                await detail_adapter.fetch_enriched_job(raw_job) for raw_job in list_result.raw_jobs
+            ]
 
     return LivePipelineSource(
         source_platform="jobstreet",
@@ -2991,7 +3214,7 @@ def build_live_kalibrr_source(
                 http_client=http_client,
                 build_id_resolver=KalibrrBuildIdResolver(http_client),
             ).fetch_page(KalibrrListQuery(keyword=keyword))
-            return result.raw_jobs
+            return [merge_kalibrr_list_and_detail(raw_job) for raw_job in result.raw_jobs]
 
     return LivePipelineSource(
         source_platform="kalibrr",

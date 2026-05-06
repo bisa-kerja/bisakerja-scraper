@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from core.errors import ParseError
+from core.errors import FetchError, ParseError
 from integrations.sources.jobstreet.list import (
     JOBSTREET_GRAPHQL_PATH,
     JOBSTREET_SOURCE_PLATFORM,
@@ -186,8 +186,25 @@ class JobStreetDetailAdapter:
         return parse_jobstreet_detail_payload(payload)
 
     async def fetch_enriched_job(self, list_job: RawSourceJob) -> RawSourceJob:
-        detail = await self.fetch_detail(list_job.external_id)
-        return merge_jobstreet_list_and_detail(list_job, detail)
+        try:
+            detail = await self.fetch_detail(list_job.external_id)
+            return merge_jobstreet_list_and_detail(list_job, detail)
+        except FetchError as exc:
+            return merge_jobstreet_list_and_detail(
+                list_job,
+                None,
+                missing_reason=_missing_reason_from_fetch_error(exc),
+                detail_attempted=True,
+                failure_retryable=exc.retryable,
+            )
+        except ParseError as exc:
+            return merge_jobstreet_list_and_detail(
+                list_job,
+                None,
+                missing_reason=_missing_reason_from_parse_error(exc),
+                detail_attempted=True,
+                failure_retryable=False,
+            )
 
 
 def build_jobstreet_detail_request_body(query: JobStreetDetailQuery) -> dict[str, Any]:
@@ -244,8 +261,32 @@ def parse_jobstreet_detail_payload(payload: dict[str, Any]) -> JobStreetDetailRe
 
 def merge_jobstreet_list_and_detail(
     list_job: RawSourceJob,
-    detail: JobStreetDetailResult,
+    detail: JobStreetDetailResult | None,
+    *,
+    missing_reason: str | None = None,
+    detail_attempted: bool = True,
+    failure_retryable: bool | None = None,
 ) -> RawSourceJob:
+    if detail is None:
+        metadata: dict[str, Any] = {
+            "coverage": "missing",
+            "missingReason": missing_reason or "unavailable",
+            "detailCompleteness": "partial",
+            "attempted": detail_attempted,
+        }
+        if failure_retryable is not None:
+            metadata["failureRetryable"] = failure_retryable
+        return RawSourceJob(
+            source_platform=list_job.source_platform,
+            external_id=list_job.external_id,
+            source_url=list_job.source_url,
+            raw_payload={
+                "list": list_job.raw_payload,
+                "detail": None,
+                "detailMetadata": metadata,
+            },
+        )
+
     return RawSourceJob(
         source_platform=list_job.source_platform,
         external_id=list_job.external_id,
@@ -256,6 +297,8 @@ def merge_jobstreet_list_and_detail(
             "detailMetadata": {
                 "coverage": "available",
                 "source": "detail",
+                "detailCompleteness": "complete",
+                "attempted": True,
                 "htmlFields": ["job.content"] if detail.html_description else [],
             },
         },
@@ -271,3 +314,21 @@ def _detail_source_url(job: dict[str, Any], external_id: str) -> str:
 
 def _optional_text(value: Any) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+def _missing_reason_from_parse_error(error: ParseError) -> str:
+    message = error.message.lower()
+    if "auth" in message or "unauthorized" in message:
+        return "auth_required"
+    return "unavailable"
+
+
+def _missing_reason_from_fetch_error(error: FetchError) -> str:
+    status_code = error.details.get("statusCode")
+    if status_code == 404:
+        return "not_found"
+    if status_code in {401, 403}:
+        return "auth_required"
+    if status_code == 429:
+        return "rate_limited"
+    return "unavailable"

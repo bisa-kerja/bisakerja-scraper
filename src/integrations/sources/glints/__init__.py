@@ -3,6 +3,7 @@
 from integrations.sources.glints.fallback import (
     GlintsDetailFallbackResult,
     build_glints_detail_fallback,
+    merge_glints_list_with_fallback,
 )
 from integrations.sources.glints.list import (
     GLINTS_DEFAULT_HEADERS,
@@ -40,6 +41,7 @@ __all__ = [
     "build_glints_detail_fallback",
     "build_glints_http_client",
     "build_glints_list_request_body",
+    "merge_glints_list_with_fallback",
     "build_glints_source_url",
     "extract_glints_source_timestamp",
     "map_glints_job",

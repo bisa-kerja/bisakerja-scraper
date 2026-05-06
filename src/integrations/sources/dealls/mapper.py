@@ -7,6 +7,7 @@ from integrations.sources.dealls.list import DEALLS_SOURCE_PLATFORM, RawSourceJo
 from integrations.sources.mapper_utils import (
     first_text,
     map_employment_type,
+    map_experience_level,
     map_status,
     map_work_type,
     parse_datetime,
@@ -23,6 +24,9 @@ def map_dealls_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = None)
     raw = raw_job.raw_payload
     list_payload = raw.get("list") if isinstance(raw.get("list"), dict) else raw
     detail_payload = raw.get("detail") if isinstance(raw.get("detail"), dict) else None
+    detail_metadata = (
+        raw.get("detailMetadata") if isinstance(raw.get("detailMetadata"), dict) else {}
+    )
 
     company = _dict_value(list_payload.get("company"))
     city = _dict_value(list_payload.get("city"))
@@ -77,6 +81,7 @@ def map_dealls_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = None)
             map_employment_type(value) for value in list_payload.get("employmentTypes", []) if value
         ],
         "work_type": map_work_type(list_payload.get("workplaceType")),
+        "experience_level": map_experience_level(list_payload.get("experienceLevel")),
         "description": description,
         "requirements": requirements,
         "skills": unique_texts(
@@ -93,6 +98,11 @@ def map_dealls_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = None)
             "badges": _badges(list_payload),
             "salary_label": None,
             "posted_label": None,
+            "source_labels": {
+                "detailCoverage": detail_metadata.get("coverage", "missing"),
+                "detailCompleteness": detail_metadata.get("detailCompleteness", "partial"),
+                "detailMissingReason": detail_metadata.get("missingReason"),
+            },
         },
     }
     return validate_mapped_job(

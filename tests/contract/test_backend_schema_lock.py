@@ -188,6 +188,45 @@ def test_backend_payload_contract_rejects_invalid_requirement_enum() -> None:
         build_backend_job_payload(job)
 
 
+def test_backend_payload_contract_applies_completion_defaults_for_high_value_fields() -> None:
+    job = normalized_job_for_contract(
+        source_platform="glints",
+        source_url="https://glints.com/id/opportunities/jobs/glints-1",
+        apply_url=None,
+        normalized_payload={
+            "source": {
+                "source_url": "https://glints.com/id/opportunities/jobs/glints-1",
+                "external_apply_url": "",
+            },
+            "company": {"name": "Glints Company"},
+            "location": {
+                "city": "South Jakarta",
+                "display": "South Jakarta, DKI Jakarta, Indonesia",
+                "country": "Indonesia",
+            },
+            "salary": {"currency": "", "period": None, "display": "-"},
+            "work_type": "unknown",
+            "employment_types": [],
+            "experience_level": "unknown",
+            "description": "-",
+            "requirements": "-",
+        },
+    )
+
+    payload = build_backend_job_payload(job).model_dump(mode="json", by_alias=True)
+    listing = payload["jobListing"]
+    assert listing["workType"] == "ONSITE"
+    assert listing["employmentType"] == "FULL_TIME"
+    assert listing["experienceLevel"] == "ENTRY_LEVEL"
+    assert listing["province"] == "DKI Jakarta"
+    assert listing["city"] == "South Jakarta"
+    assert listing["salaryCurrency"] == "IDR"
+    assert listing["salaryPeriod"] == "MONTHLY"
+    assert listing["salaryDisplay"] == "Tidak dicantumkan"
+    assert listing["externalApplyUrl"] == listing["sourceUrl"]
+    assert "level listing" in listing["description"]
+
+
 def mapped_jobs_from_fixtures() -> list[Any]:
     dealls_list = parse_dealls_list_payload(load_fixture("dealls/sample.json"))
     dealls_detail = parse_dealls_detail_payload(load_fixture("dealls/detail.json"))
@@ -232,6 +271,7 @@ def raw_input_from_mapped(mapped) -> RawJobInput:  # noqa: ANN001
 
 def normalized_job_for_contract(
     *,
+    source_platform: str = "dealls",
     external_id: str = "job-1",
     source_url: str = "https://dealls.com/jobs/job-1",
     apply_url: str | None = None,
@@ -240,7 +280,7 @@ def normalized_job_for_contract(
     now = datetime(2026, 5, 2, tzinfo=UTC)
     return NormalizedJob(
         id="normalized-job-1",
-        source_platform="dealls",
+        source_platform=source_platform,
         external_id=external_id,
         title="Backend Engineer",
         company_name="Bisakerja",

@@ -7,6 +7,13 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from modules.jobs.completion import (
+    build_source_limited_summary,
+    clean_description,
+    infer_experience_level,
+    is_placeholder_text,
+    normalize_location_fields,
+)
 from modules.jobs.dates import parse_absolute_datetime
 from modules.jobs.schemas import CanonicalJobStatus
 from modules.persistence import JobRequirementStaging, JobSkillStaging, NormalizedJob
@@ -258,8 +265,43 @@ def build_backend_job_payload(job: NormalizedJob) -> BackendJobPayload:
     )
     source_url = first_non_empty([source.get("source_url"), job.source_url]) or ""
 
-    employment_type = map_employment_type(payload.get("employment_types"))
-    work_type = map_work_type(payload.get("work_type"))
+    normalized_location = normalize_location_fields(
+        city=location.get("city"),
+        region=location.get("region"),
+        country=location.get("country"),
+        display=location.get("display"),
+        is_remote=location.get("is_remote"),
+    )
+    location_display = optional_text(normalized_location.get("display"))
+    location_city = optional_text(normalized_location.get("city"))
+    location_region = optional_text(normalized_location.get("region"))
+
+    description = clean_description(payload.get("description"))
+    if description is None and job.source_platform.strip().lower() == "glints":
+        description = build_source_limited_summary(
+            title=job.title,
+            company=first_non_empty([company.get("name"), job.company_name]),
+            location=location_display,
+            source_platform=job.source_platform,
+        )
+    requirement_summary = clean_description(payload.get("requirements"))
+
+    employment_type = (
+        map_employment_type(payload.get("employment_types")) or PrismaEmploymentType.FULL_TIME
+    )
+    work_type = map_work_type(payload.get("work_type")) or PrismaWorkType.ONSITE
+    experience_level = map_experience_level(payload.get("experience_level"))
+    if experience_level is None:
+        experience_level = map_experience_level(
+            infer_experience_level(
+                explicit=payload.get("experience_level"),
+                title=payload.get("title"),
+                description=description,
+                requirements=requirement_summary,
+            )
+        )
+    if experience_level is None:
+        experience_level = PrismaExperienceLevel.ENTRY_LEVEL
     status = map_job_status(job.status)
     source_posted_at = iso_or_none(job.posted_at) or iso_or_none(
         parse_source_datetime(payload.get("posted_at"))
@@ -267,6 +309,10 @@ def build_backend_job_payload(job: NormalizedJob) -> BackendJobPayload:
     source_updated_at = iso_or_none(parse_source_datetime(source.get("source_updated_at")))
     salary_display = optional_text(salary.get("display"))
     salary_period = map_salary_period(salary.get("period"), salary_display)
+    if salary_period is None:
+        salary_period = PrismaSalaryPeriod.MONTHLY
+    if salary_display is None:
+        salary_display = "Tidak dicantumkan"
     salary_currency = normalized_currency(salary.get("currency")) or "IDR"
 
     try:
@@ -287,16 +333,16 @@ def build_backend_job_payload(job: NormalizedJob) -> BackendJobPayload:
             job_listing=BackendJobListingPayload(
                 external_job_id=job.external_id,
                 title=job.title,
-                normalized_title=optional_text(payload.get("normalized_title")),
+                normalized_title=optional_text(payload.get("normalized_title")) or job.title,
                 category=optional_text(payload.get("category")),
-                description=optional_text(payload.get("description")),
-                requirement_summary=optional_text(payload.get("requirements")),
+                description=description,
+                requirement_summary=requirement_summary,
                 work_type=work_type,
                 employment_type=employment_type,
-                experience_level=map_experience_level(payload.get("experience_level")),
-                location_display=optional_text(location.get("display")),
-                province=optional_text(location.get("region")),
-                city=optional_text(location.get("city")),
+                experience_level=experience_level,
+                location_display=location_display,
+                province=location_region,
+                city=location_city,
                 salary_min=optional_int(salary.get("min_amount")),
                 salary_max=optional_int(salary.get("max_amount")),
                 salary_currency=salary_currency,
@@ -480,7 +526,9 @@ def iso_or_none(value: datetime | None) -> str | None:
 def optional_text(value: Any) -> str | None:
     if isinstance(value, str):
         text = value.strip()
-        return text or None
+        if not text or is_placeholder_text(text):
+            return None
+        return text
     return None
 
 

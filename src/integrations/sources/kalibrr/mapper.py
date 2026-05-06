@@ -6,8 +6,10 @@ from typing import Any
 from integrations.sources.kalibrr.build_id import KALIBRR_SOURCE_PLATFORM
 from integrations.sources.kalibrr.list import RawSourceJob
 from integrations.sources.mapper_utils import (
+    ExperienceLevel,
     first_text,
     map_employment_type,
+    map_experience_level,
     map_work_type,
     parse_datetime,
     salary_or_none,
@@ -24,6 +26,9 @@ def map_kalibrr_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = None
     raw = raw_job.raw_payload
     list_payload = raw.get("list") if isinstance(raw.get("list"), dict) else raw
     detail_payload = raw.get("detail") if isinstance(raw.get("detail"), dict) else list_payload
+    detail_metadata = (
+        raw.get("detailMetadata") if isinstance(raw.get("detailMetadata"), dict) else {}
+    )
     company = _dict_value(list_payload.get("company"))
     company_info = _dict_value(list_payload.get("companyInfo"))
     location_components = _dict_value(
@@ -81,6 +86,7 @@ def map_kalibrr_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = None
         ),
         "employment_types": [map_employment_type(list_payload.get("tenure"))],
         "work_type": _kalibrr_work_type(list_payload),
+        "experience_level": _kalibrr_experience_level(list_payload),
         "description": html_to_text(detail_payload.get("description")),
         "requirements": html_to_text(detail_payload.get("qualifications")),
         "skills": unique_texts(
@@ -97,7 +103,10 @@ def map_kalibrr_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = None
             "posted_label": None,
             "salary_label": None,
             "badges": ["featured"] if list_payload.get("isFeatured") is True else [],
-            "source_labels": {"detailCoverage": "embedded"},
+            "source_labels": {
+                "detailCoverage": detail_metadata.get("coverage", "embedded"),
+                "detailCompleteness": detail_metadata.get("detailCompleteness", "complete"),
+            },
         },
     }
     return validate_mapped_job(
@@ -125,3 +134,12 @@ def _kalibrr_work_type(payload: dict[str, Any]) -> WorkType:
     if payload.get("isHybrid") is True:
         return WorkType.HYBRID
     return map_work_type("onsite")
+
+
+def _kalibrr_experience_level(payload: dict[str, Any]) -> ExperienceLevel:
+    if payload.get("isOpenToFreshGrads") is True:
+        return ExperienceLevel.ENTRY_LEVEL
+    mapped = map_experience_level(payload.get("experienceLevel"))
+    if mapped is not ExperienceLevel.UNKNOWN:
+        return mapped
+    return map_experience_level(payload.get("qualifications"))

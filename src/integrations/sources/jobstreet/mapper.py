@@ -5,8 +5,10 @@ from typing import Any
 
 from integrations.sources.jobstreet.list import JOBSTREET_SOURCE_PLATFORM, RawSourceJob
 from integrations.sources.mapper_utils import (
+    ExperienceLevel,
     first_text,
     map_employment_type,
+    map_experience_level,
     map_status,
     map_work_type,
     parse_datetime,
@@ -23,6 +25,9 @@ def map_jobstreet_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = No
     raw = raw_job.raw_payload
     list_payload = raw.get("list") if isinstance(raw.get("list"), dict) else raw
     detail_payload = raw.get("detail") if isinstance(raw.get("detail"), dict) else None
+    detail_metadata = (
+        raw.get("detailMetadata") if isinstance(raw.get("detailMetadata"), dict) else {}
+    )
     detail_job = _dict_value(detail_payload.get("job") if detail_payload else None)
     company_profile = _dict_value(detail_payload.get("companyProfile") if detail_payload else None)
     company_overview = _dict_value(company_profile.get("overview"))
@@ -49,7 +54,7 @@ def map_jobstreet_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = No
         "title": detail_job.get("title") or list_payload.get("title"),
         "company": {
             "name": company_profile.get("name")
-            or detail_job.get("advertiser", {}).get("name")
+            or _dict_value(detail_job.get("advertiser")).get("name")
             or list_payload.get("companyName")
             or "Unknown company",
             "logo_url": _jobstreet_logo(branding, detail_job, company_profile),
@@ -58,9 +63,8 @@ def map_jobstreet_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = No
             "source_slug": company_profile.get("companyNameSlug"),
         },
         "location": {
-            "display": detail_job.get("location", {}).get("label")
-            if isinstance(detail_job.get("location"), dict)
-            else _location_display(list_payload),
+            "display": _dict_value(detail_job.get("location")).get("label")
+            or _location_display(list_payload),
         },
         "salary": salary_or_none(
             display=_salary_label(list_payload, detail_job),
@@ -74,8 +78,9 @@ def map_jobstreet_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = No
                 ]
             )
         ),
+        "experience_level": _experience_level_from_payload(list_payload, detail_job),
         "description": html_to_text(detail_job.get("content")) or list_payload.get("teaser"),
-        "requirements": first_text(detail_job.get("products", {}).get("bullets") or [])
+        "requirements": first_text(_dict_value(detail_job.get("products")).get("bullets") or [])
         or first_text(list_payload.get("bulletPoints") or []),
         "skills": [],
         "posted_at": posted_at,
@@ -91,6 +96,11 @@ def map_jobstreet_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = No
                     if isinstance(tag, dict)
                 ]
             ),
+            "source_labels": {
+                "detailCoverage": detail_metadata.get("coverage", "missing"),
+                "detailCompleteness": detail_metadata.get("detailCompleteness", "partial"),
+                "detailMissingReason": detail_metadata.get("missingReason"),
+            },
         },
     }
     return validate_mapped_job(
@@ -165,3 +175,26 @@ def _first_arrangement_type(work_arrangements: dict[str, Any]) -> str | None:
             if isinstance(value, str) and value:
                 return value
     return None
+
+
+def _experience_level_from_payload(
+    list_payload: dict[str, Any], detail_job: dict[str, Any]
+) -> ExperienceLevel:
+    for value in [
+        list_payload.get("experienceLevel"),
+        list_payload.get("careerLevel"),
+        detail_job.get("careerLevel"),
+    ]:
+        mapped = map_experience_level(value)
+        if mapped is not ExperienceLevel.UNKNOWN:
+            return mapped
+
+    title = first_text([detail_job.get("title"), list_payload.get("title")])
+    description = first_text([detail_job.get("content"), list_payload.get("teaser")])
+    requirements = first_text(
+        _dict_value(detail_job.get("products")).get("bullets")
+        or list_payload.get("bulletPoints")
+        or []
+    )
+    evidence = " ".join(part for part in [title, description, requirements] if part)
+    return map_experience_level(evidence)

@@ -58,6 +58,7 @@ def merge_kalibrr_list_and_detail(list_job: RawSourceJob) -> RawSourceJob:
             "detailMetadata": {
                 "coverage": "embedded",
                 "source": "list_job",
+                "detailCompleteness": "complete",
                 "htmlFields": [
                     field
                     for field, value in {

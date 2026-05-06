@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-04
+last_reviewed: 2026-05-06
 ---
 
 # Source Field Mapping Matrix
@@ -32,7 +32,7 @@ This matrix keeps mapper work tied to observed payload fields.
 | `salary.currency` | infer configured source currency if numeric salary exists | `salaries[].CurrencyCode` | parse label only if reliable | `salaryCurrency` |
 | `salary.period` | configured/monthly when source semantics confirm | `salaries[].salaryMode` | parse label only if reliable | `salaryInterval` |
 | `salary.display` | derived safe label or null | derived safe label or null | `salaryLabel` | derived safe label or null |
-| `description` | detail `description` if fetched | not available from captured detail | detail `job.content` clean text or list `teaser` | `description` HTML clean text |
+| `description` | detail `description` if fetched | factual source-limited summary from list evidence when detail unavailable | detail `job.content` clean text or list `teaser` | `description` HTML clean text |
 | `requirements` | detail `requirements` if fetched | safe summary from list `minYearsOfExperience`, `maxYearsOfExperience`, `hierarchicalJobCategory.name`, `skills[].skill.name` when available | detail `job.products.bullets` or list `bulletPoints[]` | `qualifications` HTML clean text |
 | `skills` | `skills[].name` | `skills[].skill.name` | enrichment or tags only if mapped | enrichment or detail-derived |
 | `postedAt` | `publishedAt` | `createdAt` | `listingDate.dateTimeUtc` | `activationDate` or `createdAt` |
@@ -56,7 +56,18 @@ This matrix keeps mapper work tied to observed payload fields.
 - Strip or sanitize HTML before model/display use.
 - Keep mapper field provenance outside the canonical job object.
 - Ignore UI-only fields unless a product contract explicitly adopts them.
-- For Glints list-only records, mark `presentation.source_labels.detailCompleteness = partial`.
+- For Glints records, set `detailCoverage=unavailable` and `detailCompleteness=partial`.
+- For Dealls/JobStreet detail failures, keep list record with `detailCoverage=missing`, explicit `missingReason`, and `attempted=true`.
+- For Kalibrr records, set `detailCoverage=embedded` and `detailCompleteness=complete`.
+
+## Detail Capability Matrix
+
+| Source | Detail capability | Metadata rule |
+| --- | --- | --- |
+| Dealls | external detail endpoint by slug | `detailCoverage=available` when fetched, otherwise `missing` + reason |
+| Glints | public detail unavailable | `detailCoverage=unavailable`, `detailCompleteness=partial`, `attempted=false` |
+| JobStreet | GraphQL `jobDetails` by id | `detailCoverage=available` when fetched, otherwise `missing` + reason |
+| Kalibrr | embedded detail in list payload | `detailCoverage=embedded`, `detailCompleteness=complete` |
 
 ## Dedup Matrix
 

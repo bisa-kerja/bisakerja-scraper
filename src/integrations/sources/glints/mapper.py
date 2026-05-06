@@ -6,8 +6,10 @@ from typing import Any
 from integrations.sources.glints.list import GLINTS_SOURCE_PLATFORM, RawSourceJob
 from integrations.sources.mapper_utils import (
     CanonicalJobStatus,
+    ExperienceLevel,
     first_text,
     map_employment_type,
+    map_experience_level,
     map_status,
     map_work_type,
     parse_datetime,
@@ -21,15 +23,19 @@ from integrations.sources.mapper_utils import (
 def map_glints_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = None):
     scraped_at = scraped_at or utc_now()
     raw = raw_job.raw_payload
-    company = _dict_value(raw.get("company"))
+    list_payload = raw.get("list") if isinstance(raw.get("list"), dict) else raw
+    detail_metadata = (
+        raw.get("detailMetadata") if isinstance(raw.get("detailMetadata"), dict) else {}
+    )
+    company = _dict_value(list_payload.get("company"))
     industry = _dict_value(company.get("industry"))
-    location = _dict_value(raw.get("location"))
-    country = _dict_value(raw.get("country"))
-    salary = _first_dict(raw.get("salaries"))
-    posted_at = parse_datetime(raw.get("createdAt"))
-    updated_at = parse_datetime(raw.get("updatedAt"))
-    requirements_summary = _build_requirements_summary(raw)
-    canonical_status = _status_from_list_visibility(raw.get("status"))
+    location = _dict_value(list_payload.get("location"))
+    country = _dict_value(list_payload.get("country"))
+    salary = _first_dict(list_payload.get("salaries"))
+    posted_at = parse_datetime(list_payload.get("createdAt"))
+    updated_at = parse_datetime(list_payload.get("updatedAt"))
+    requirements_summary = _build_requirements_summary(list_payload)
+    canonical_status = _status_from_list_visibility(list_payload.get("status"))
 
     payload = {
         "source": {
@@ -40,7 +46,7 @@ def map_glints_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = None)
             "scraped_at": scraped_at,
             "source_updated_at": updated_at,
         },
-        "title": raw.get("title"),
+        "title": list_payload.get("title"),
         "company": {
             "name": company.get("name") or company.get("brandName") or "Unknown company",
             "logo_url": company.get("logo"),
@@ -58,14 +64,15 @@ def map_glints_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = None)
             currency=salary.get("CurrencyCode"),
             period=salary.get("salaryMode"),
         ),
-        "employment_types": [map_employment_type(raw.get("type"))],
-        "work_type": map_work_type(raw.get("workArrangementOption")),
+        "employment_types": [map_employment_type(list_payload.get("type"))],
+        "work_type": map_work_type(list_payload.get("workArrangementOption")),
+        "experience_level": _experience_level_from_payload(list_payload),
         "description": None,
         "requirements": requirements_summary,
         "skills": unique_texts(
             [
                 skill.get("skill", {}).get("name")
-                for skill in raw.get("skills", [])
+                for skill in list_payload.get("skills", [])
                 if isinstance(skill, dict) and isinstance(skill.get("skill"), dict)
             ]
         ),
@@ -73,12 +80,12 @@ def map_glints_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = None)
         "last_seen_at": scraped_at,
         "status": canonical_status,
         "presentation": {
-            "badges": ["hot"] if raw.get("isHot") is True else [],
+            "badges": ["hot"] if list_payload.get("isHot") is True else [],
             "salary_label": None,
             "posted_label": None,
             "source_labels": {
-                "detailCoverage": "unavailable",
-                "detailCompleteness": "partial",
+                "detailCoverage": detail_metadata.get("coverage", "unavailable"),
+                "detailCompleteness": detail_metadata.get("detailCompleteness", "partial"),
                 "fallbackPolicy": "list-only",
             },
         },
@@ -152,16 +159,50 @@ def _build_requirements_summary(raw: dict[str, Any]) -> str | None:
         ]
     )
     if skills:
-        parts.append(f"Skills: {', '.join(skills[:5])}.")
-
-    if not parts:
-        return None
-    return " ".join(parts)
+        parts.append(f"Skills: {', '.join(skills)}.")
+    return " ".join(parts) if parts else None
 
 
 def _as_non_negative_int(value: Any) -> int | None:
     if isinstance(value, bool):
         return None
-    if isinstance(value, int) and value >= 0:
-        return value
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if isinstance(value, float) and value.is_integer():
+        parsed = int(value)
+        return parsed if parsed >= 0 else None
+    if isinstance(value, str):
+        text = value.strip()
+        if text.isdigit():
+            parsed = int(text)
+            return parsed if parsed >= 0 else None
     return None
+
+
+def _experience_level_from_payload(payload: dict[str, Any]) -> ExperienceLevel:
+    for value in (
+        payload.get("experienceLevel"),
+        payload.get("seniorityLevel"),
+        payload.get("careerLevel"),
+    ):
+        mapped = map_experience_level(value)
+        if mapped is not ExperienceLevel.UNKNOWN:
+            return mapped
+
+    minimum = _as_non_negative_int(payload.get("minYearsOfExperience"))
+    maximum = _as_non_negative_int(payload.get("maxYearsOfExperience"))
+    if maximum is not None:
+        if maximum >= 5:
+            return ExperienceLevel.SENIOR
+        if maximum >= 3:
+            return ExperienceLevel.MID_LEVEL
+        if maximum >= 1:
+            return ExperienceLevel.JUNIOR
+    if minimum is not None:
+        if minimum >= 5:
+            return ExperienceLevel.SENIOR
+        if minimum >= 3:
+            return ExperienceLevel.MID_LEVEL
+        if minimum >= 1:
+            return ExperienceLevel.JUNIOR
+    return ExperienceLevel.ENTRY_LEVEL

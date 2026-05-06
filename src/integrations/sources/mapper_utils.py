@@ -13,6 +13,7 @@ from modules.jobs.schemas import (
     CanonicalJobSchema,
     CanonicalJobStatus,
     EmploymentType,
+    ExperienceLevel,
     SalaryPeriod,
     WorkType,
 )
@@ -136,6 +137,24 @@ def map_status(value: Any) -> CanonicalJobStatus:
     if normalized in {"expired"}:
         return CanonicalJobStatus.EXPIRED
     return CanonicalJobStatus.UNKNOWN
+
+
+def map_experience_level(value: Any) -> ExperienceLevel:
+    text = optional_str(value)
+    if not text:
+        return ExperienceLevel.UNKNOWN
+    normalized = text.lower().replace("-", "_").replace(" ", "_")
+    if any(token in normalized for token in ("entry", "fresh", "intern")):
+        return ExperienceLevel.ENTRY_LEVEL
+    if "junior" in normalized:
+        return ExperienceLevel.JUNIOR
+    if any(token in normalized for token in ("mid", "intermediate")):
+        return ExperienceLevel.MID_LEVEL
+    if "senior" in normalized:
+        return ExperienceLevel.SENIOR
+    if any(token in normalized for token in ("lead", "head", "principal", "manager")):
+        return ExperienceLevel.LEAD
+    return ExperienceLevel.UNKNOWN
 
 
 def salary_or_none(

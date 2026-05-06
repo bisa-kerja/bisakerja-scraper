@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-05
+last_reviewed: 2026-05-06
 ---
 
 # Backend Sync Schema Map
@@ -45,11 +45,17 @@ This reference locks the scraper sync payload contract before data is sent to Ba
 ## Required Defaults Before Sync
 
 - `jobListing.salaryCurrency` defaults to `IDR` when salary currency is missing.
-- `jobListing.salaryPeriod` is inferred from salary display text when explicit period is absent.
+- `jobListing.salaryPeriod` is inferred from salary display text and defaults to `MONTHLY` when absent.
+- `jobListing.salaryDisplay` defaults to `Tidak dicantumkan` when source salary label is blank.
 - `jobListing.status` defaults to `ACTIVE` for unknown canonical status.
 - `jobListing.lastSeenAt` is always filled from normalized row freshness timestamp.
 - `jobListing.sourcePostedAt` and `jobListing.sourceUpdatedAt` remain `null` when source timestamps are unavailable.
 - `jobListing.externalApplyUrl` falls back to `sourceUrl` when source apply URL is unavailable.
+- `jobListing.workType` defaults to `ONSITE` when source evidence is missing.
+- `jobListing.employmentType` defaults to `FULL_TIME` when source evidence is missing.
+- `jobListing.experienceLevel` uses deterministic inference and falls back to `ENTRY_LEVEL`.
+- `jobListing.province` and `jobListing.city` are resolved from source evidence and open-world location parsing; no static city whitelist is used.
+- Placeholder text (`-`, `N/A`, empty string) is rejected for `description`, `requirementSummary`, and display fields.
 
 ## Validation Gates
 

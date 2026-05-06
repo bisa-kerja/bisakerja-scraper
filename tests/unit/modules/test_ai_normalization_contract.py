@@ -76,11 +76,11 @@ def test_golden_outputs_validate_against_canonical_contract() -> None:
                 assert normalized.location.display == "North Jakarta, DKI Jakarta, Indonesia"
 
 
-def test_glints_list_contract_rejects_invented_detail_fields() -> None:
+def test_glints_list_contract_builds_source_limited_summary_when_detail_unavailable() -> None:
     fixture = json.loads((FIXTURE_ROOT / "glints.json").read_text(encoding="utf-8"))
     scenario = fixture["scenarios"][0]
     bad_output: dict[str, Any] = dict(scenario["aiOutput"])
-    bad_output["description"] = "Invented detail text"
+    bad_output["description"] = None
 
     prompt_input = AINormalizationPromptInput(
         source_platform=SourcePlatform.GLINTS,
@@ -88,8 +88,9 @@ def test_glints_list_contract_rejects_invented_detail_fields() -> None:
         raw_payload_subset=scenario["rawPayloadSubset"],
     )
 
-    with pytest.raises(AINormalizationContractError, match="must not invent detail fields"):
-        validate_ai_normalization_output(bad_output, prompt_input=prompt_input)
+    normalized = validate_ai_normalization_output(bad_output, prompt_input=prompt_input)
+    assert normalized.description is not None
+    assert "level listing" in normalized.description
 
 
 def test_prompt_contract_includes_schema_and_strict_rules() -> None:
@@ -116,6 +117,10 @@ def test_prompt_contract_includes_schema_and_strict_rules() -> None:
     assert "normalizationObjectives" in payload
     assert "standaloneSchemaBlueprint" in payload
     assert "normalizationOutputExamples" in payload
+    assert payload["sourceContext"]["detailCapability"] == "available"
+    assert "completionPolicy" in payload
+    assert payload["completionPolicy"]["locationResolutionPolicy"]["openWorld"] is True
+    assert payload["completionPolicy"]["locationResolutionPolicy"]["noStaticCityWhitelist"] is True
     assert "backend-references/prisma/schema.prisma" not in json.dumps(payload)
     assert (
         payload["backendSchemaContext"]["reference"]["source"]

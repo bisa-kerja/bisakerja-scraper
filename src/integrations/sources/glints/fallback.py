@@ -39,3 +39,22 @@ def build_glints_detail_fallback(raw_job: RawSourceJob) -> GlintsDetailFallbackR
             "requirements": "list.minYearsOfExperience/list.maxYearsOfExperience/list.skills",
         },
     )
+
+
+def merge_glints_list_with_fallback(raw_job: RawSourceJob) -> RawSourceJob:
+    fallback = build_glints_detail_fallback(raw_job)
+    return RawSourceJob(
+        source_platform=raw_job.source_platform,
+        external_id=raw_job.external_id,
+        source_url=raw_job.source_url,
+        raw_payload={
+            "list": raw_job.raw_payload,
+            "detail": None,
+            "detailMetadata": {
+                "coverage": fallback.detail_coverage,
+                "detailCompleteness": fallback.detail_completeness,
+                "missingReason": "unavailable",
+                "attempted": False,
+            },
+        },
+    )

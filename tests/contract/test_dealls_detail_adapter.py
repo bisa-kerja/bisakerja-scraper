@@ -75,6 +75,8 @@ def test_merge_dealls_list_and_detail_keeps_both_payloads() -> None:
     assert enriched.raw_payload["detailMetadata"] == {
         "coverage": "available",
         "source": "detail",
+        "detailCompleteness": "complete",
+        "attempted": True,
     }
 
 
@@ -114,6 +116,9 @@ async def test_dealls_missing_detail_does_not_stop_enrichment() -> None:
     assert enriched.raw_payload["detailMetadata"] == {
         "coverage": "missing",
         "missingReason": "not_found",
+        "detailCompleteness": "partial",
+        "attempted": True,
+        "failureRetryable": False,
     }
 
 

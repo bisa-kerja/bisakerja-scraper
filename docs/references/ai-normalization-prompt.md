@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-04
+last_reviewed: 2026-05-06
 ---
 
 # AI Normalization Prompt Contract
@@ -25,7 +25,12 @@ Each normalization request includes:
 - `targetSchema`: canonical output contract name.
 - `targetJsonSchema`: JSON schema generated from `CanonicalJobSchema`.
 - `batchOutputJsonSchema`: JSON schema generated from `AINormalizationBatchOutput`.
+- `sourceContext`: detail capability and effective endpoint mode (`list`, `list+detail`, `list+embedded-detail`).
+- `rawEvidence`: evidence flags and `detailMetadata` snapshot.
+- `deterministicBaseline`: mapper provenance baseline before AI completion.
 - `backendSchemaContext`: embedded backend schema alignment rules.
+- `completionPolicy`: explicit default and anti-fabrication rules for production sync safety.
+- `outputShape`: canonical top-level output requirements.
 - `standaloneSchemaBlueprint`: standalone canonical blueprint (type, required fields, defaults, constraints).
 - `normalizationOutputExamples`: valid list/detail output examples.
 
@@ -43,7 +48,7 @@ The normalization system prompt enforces:
 - HTML fields are normalized into safe plain text.
 - Salary parsing may use numeric fields or salary labels.
 - Unknown values remain `null`.
-- Glints list data must stay partial when detail fields are absent.
+- Glints list data stays partial when detail fields are absent and must use transparent source-limited summary text.
 - `external_apply_url` falls back to `source_url` when unavailable.
 - Contract is standalone and must not depend on external repositories or runtime file reads.
 
@@ -60,9 +65,13 @@ AI output is accepted only when:
    - `external_apply_url` fallback is resolved.
    - salary values are normalized using shared salary parser.
    - HTML-like text fields are cleaned.
-   - location display fallback is derived from city/region/country.
+   - work type defaults to `onsite` when unknown.
+   - employment type defaults to `full_time` when unknown.
+   - experience level uses deterministic inference and safe fallback.
+   - location display/city/region use open-world resolver policy (no static city whitelist).
+   - province/city finalization is AI-led from source evidence and geographic reasoning with uncertainty fallback to `null`.
 5. Source policy checks pass:
-   - Glints list payloads without detail evidence must not contain `description` or `requirements`.
+   - Glints list payloads without detail evidence must produce transparent source-limited description summary.
 
 Rejected output raises `AINormalizationContractError`.
 
@@ -134,7 +143,7 @@ Contract tests:
 - OpenAI Structured Outputs:
   - `https://developers.openai.com/api/docs/guides/structured-outputs`
 - OpenAI rate-limit handling guidance:
-  - `https://developers.openai.com/cookbook/examples/how_to_handle_rate_limits`
+  - `https://developers.openai.com/api/docs/guides/rate-limits`
 - Pydantic model validation:
   - `https://docs.pydantic.dev/latest/concepts/models/`
   - `https://docs.pydantic.dev/latest/concepts/json/`

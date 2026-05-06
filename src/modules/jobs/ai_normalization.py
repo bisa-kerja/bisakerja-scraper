@@ -7,6 +7,14 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from modules.jobs.completion import (
+    build_source_limited_summary,
+    clean_description,
+    default_employment_types,
+    default_work_type,
+    infer_experience_level,
+    normalize_location_fields,
+)
 from modules.jobs.salary import normalize_salary
 from modules.jobs.schemas import CanonicalJobSchema, SourcePlatform
 from shared.text import clean_text, html_to_text
@@ -145,11 +153,16 @@ def build_ai_normalization_user_prompt(prompt_input: AINormalizationPromptInput)
     request = {
         "sourcePlatform": prompt_input.source_platform.value,
         "endpointType": prompt_input.endpoint_type.value,
+        "sourceContext": _source_context(prompt_input),
+        "rawEvidence": _raw_evidence_context(prompt_input.raw_payload_subset),
+        "deterministicBaseline": _deterministic_baseline_context(prompt_input.raw_payload_subset),
         "targetSchema": prompt_input.target_schema,
         "rawPayloadSubset": prompt_input.raw_payload_subset,
         "targetJsonSchema": CanonicalJobSchema.model_json_schema(),
         "backendSchemaContext": BACKEND_SCHEMA_CONTEXT,
         "normalizationObjectives": NORMALIZATION_OBJECTIVES,
+        "completionPolicy": COMPLETION_POLICY,
+        "outputShape": OUTPUT_SHAPE_POLICY,
         "standaloneSchemaBlueprint": STANDALONE_SCHEMA_BLUEPRINT,
         "normalizationOutputExamples": NORMALIZATION_OUTPUT_EXAMPLES,
     }
@@ -164,6 +177,13 @@ def build_ai_normalization_batch_user_prompt(prompt_input: AINormalizationBatchP
                 "itemId": item.item_id,
                 "sourcePlatform": item.source_platform.value,
                 "endpointType": item.endpoint_type.value,
+                "sourceContext": _source_context(
+                    AINormalizationPromptInput(
+                        source_platform=item.source_platform,
+                        endpoint_type=item.endpoint_type,
+                        raw_payload_subset=item.raw_payload_subset,
+                    )
+                ),
                 "rawPayloadSubset": item.raw_payload_subset,
             }
             for item in prompt_input.items
@@ -172,6 +192,8 @@ def build_ai_normalization_batch_user_prompt(prompt_input: AINormalizationBatchP
         "batchOutputJsonSchema": AINormalizationBatchOutput.model_json_schema(),
         "backendSchemaContext": BACKEND_SCHEMA_CONTEXT,
         "normalizationObjectives": NORMALIZATION_OBJECTIVES,
+        "completionPolicy": COMPLETION_POLICY,
+        "outputShape": OUTPUT_SHAPE_POLICY,
         "standaloneSchemaBlueprint": STANDALONE_SCHEMA_BLUEPRINT,
         "normalizationOutputExamples": NORMALIZATION_OUTPUT_EXAMPLES,
         "batchOutputPolicy": {
@@ -234,7 +256,7 @@ def validate_ai_normalization_output(
             details=list(exc.errors()),
         ) from exc
 
-    job = _apply_defaults(job)
+    job = _apply_defaults(job, prompt_input=prompt_input)
     _validate_source_policy(job, prompt_input)
     return job
 
@@ -281,7 +303,15 @@ def validate_ai_normalization_batch_output(
         if result_item.normalized_job is None:
             validated_results.append(result_item)
             continue
-        normalized = _apply_defaults(result_item.normalized_job)
+        normalized = _apply_defaults(
+            result_item.normalized_job,
+            prompt_input=AINormalizationPromptInput(
+                source_platform=request_item.source_platform,
+                endpoint_type=request_item.endpoint_type,
+                raw_payload_subset=request_item.raw_payload_subset,
+                target_schema=prompt_input.target_schema,
+            ),
+        )
         _validate_source_policy(
             normalized,
             AINormalizationPromptInput(
@@ -302,7 +332,11 @@ def validate_ai_normalization_batch_output(
     return validated_results
 
 
-def _apply_defaults(job: CanonicalJobSchema) -> CanonicalJobSchema:
+def _apply_defaults(
+    job: CanonicalJobSchema,
+    *,
+    prompt_input: AINormalizationPromptInput,
+) -> CanonicalJobSchema:
     payload = job.model_dump(mode="python")
 
     source = payload.get("source")
@@ -313,8 +347,8 @@ def _apply_defaults(job: CanonicalJobSchema) -> CanonicalJobSchema:
             if isinstance(source_url, str) and source_url.strip():
                 source["external_apply_url"] = source_url.strip()
 
-    description = _normalize_text(payload.get("description"))
-    requirements = _normalize_text(payload.get("requirements"))
+    description = clean_description(_normalize_text(payload.get("description")))
+    requirements = clean_description(_normalize_text(payload.get("requirements")))
     payload["description"] = description
     payload["requirements"] = requirements
 
@@ -334,23 +368,40 @@ def _apply_defaults(job: CanonicalJobSchema) -> CanonicalJobSchema:
 
     location = payload.get("location")
     if isinstance(location, dict):
-        display = location.get("display")
-        if not isinstance(display, str) or not display.strip():
-            city = (
-                clean_text(location.get("city")) if isinstance(location.get("city"), str) else None
-            )
-            region = (
-                clean_text(location.get("region"))
-                if isinstance(location.get("region"), str)
-                else None
-            )
-            country = (
-                clean_text(location.get("country"))
-                if isinstance(location.get("country"), str)
-                else None
-            )
-            parts = [part for part in (city, region, country) if part]
-            location["display"] = ", ".join(parts) if parts else None
+        normalized_location = normalize_location_fields(
+            city=location.get("city"),
+            region=location.get("region"),
+            country=location.get("country"),
+            display=location.get("display"),
+            is_remote=location.get("is_remote"),
+        )
+        location.update(normalized_location)
+
+    payload["work_type"] = default_work_type(payload.get("work_type"))
+    payload["employment_types"] = default_employment_types(payload.get("employment_types"))
+    payload["experience_level"] = infer_experience_level(
+        explicit=payload.get("experience_level"),
+        title=payload.get("title"),
+        description=payload.get("description"),
+        requirements=payload.get("requirements"),
+    )
+
+    if (
+        prompt_input.source_platform is SourcePlatform.GLINTS
+        and prompt_input.endpoint_type is NormalizationEndpointType.LIST
+        and not _has_detail_coverage(prompt_input.raw_payload_subset)
+        and payload.get("description") is None
+    ):
+        company = payload.get("company") if isinstance(payload.get("company"), dict) else {}
+        location_display = None
+        if isinstance(location, dict):
+            location_display = location.get("display")
+        payload["description"] = build_source_limited_summary(
+            title=payload.get("title"),
+            company=company.get("name") if isinstance(company, dict) else None,
+            location=location_display,
+            source_platform=prompt_input.source_platform.value,
+        )
 
     return CanonicalJobSchema.model_validate(payload)
 
@@ -359,22 +410,23 @@ def _validate_source_policy(
     job: CanonicalJobSchema,
     prompt_input: AINormalizationPromptInput,
 ) -> None:
-    if (
+    if not (
         prompt_input.source_platform is SourcePlatform.GLINTS
         and prompt_input.endpoint_type is NormalizationEndpointType.LIST
         and not _has_detail_coverage(prompt_input.raw_payload_subset)
     ):
-        if job.description is not None or job.requirements is not None:
-            raise AINormalizationContractError(
-                "glints list normalization must not invent detail fields",
-                details=[
-                    {
-                        "loc": ["description", "requirements"],
-                        "msg": "detail fields are unavailable for glints list payload",
-                        "type": "no_detail_coverage",
-                    }
-                ],
-            )
+        return
+    if job.description is None:
+        raise AINormalizationContractError(
+            "glints list normalization requires source-limited description summary",
+            details=[
+                {
+                    "loc": ["description"],
+                    "msg": "description summary is required when detail coverage is unavailable",
+                    "type": "source_limited_summary_required",
+                }
+            ],
+        )
 
 
 def _has_detail_coverage(value: Any) -> bool:
@@ -402,6 +454,64 @@ def _normalize_text(value: Any) -> str | None:
     return clean_text(value)
 
 
+def _source_context(prompt_input: AINormalizationPromptInput) -> dict[str, Any]:
+    detail_capability = _detail_capability(
+        prompt_input.source_platform,
+        prompt_input.endpoint_type,
+        prompt_input.raw_payload_subset,
+    )
+    endpoint_mode = prompt_input.endpoint_type.value
+    if detail_capability == "available":
+        endpoint_mode = "list+detail"
+    elif detail_capability == "embedded":
+        endpoint_mode = "list+embedded-detail"
+    return {
+        "sourcePlatform": prompt_input.source_platform.value,
+        "detailCapability": detail_capability,
+        "endpointType": prompt_input.endpoint_type.value,
+        "effectiveEndpointType": endpoint_mode,
+    }
+
+
+def _raw_evidence_context(raw_payload_subset: dict[str, Any]) -> dict[str, Any]:
+    list_payload = raw_payload_subset.get("list")
+    detail_payload = raw_payload_subset.get("detail")
+    return {
+        "hasListPayload": isinstance(list_payload, dict) or bool(raw_payload_subset),
+        "hasDetailPayload": isinstance(detail_payload, dict),
+        "detailMetadata": raw_payload_subset.get("detailMetadata"),
+    }
+
+
+def _deterministic_baseline_context(raw_payload_subset: dict[str, Any]) -> dict[str, Any]:
+    baseline = raw_payload_subset.get("deterministicBaseline")
+    if isinstance(baseline, dict):
+        return baseline
+    return {
+        "status": "provided_by_mapper",
+        "fieldProvenance": raw_payload_subset.get("fieldProvenance", {}),
+    }
+
+
+def _detail_capability(
+    source_platform: SourcePlatform,
+    endpoint_type: NormalizationEndpointType,
+    raw_payload_subset: dict[str, Any],
+) -> str:
+    detail_metadata = raw_payload_subset.get("detailMetadata")
+    if isinstance(detail_metadata, dict):
+        coverage = detail_metadata.get("coverage")
+        if isinstance(coverage, str) and coverage.strip():
+            return coverage.strip().lower()
+    if source_platform is SourcePlatform.GLINTS:
+        return "unavailable"
+    if source_platform is SourcePlatform.KALIBRR:
+        return "embedded"
+    if endpoint_type is NormalizationEndpointType.DETAIL:
+        return "available"
+    return "missing"
+
+
 AI_NORMALIZATION_SYSTEM_PROMPT = """You are a strict job data normalizer.
 Return one JSON object that must match targetJsonSchema exactly.
 Rules:
@@ -416,8 +526,10 @@ Rules:
 6. Normalize HTML-like content into clean safe plain text without losing core meaning.
 7. Parse salary numbers only when confidence is high. Keep uncertain numeric salary values null.
 8. Map location into display, city, region, and country when evidence exists.
+   City/province resolution is open-world (not whitelist-based).
+   Use reliable geographic reasoning when source fields are ambiguous.
 9. Keep Glints list records partial when detail data is unavailable.
-   Do not invent description or requirements.
+   Use factual source-limited description summary; never invent official detail content.
 10. external_apply_url must fall back to source_url when missing.
 11. Prefer explicit defaults aligned with backendSchemaContext default policy.
 12. Keep unknown values null instead of placeholders such as '-', 'N/A', or 'unknown text'.
@@ -456,6 +568,65 @@ NORMALIZATION_OBJECTIVES: dict[str, Any] = {
         "explicit default policy alignment",
         "production-grade consistency for list and detail use cases",
     ],
+}
+
+
+COMPLETION_POLICY: dict[str, Any] = {
+    "fieldPriority": [
+        "source evidence first",
+        "deterministic mapper baseline second",
+        "derived values only when evidence is sufficient",
+    ],
+    "disallowedPlaceholders": ["-", "--", "N/A", "unknown", ""],
+    "defaults": {
+        "workType": "onsite",
+        "employmentType": "full_time",
+        "experienceLevelFallback": "entry_level",
+        "salaryCurrency": "IDR",
+        "salaryPeriodFallback": "monthly",
+        "externalApplyUrlFallback": "source_url",
+    },
+    "locationResolutionPolicy": {
+        "strategyOrder": [
+            "explicit source city/province/region fields",
+            "detail text and location display parsing",
+            "validated geographic inference when evidence is sufficient",
+        ],
+        "openWorld": True,
+        "noStaticCityWhitelist": True,
+        "rules": [
+            "never force province from hardcoded local dictionary",
+            "normalize formatting only; keep factual geography",
+            "if uncertain, keep field null and expose missing reason rather than guessing",
+        ],
+    },
+    "confidencePolicy": {
+        "sourceExactMatch": "high",
+        "displayParse": "medium",
+        "geoInference": "medium_or_low_depending_evidence",
+    },
+    "sourceLimitedSummaryRule": (
+        "when detail capability is unavailable, description must be factual "
+        "source-limited summary and explicitly non-official detail text"
+    ),
+}
+
+
+OUTPUT_SHAPE_POLICY: dict[str, Any] = {
+    "requiredTopLevel": [
+        "source",
+        "title",
+        "company",
+        "location",
+        "employment_types",
+        "work_type",
+        "experience_level",
+        "description",
+        "requirements",
+        "skills",
+        "last_seen_at",
+        "status",
+    ]
 }
 
 

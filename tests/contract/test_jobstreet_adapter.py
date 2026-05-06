@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from core.errors import ConfigError, ParseError
+from core.errors import ConfigError, FetchError, ParseError
 from integrations.sources.jobstreet import (
     JOBSTREET_DETAIL_OPERATION,
     JOBSTREET_GRAPHQL_OPERATION,
@@ -24,8 +24,9 @@ from integrations.sources.jobstreet import (
 
 
 class MockJsonClient:
-    def __init__(self, payload: dict[str, Any]) -> None:
+    def __init__(self, payload: dict[str, Any] | None, *, error: FetchError | None = None) -> None:
         self.payload = payload
+        self.error = error
         self.requests: list[dict[str, Any]] = []
 
     async def request_json(
@@ -46,6 +47,9 @@ class MockJsonClient:
                 "json_body": json_body,
             }
         )
+        if self.error is not None:
+            raise self.error
+        assert self.payload is not None
         return self.payload
 
 
@@ -170,6 +174,8 @@ def test_merge_jobstreet_list_and_detail_keeps_html_raw_only() -> None:
     assert enriched.raw_payload["detailMetadata"] == {
         "coverage": "available",
         "source": "detail",
+        "detailCompleteness": "complete",
+        "attempted": True,
         "htmlFields": ["job.content"],
     }
     assert "cleanText" not in enriched.raw_payload
@@ -181,3 +187,33 @@ def test_parse_jobstreet_detail_payload_classifies_graphql_errors() -> None:
 
     assert exc_info.value.stage.value == "parse"
     assert exc_info.value.source_platform == "jobstreet"
+
+
+@pytest.mark.asyncio
+async def test_jobstreet_detail_fetch_failure_keeps_list_payload_with_reason() -> None:
+    list_result = parse_jobstreet_list_payload(
+        load_fixture("tests/fixtures/raw/jobstreet/sample.json"),
+        query=JobStreetListQuery(keywords="developer"),
+    )
+    adapter = JobStreetDetailAdapter(
+        MockJsonClient(
+            None,
+            error=FetchError(
+                "rate limited",
+                source_platform="jobstreet",
+                details={"statusCode": 429},
+                retryable=True,
+            ),
+        )
+    )
+
+    enriched = await adapter.fetch_enriched_job(list_result.raw_jobs[0])
+
+    assert enriched.raw_payload["detail"] is None
+    assert enriched.raw_payload["detailMetadata"] == {
+        "coverage": "missing",
+        "missingReason": "rate_limited",
+        "detailCompleteness": "partial",
+        "attempted": True,
+        "failureRetryable": True,
+    }

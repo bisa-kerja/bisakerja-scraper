@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-04
+last_reviewed: 2026-05-06
 ---
 
 # Scraper Verification Matrix
@@ -38,6 +38,7 @@ This matrix defines the minimum evidence needed before scraper docs, code, or op
 | Operator wizard | Interactive operator flow builds valid run/status/verify/staging inputs | Non-TTY rejects risky execution and execute mode requires explicit `YES` confirmation | Smoke test result |
 | Verify command | Returns stage summaries, source counts, and strict invariants | Fails when stage rows are missing, failure evidence is absent, or zero-sent stages lack reason | Smoke test result |
 | Staging report | Returns stage counts, latency, retries, consistency, and backend checks | Includes strict invariants and explicit zero-sent reasons for sync and notify-handoff | Smoke test result |
+| Data quality report | `cli.pipeline data-quality` returns null/blank and coverage metrics per source | Fails fast when backend schema/tables are unavailable and must redact DB credentials | Smoke test result |
 | Docs sync | Bundle manifest maps docs deterministically | Path escape or missing metadata rejects bundle | Docs check result |
 
 ## Source Coverage Matrix
@@ -65,6 +66,7 @@ This matrix defines the minimum evidence needed before scraper docs, code, or op
 | Wizard safety | `cli.pipeline wizard` interactive dry-run passes, non-TTY safe dry-run requires `--yes`, and risky non-TTY run is rejected |
 | E2E fixture pipeline | Raw fixtures produce normalized, enriched, synced, and handed-off jobs without network |
 | Staging validation report | Stage counts, latency percentiles, retries, consistency checks, and backend read sampling pass configured gates |
+| Backend data quality | `workType`, `employmentType`, `experienceLevel`, and description/skills/requirements coverage stay within approved thresholds |
 | Observability | Run logs include `runId`, source, stage, status, counts, and duration |
 | Recovery | Rollback or retry path exists for changed operational behavior |
 | Production read-only checks | `/health/live`, `/health/ready`, Compose app port `3003`, scheduler health, deployed SHA, and latest scheduler log status are verified without data mutation |

@@ -4,7 +4,7 @@ import json
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from cli.pipeline import (
@@ -1194,6 +1194,122 @@ def test_pipeline_staging_report_tracks_glints_partial_data_rate(
         check for check in output["gates"]["checks"] if check["name"] == "glintsPartialRate"
     )
     assert glints_gate["passed"] is True
+
+
+def test_pipeline_data_quality_reports_backend_field_coverage(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    apply_env(monkeypatch)
+    backend_path = tmp_path / "backend-quality.db"
+    backend_url = f"sqlite:///{backend_path}"
+
+    engine = create_engine(backend_url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE source_platforms (
+                  id TEXT PRIMARY KEY,
+                  slug TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE job_listings (
+                  id TEXT PRIMARY KEY,
+                  source_platform_id TEXT NOT NULL,
+                  work_type TEXT NULL,
+                  employment_type TEXT NULL,
+                  experience_level TEXT NULL,
+                  province TEXT NULL,
+                  city TEXT NULL,
+                  salary_display TEXT NULL,
+                  description TEXT NULL,
+                  requirement_summary TEXT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE job_requirements (
+                  id TEXT PRIMARY KEY,
+                  job_listing_id TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE job_skills (
+                  id TEXT PRIMARY KEY,
+                  job_listing_id TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO source_platforms (id, slug) VALUES
+                  ('sp-dealls', 'dealls'),
+                  ('sp-glints', 'glints')
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO job_listings (
+                  id, source_platform_id, work_type, employment_type, experience_level,
+                  province, city, salary_display, description, requirement_summary
+                ) VALUES
+                  (
+                    'job-1',
+                    'sp-dealls',
+                    'ONSITE',
+                    'FULL_TIME',
+                    'ENTRY_LEVEL',
+                    'DKI Jakarta',
+                    'Jakarta Selatan',
+                    'Rp10.000.000',
+                    'Desc',
+                    'Req'
+                  ),
+                  ('job-2', 'sp-glints', NULL, NULL, NULL, '', '', '', '', '')
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO job_requirements (id, job_listing_id) VALUES ('req-1', 'job-1')
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO job_skills (id, job_listing_id) VALUES ('skill-1', 'job-1')
+                """
+            )
+        )
+
+    assert main(["data-quality", "--database-url", backend_url, "--env-file", ".env.example"]) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["check"] == "pipeline-data-quality"
+    assert output["status"] == "ok"
+    assert output["summary"]["totalJobs"] == 2
+    assert output["summary"]["nullBlankCounts"]["null_work_type"] == 1
+    assert output["summary"]["bySource"]["glints"]["jobsWithoutRequirements"] == 1
+    assert output["summary"]["bySource"]["glints"]["jobsWithoutSkills"] == 1
 
 
 def test_pipeline_staging_report_sets_reason_when_sync_completed_zero_sent(

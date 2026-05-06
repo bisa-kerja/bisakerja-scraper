@@ -103,5 +103,6 @@ def test_kalibrr_embedded_detail_keeps_html_metadata() -> None:
     assert enriched.raw_payload["detailMetadata"] == {
         "coverage": "embedded",
         "source": "list_job",
+        "detailCompleteness": "complete",
         "htmlFields": ["description", "qualifications"],
     }
