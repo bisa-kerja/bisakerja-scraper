@@ -22,6 +22,7 @@ Operational docs for this repository should cover scraper runtime behavior only.
 - [Daily Pipeline Runbook](./daily-pipeline-runbook.md)
 - [Stage Queue Operations](./queue.md)
 - [Testing Strategy](./testing.md)
+- [Dataset Export Operations](./dataset-export.md)
 - [CI Quality Gates](./ci-quality-gates.md)
 - [Verification Matrix](./verification-matrix.md)
 - [Deployment Overview](./deployment-overview.md)

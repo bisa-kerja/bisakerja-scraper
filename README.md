@@ -120,9 +120,12 @@ PYTHONPATH=src uv run python -m cli.pipeline wizard --dry-run --source dealls --
 PYTHONPATH=src uv run python -m cli.pipeline quick-dry-run --source all --stage full --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage full --source all --limit 1 --dry-run --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline run --stage scrape --source dealls --keywords developer,intern,ui/ux --limit 1 --latest --recency-days 7 --dry-run --env-file .env.example
+PYTHONPATH=src uv run python -m cli.dataset jobs-csv --env-file .env --output-dir ./artifacts/datasets/jobs --format multi-csv
 ```
 
 The smoke dry-run command is fixture-backed and network-free. It validates parsing and mapping for Dealls, Glints, JobStreet, and Kalibrr fixtures. The pipeline command requires explicit mode: `--dry-run` or `--execute`.
+
+`cli.dataset jobs-csv` exports CSV datasets from backend job-domain tables. Default output is multi-file (job listings, requirements, skills, user signals, model dataset, and dictionary). It also supports single-file flatten mode with a configured length guard.
 
 Recommended operator entrypoint is `cli.pipeline wizard`. It shows an interactive menu for mode, stage, source, keyword preset, limit, recency, env file, and optional run id. It prints a pre-run summary with command equivalent, redacted DB target, backend sync mode, expected mutation scope, and risk indicators.
 
@@ -220,6 +223,7 @@ Do not commit real secrets, cookies, bearer tokens, source sessions, or database
 | `PYTHONPATH=src uv run python -m cli.pipeline status --run-id <run-id> --env-file .env` | Read safe run status from the configured DB |
 | `PYTHONPATH=src uv run python -m cli.pipeline verify --run-id <run-id-prefix> --env-file .env` | Verify stage rows, counts, duplicate identities, and safe metadata |
 | `PYTHONPATH=src uv run python -m cli.pipeline staging-report --run-id <run-id-prefix> --env-file .env` | Build operational report with latency, retry, consistency, and backend-read evidence |
+| `PYTHONPATH=src uv run python -m cli.dataset jobs-csv --env-file .env --output-dir ./artifacts/datasets/jobs --format multi-csv` | Export job intelligence CSV datasets for analytics and model workflows |
 | `PYTHONPATH=src uv run python -m cli.daemon --env-file .env.production` | Run scheduled stage daemon (scrape, normalize, enrich, sync, notify-handoff) |
 
 `cli.smoke dry-run` validates one source fixture path per command across all supported sources. `cli.pipeline preflight` provides a read-only local readiness check before operator runs. `cli.pipeline wizard` is the primary operator path and always returns machine-readable JSON while still guiding interactive choices. `cli.pipeline run` remains available for explicit scripted flows. `--dry-run` uses sanitized fixtures with in-memory DB and can validate JobStreet fixture flow even when `JOBSTREET_ENABLED=false` for live mode. Keyword flags override `SCRAPER_KEYWORDS`; otherwise the env list is used. `--limit` applies per keyword. Add `--execute` only for an operator-controlled environment with a migrated, non-production database.

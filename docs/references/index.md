@@ -21,6 +21,7 @@ This section is reserved for scraper-owned references.
 - [Source Field Mapping Matrix](./source-field-mapping-matrix.md)
 - [Backend Sync Schema Map](./backend-sync-schema-map.md)
 - [AI Normalization Prompt Contract](./ai-normalization-prompt.md)
+- [Job Dataset CSV Contract](./job-dataset-csv-contract.md)
 - [Staging End-to-End Validation Reference](./staging-e2e-validation.md)
 - [Domain Entities](./domain-entities.md)
 - [Payload Redaction Policy](../standards/payload-redaction-policy.md)
