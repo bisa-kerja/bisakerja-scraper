@@ -133,11 +133,13 @@ class Settings(BaseSettings):
         le=60000,
     )
 
+    dealls_enabled: bool = Field(validation_alias="DEALLS_ENABLED")
     dealls_base_url: NonEmptyStr = Field(validation_alias="DEALLS_BASE_URL")
     dealls_rate_limit_per_minute: int = Field(
         validation_alias="DEALLS_RATE_LIMIT_PER_MINUTE",
         ge=1,
     )
+    glints_enabled: bool = Field(validation_alias="GLINTS_ENABLED")
     glints_graphql_url: NonEmptyStr = Field(validation_alias="GLINTS_GRAPHQL_URL")
     glints_country_code: NonEmptyStr = Field(validation_alias="GLINTS_COUNTRY_CODE")
     glints_rate_limit_per_minute: int = Field(
@@ -154,12 +156,19 @@ class Settings(BaseSettings):
         validation_alias="JOBSTREET_RATE_LIMIT_PER_MINUTE",
         ge=1,
     )
+    kalibrr_enabled: bool = Field(validation_alias="KALIBRR_ENABLED")
     kalibrr_base_url: NonEmptyStr = Field(validation_alias="KALIBRR_BASE_URL")
     kalibrr_build_id_refresh_enabled: bool = Field(
         validation_alias="KALIBRR_BUILD_ID_REFRESH_ENABLED",
     )
     kalibrr_rate_limit_per_minute: int = Field(
         validation_alias="KALIBRR_RATE_LIMIT_PER_MINUTE",
+        ge=1,
+    )
+    kitalulus_enabled: bool = Field(validation_alias="KITALULUS_ENABLED")
+    kitalulus_graphql_url: NonEmptyStr = Field(validation_alias="KITALULUS_GRAPHQL_URL")
+    kitalulus_rate_limit_per_minute: int = Field(
+        validation_alias="KITALULUS_RATE_LIMIT_PER_MINUTE",
         ge=1,
     )
 

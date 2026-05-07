@@ -19,6 +19,8 @@ from integrations.sources.jobstreet import parse_jobstreet_list_payload
 from integrations.sources.jobstreet.mapper import map_jobstreet_job
 from integrations.sources.kalibrr import parse_kalibrr_list_payload
 from integrations.sources.kalibrr.mapper import map_kalibrr_job
+from integrations.sources.kitalulus.list import parse_kitalulus_list_payload
+from integrations.sources.kitalulus.mapper import map_kitalulus_job
 
 
 class SmokeCliInputError(ValueError):
@@ -69,7 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
     dry_run_parser = subparsers.add_parser("dry-run")
     dry_run_parser.add_argument(
         "--source",
-        choices=["dealls", "glints", "jobstreet", "kalibrr"],
+        choices=["dealls", "glints", "jobstreet", "kalibrr", "kitalulus"],
         default="dealls",
     )
     dry_run_parser.add_argument(
@@ -152,6 +154,10 @@ def parse_and_map_source(*, source: str, payload: dict[str, Any]) -> tuple[list[
     if source == "kalibrr":
         result = parse_kalibrr_list_payload(payload)
         mapped = [map_kalibrr_job(raw_job).job for raw_job in result.raw_jobs[:1]]
+        return result.raw_jobs, mapped
+    if source == "kitalulus":
+        result = parse_kitalulus_list_payload(payload)
+        mapped = [map_kitalulus_job(raw_job).job for raw_job in result.raw_jobs[:1]]
         return result.raw_jobs, mapped
     raise SmokeCliInputError(f"unsupported source: {source}")
 

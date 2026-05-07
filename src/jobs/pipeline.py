@@ -717,6 +717,11 @@ def prompt_input_from_raw_job(
         "sourcePlatform": source_platform,
         "externalId": external_id,
         "sourceUrl": source_url if isinstance(source_url, str) else None,
+        "scrapedAt": (
+            raw_job.scraped_at.isoformat()
+            if isinstance(getattr(raw_job, "scraped_at", None), datetime)
+            else None
+        ),
         "payload": raw_payload,
     }
     return AINormalizationPromptInput(

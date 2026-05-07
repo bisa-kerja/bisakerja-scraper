@@ -114,12 +114,63 @@ def test_backend_payload_falls_back_to_normalized_requirement_when_staging_missi
         payload = build_backend_job_payload(job).model_dump(mode="json", by_alias=True)
         assert payload["requirements"] == [
             {
-                "type": "OTHER",
+                "type": "EXPERIENCE",
                 "value": "Minimal 2 tahun pengalaman backend",
                 "priority": None,
                 "confidence": None,
                 "source": "normalized",
             }
+        ]
+
+
+def test_backend_payload_splits_classifies_and_filters_requirement_noise() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        job = canonical_job().model_copy(
+            update={
+                "requirements": (
+                    "Minimal S1 Teknik Informatika. Minimal 2 tahun pengalaman backend. "
+                    "Menguasai Python dan SQL. TUNJANGAN HARI RAYA. "
+                    "Mengembangkan API internal."
+                )
+            }
+        )
+        repository.write_job(raw_input("run-1", "job-req-semantic"), job)
+        session.commit()
+
+        saved = session.scalar(select(NormalizedJob).where(NormalizedJob.external_id == "job-1"))
+        assert saved is not None
+        payload = build_backend_job_payload(saved).model_dump(mode="json", by_alias=True)
+
+        assert payload["requirements"] == [
+            {
+                "type": "EDUCATION",
+                "value": "Minimal S1 Teknik Informatika",
+                "priority": None,
+                "confidence": None,
+                "source": "normalized",
+            },
+            {
+                "type": "EXPERIENCE",
+                "value": "Minimal 2 tahun pengalaman backend",
+                "priority": None,
+                "confidence": None,
+                "source": "normalized",
+            },
+            {
+                "type": "SKILL",
+                "value": "Menguasai Python dan SQL",
+                "priority": None,
+                "confidence": None,
+                "source": "normalized",
+            },
+            {
+                "type": "RESPONSIBILITY",
+                "value": "Mengembangkan API internal",
+                "priority": None,
+                "confidence": None,
+                "source": "normalized",
+            },
         ]
 
 
@@ -164,11 +215,76 @@ def test_backend_payload_normalizes_requirement_summary_language_to_indonesian()
         summary = payload["jobListing"]["requirementSummary"]
         assert summary is not None
         assert summary.startswith("Kualifikasi utama:")
-        assert "Pengalaman: minimal 2 tahun." in summary
-        assert "Keahlian: Python, SQL." in summary
+        assert "minimal 2 tahun" in summary
 
 
-def test_backend_payload_ensures_minimum_skill_and_requirement_coverage() -> None:
+def test_backend_payload_filters_invalid_skill_tokens_from_summary_and_skills() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        job = canonical_job().model_copy(
+            update={
+                "requirements": None,
+                "skills": ["mordor_972", "Python"],
+            }
+        )
+        repository.write_job(raw_input("run-1", "job-skill-token"), job)
+        session.commit()
+
+        saved = session.scalar(select(NormalizedJob).where(NormalizedJob.external_id == "job-1"))
+        assert saved is not None
+        payload = build_backend_job_payload(saved).model_dump(mode="json", by_alias=True)
+        assert all("mordor_" not in item["name"].casefold() for item in payload["skills"])
+        summary = payload["jobListing"]["requirementSummary"] or ""
+        assert "mordor_" not in summary.casefold()
+
+
+def test_backend_payload_rebuilds_salary_display_when_numeric_salary_exists() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        job = canonical_job().model_copy(
+            update={
+                "salary": SalarySchema(
+                    min_amount=3_000_000,
+                    max_amount=3_000_000,
+                    currency="IDR",
+                    display="Rp000.000 per month",
+                )
+            }
+        )
+        repository.write_job(raw_input("run-1", "job-salary-display"), job)
+        session.commit()
+
+        saved = session.scalar(select(NormalizedJob).where(NormalizedJob.external_id == "job-1"))
+        assert saved is not None
+        payload = build_backend_job_payload(saved).model_dump(mode="json", by_alias=True)
+        assert payload["jobListing"]["salaryDisplay"] == "Rp 3.000.000 per bulan"
+
+
+def test_backend_payload_treats_zero_salary_as_missing() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        job = canonical_job().model_copy(
+            update={
+                "salary": SalarySchema(
+                    min_amount=0,
+                    max_amount=0,
+                    currency="IDR",
+                    display="Rp 0",
+                )
+            }
+        )
+        repository.write_job(raw_input("run-1", "job-salary-zero"), job)
+        session.commit()
+
+        saved = session.scalar(select(NormalizedJob).where(NormalizedJob.external_id == "job-1"))
+        assert saved is not None
+        payload = build_backend_job_payload(saved).model_dump(mode="json", by_alias=True)
+        assert payload["jobListing"]["salaryMin"] is None
+        assert payload["jobListing"]["salaryMax"] is None
+        assert payload["jobListing"]["salaryDisplay"] == "Tidak dicantumkan"
+
+
+def test_backend_payload_enforces_minimum_relation_fallbacks() -> None:
     with session_scope() as session:
         repository = JobPersistenceRepository(session)
         job = canonical_job().model_copy(
@@ -187,8 +303,32 @@ def test_backend_payload_ensures_minimum_skill_and_requirement_coverage() -> Non
         payload = build_backend_job_payload(saved).model_dump(mode="json", by_alias=True)
         assert len(payload["skills"]) >= 1
         assert len(payload["requirements"]) >= 1
-        assert payload["skills"][0]["name"]
-        assert payload["requirements"][0]["value"]
+        assert payload["jobListing"]["requirementSummary"]
+
+
+def test_backend_payload_filters_low_signal_staged_requirement() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        result = repository.write_job(raw_input("run-1", "job-low-signal"), canonical_job())
+        staging = EnrichmentStagingRepository(session)
+        staging.upsert_requirement(
+            result.normalized_job,
+            requirement_type=RequirementType.OTHER,
+            value="The most integrated Agrochemical company.",
+            confidence=0.9,
+            ai_request_log_id=None,
+            source=EnrichmentSource.AI,
+        )
+        session.commit()
+
+        saved = session.scalar(select(NormalizedJob).where(NormalizedJob.external_id == "job-1"))
+        assert saved is not None
+        payload = build_backend_job_payload(saved).model_dump(mode="json", by_alias=True)
+        assert len(payload["requirements"]) >= 1
+        assert all(
+            "integrated agrochemical company" not in item["value"].casefold()
+            for item in payload["requirements"]
+        )
 
 
 def canonical_job() -> CanonicalJobSchema:

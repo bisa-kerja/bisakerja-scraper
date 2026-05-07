@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from modules.persistence import NormalizedJob, SyncEvent, stable_payload_hash
+from modules.persistence import NormalizedJob, RawJob, SyncEvent, stable_payload_hash
 
 
 class SyncEventStatus(StrEnum):
@@ -66,16 +66,27 @@ class SyncEventRepository:
         self,
         *,
         eligible_statuses: set[str],
+        source_platforms: set[str] | None = None,
+        scrape_run_id: str | None = None,
     ) -> list[NormalizedJob]:
+        query = (
+            select(NormalizedJob)
+            .options(
+                selectinload(NormalizedJob.skills_staging),
+                selectinload(NormalizedJob.requirements_staging),
+            )
+            .where(NormalizedJob.status.in_(eligible_statuses))
+        )
+        if source_platforms is not None:
+            query = query.where(NormalizedJob.source_platform.in_(source_platforms))
+        if scrape_run_id is not None:
+            scoped_run_id = scrape_scope_run_id(scrape_run_id)
+            query = query.join(RawJob, RawJob.id == NormalizedJob.raw_job_id).where(
+                RawJob.scrape_run_id == scoped_run_id
+            )
         return list(
             self.session.scalars(
-                select(NormalizedJob)
-                .options(
-                    selectinload(NormalizedJob.skills_staging),
-                    selectinload(NormalizedJob.requirements_staging),
-                )
-                .where(NormalizedJob.status.in_(eligible_statuses))
-                .order_by(NormalizedJob.last_seen_at.desc(), NormalizedJob.id.asc())
+                query.order_by(NormalizedJob.last_seen_at.desc(), NormalizedJob.id.asc())
             ).all()
         )
 
@@ -179,6 +190,16 @@ class SyncEventRepository:
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def scrape_scope_run_id(run_id: str) -> str:
+    stage_suffixes = ("notify-handoff", "notify", "normalize", "enrich", "scrape", "sync")
+    for suffix in stage_suffixes:
+        marker = f"-{suffix}"
+        if run_id.endswith(marker):
+            base = run_id[: -len(marker)]
+            return f"{base}-scrape"
+    return run_id
 
 
 def is_retryable_event(event: SyncEvent, *, max_attempts: int) -> bool:

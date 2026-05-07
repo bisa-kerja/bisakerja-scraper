@@ -1,6 +1,6 @@
 ---
 title: Source Field Mapping Matrix
-description: Cross-source mapping from Dealls, Glints, JobStreet, Kalibrr, and planned Kitalulus raw fields into the normalized scraper job schema.
+description: Cross-source mapping from Dealls, Glints, JobStreet, Kalibrr, and Kitalulus raw fields into the normalized scraper job schema.
 owner: data-ingestion-owner
 reviewers:
   - platform-docs-maintainer

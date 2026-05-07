@@ -145,6 +145,17 @@ def test_prompt_contract_includes_schema_and_strict_rules() -> None:
         "placeholderDisallowedWhenNumericExists"
     ]
     assert "finalQualityChecklist" in payload["completionPolicy"]
+    assert "atomicTypedRequirementExtraction" in payload["completionPolicy"]
+    assert payload["completionPolicy"]["atomicTypedRequirementExtraction"]["allowedTypes"] == [
+        "SKILL",
+        "EXPERIENCE",
+        "EDUCATION",
+        "RESPONSIBILITY",
+        "OTHER",
+    ]
+    assert (
+        "THR" in payload["completionPolicy"]["atomicTypedRequirementExtraction"]["noiseExclusions"]
+    )
     assert "contentStructurePolicy" in payload["completionPolicy"]
     assert (
         payload["completionPolicy"]["contentStructurePolicy"]["description"]["goal"]
@@ -153,6 +164,12 @@ def test_prompt_contract_includes_schema_and_strict_rules() -> None:
     assert (
         payload["completionPolicy"]["contentStructurePolicy"]["cleanPresentation"]["rule"]
         == "no icons, emoji, decorative symbols, or noisy visual markers"
+    )
+    assert (
+        "exclude benefit and compensation text"
+        in payload["completionPolicy"]["contentStructurePolicy"]["requirements"][
+            "normalizationHints"
+        ]
     )
     assert "backend-references/prisma/schema.prisma" not in json.dumps(payload)
     assert (
@@ -418,3 +435,46 @@ def test_quality_guard_builds_description_from_responsibilities_evidence() -> No
     normalized = validate_ai_normalization_output(output, prompt_input=prompt_input)
     assert normalized.description is not None
     assert "dashboard frontend" in normalized.description.casefold()
+
+
+def test_defaults_force_last_seen_to_current_run_scraped_at() -> None:
+    prompt_input = AINormalizationPromptInput(
+        source_platform=SourcePlatform.KITALULUS,
+        endpoint_type=NormalizationEndpointType.DETAIL,
+        raw_payload_subset={
+            "scrapedAt": "2026-05-06T14:50:00Z",
+            "payload": {"id": "kita-1", "title": "Software Engineer"},
+        },
+    )
+    output = {
+        "source": {
+            "platform": "kitalulus",
+            "external_job_id": "kita-1",
+            "source_url": "https://kitalulus.com/jobs/kita-1",
+            "external_apply_url": "https://kitalulus.com/jobs/kita-1",
+            "scraped_at": "2024-05-04T08:00:00Z",
+            "source_updated_at": "2026-05-04T08:00:00Z",
+        },
+        "title": "Software Engineer",
+        "company": {"name": "KitaLulus"},
+        "location": {"display": "Jakarta"},
+        "salary": None,
+        "employment_types": [],
+        "work_type": "onsite",
+        "description": "Build and maintain backend systems.",
+        "requirements": "At least 2 years experience.",
+        "skills": ["Python"],
+        "posted_at": None,
+        "last_seen_at": "2024-05-04T08:00:00Z",
+        "status": "active",
+        "presentation": {
+            "posted_label": None,
+            "salary_label": None,
+            "badges": [],
+            "source_labels": {},
+        },
+    }
+
+    normalized = validate_ai_normalization_output(output, prompt_input=prompt_input)
+    assert normalized.source.scraped_at.isoformat() == "2026-05-06T14:50:00+00:00"
+    assert normalized.last_seen_at.isoformat() == "2026-05-06T14:50:00+00:00"

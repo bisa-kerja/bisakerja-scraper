@@ -1,6 +1,6 @@
 ---
 title: Raw Payload Contract
-description: Frozen raw payload evidence, source coverage, planned Kitalulus support, required fields, nullability, and redaction requirements for scraper mappers.
+description: Frozen raw payload evidence, source coverage, Kitalulus support, required fields, nullability, and redaction requirements for scraper mappers.
 owner: data-ingestion-owner
 reviewers:
   - platform-docs-maintainer

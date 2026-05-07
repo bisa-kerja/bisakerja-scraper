@@ -52,17 +52,23 @@ def valid_env(**overrides: object) -> dict[str, object]:
         "OPENAI_BATCH_SIZE": "10",
         "OPENAI_NORMALIZATION_BATCH_SIZE": "5",
         "OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS": "1000",
+        "DEALLS_ENABLED": "true",
         "DEALLS_BASE_URL": "https://dealls.com",
         "DEALLS_RATE_LIMIT_PER_MINUTE": "30",
+        "GLINTS_ENABLED": "true",
         "GLINTS_GRAPHQL_URL": "https://glints.com/graphql",
         "GLINTS_COUNTRY_CODE": "ID",
         "GLINTS_RATE_LIMIT_PER_MINUTE": "30",
         "JOBSTREET_GRAPHQL_URL": "https://id.jobstreet.com/graphql",
         "JOBSTREET_ENABLED": "false",
         "JOBSTREET_RATE_LIMIT_PER_MINUTE": "20",
+        "KALIBRR_ENABLED": "true",
         "KALIBRR_BASE_URL": "https://www.kalibrr.com",
         "KALIBRR_BUILD_ID_REFRESH_ENABLED": "true",
         "KALIBRR_RATE_LIMIT_PER_MINUTE": "30",
+        "KITALULUS_ENABLED": "true",
+        "KITALULUS_GRAPHQL_URL": "https://gql.kitalulus.com/graphql",
+        "KITALULUS_RATE_LIMIT_PER_MINUTE": "30",
         "SCRAPER_INTERNAL_SERVICE_TOKEN": "test-service-token",
         "REQUEST_BODY_LIMIT": "1mb",
         "RATE_LIMIT_WINDOW_MS": "60000",
@@ -85,6 +91,11 @@ def test_settings_load_required_values() -> None:
     assert settings.cors_origins is None
     assert settings.openai_normalization_batch_size == 5
     assert settings.openai_normalization_inter_batch_delay_ms == 1000
+    assert settings.dealls_enabled is True
+    assert settings.glints_enabled is True
+    assert settings.jobstreet_enabled is False
+    assert settings.kalibrr_enabled is True
+    assert settings.kitalulus_enabled is True
 
 
 def test_settings_accept_postgres_scheme_alias() -> None:

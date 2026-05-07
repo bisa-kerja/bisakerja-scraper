@@ -47,8 +47,13 @@ class BackendSyncWorker:
         scrape_run_id: str | None,
         limit: int,
         batch_size: int | None = None,
+        source_platforms: Iterable[str] | None = None,
     ) -> BackendSyncWorkerResult:
-        jobs = self._list_backend_payload_candidates(limit=limit)
+        jobs = self._list_backend_payload_candidates(
+            scrape_run_id=scrape_run_id,
+            limit=limit,
+            source_platforms=set(source_platforms) if source_platforms is not None else None,
+        )
         chunk_size = batch_size or limit
         sent = 0
         failed = 0
@@ -74,9 +79,19 @@ class BackendSyncWorker:
             chunks_failed=chunks_failed,
         )
 
-    def _list_backend_payload_candidates(self, *, limit: int) -> list[NormalizedJob]:
+    def _list_backend_payload_candidates(
+        self,
+        *,
+        scrape_run_id: str | None,
+        limit: int,
+        source_platforms: set[str] | None,
+    ) -> list[NormalizedJob]:
         candidates: list[NormalizedJob] = []
-        for job in self.events.list_eligible_jobs(eligible_statuses=SYNC_ELIGIBLE_STATUSES):
+        for job in self.events.list_eligible_jobs(
+            eligible_statuses=SYNC_ELIGIBLE_STATUSES,
+            source_platforms=source_platforms,
+            scrape_run_id=scrape_run_id,
+        ):
             try:
                 payload = build_backend_job_payload(job).model_dump(mode="json", by_alias=True)
             except BackendPayloadValidationError:

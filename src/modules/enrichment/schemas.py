@@ -19,6 +19,7 @@ class RequirementType(StrEnum):
     SKILL = "SKILL"
     EXPERIENCE = "EXPERIENCE"
     EDUCATION = "EDUCATION"
+    RESPONSIBILITY = "RESPONSIBILITY"
     OTHER = "OTHER"
 
 

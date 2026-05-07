@@ -110,6 +110,7 @@ def test_map_jobstreet_detail_fixture_to_canonical_job() -> None:
     assert mapped.job.location.display == "Jakarta Selatan, Jakarta Raya"
     assert mapped.job.work_type is WorkType.ONSITE
     assert "PROGRAMMER /DEVELOPER MADYA" in mapped.job.description
+    assert mapped.job.requirements == "Minimal 10 tahun pengalaman"
     assert mapped.job.presentation.posted_label == "3 hari yang lalu"
 
 

@@ -42,13 +42,34 @@ This reference locks the scraper sync payload contract before data is sent to Ba
 | `active`, `stale`, `expired`, `inactive`, `unknown` | `ACTIVE`, `STALE`, `EXPIRED`, `CLOSED`, `ACTIVE` |
 | Requirement type | `SKILL`, `EXPERIENCE`, `EDUCATION`, `RESPONSIBILITY`, `OTHER` |
 
+## Requirement Row Quality
+
+Backend sync sends multiple `requirements[]` rows when source evidence contains multiple qualifications or duties. Rows are split from bullet-like or sentence-like text, deduplicated, and classified deterministically before falling back to `OTHER`.
+
+Classification rules:
+
+| Evidence | Requirement type |
+| --- | --- |
+| Tools, technologies, explicit skill tags, domain competencies | `SKILL` |
+| Years of experience, seniority, fresh graduate eligibility | `EXPERIENCE` |
+| Degree, diploma, major, education-level text | `EDUCATION` |
+| Duties and ownership statements | `RESPONSIBILITY` |
+| Useful but unclassified requirement evidence | `OTHER` |
+
+Benefit and compensation text is filtered before sync and must not create requirement rows. Filtered examples include THR, tunjangan, benefit, fasilitas, bonus, cuti, BPJS, and gaji pokok.
+
+Low-signal marketing text must not create requirement rows. Examples include career-opportunity taglines, company slogans, and benefit-only snippets. When no usable source evidence remains, sync emits one safe generic requirement statement so every synced job still keeps minimum requirement coverage.
+
+Skill rows must be evidence-based. Backend sync may derive technical skills from normalized skills, requirements, or descriptions. For sparse records with clear role intent but missing skill tags, one conservative fallback skill is allowed to keep minimum coverage.
+
 ## Required Defaults Before Sync
 
 - `jobListing.salaryCurrency` defaults to `IDR` when salary currency is missing.
 - `jobListing.salaryPeriod` is inferred from salary display text and defaults to `MONTHLY` when absent.
-- `jobListing.salaryDisplay` defaults to `Tidak dicantumkan` when source salary label is blank.
+- `jobListing.salaryDisplay` is rebuilt from numeric salary values when `salaryMin` or `salaryMax` exists, so display text stays deterministic and consistent.
+- `jobListing.salaryDisplay` defaults to `Tidak dicantumkan` when salary evidence is missing or effectively zero-only placeholders.
 - `jobListing.status` defaults to `ACTIVE` for unknown canonical status.
-- `jobListing.lastSeenAt` is always filled from normalized row freshness timestamp.
+- `jobListing.lastSeenAt` is always filled from normalized row freshness timestamp aligned to the latest raw scrape timestamp.
 - `jobListing.sourcePostedAt` and `jobListing.sourceUpdatedAt` remain `null` when source timestamps are unavailable.
 - `jobListing.externalApplyUrl` falls back to `sourceUrl` when source apply URL is unavailable.
 - `jobListing.workType` defaults to `ONSITE` when source evidence is missing.
@@ -85,6 +106,10 @@ Payload is rejected before sync when any of the following occurs:
   - `JobRequirement.normalized_job_id != normalized_job.id`
 
 Validation failures are classified as non-retryable contract failures for the sync worker.
+
+Backend data-quality checks compare source enablement settings with rows already present in the backend database. A disabled source with backend jobs is reported as a failure because existing rows can remain visible even when the source is no longer selected for new live runs.
+
+Sync candidate selection is scoped to the corresponding scrape run when stage run-ids are suffixed (`-sync`, `-notify`, and related stage variants). This prevents cross-run mixing while keeping full-run stage chaining consistent.
 
 ## Idempotency Keys
 

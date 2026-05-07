@@ -14,6 +14,7 @@ class SourcePlatform(StrEnum):
     GLINTS = "glints"
     JOBSTREET = "jobstreet"
     KALIBRR = "kalibrr"
+    KITALULUS = "kitalulus"
 
 
 class CanonicalJobStatus(StrEnum):

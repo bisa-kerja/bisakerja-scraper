@@ -15,6 +15,7 @@ from modules.jobs.completion import (
     infer_experience_level,
     normalize_location_fields,
 )
+from modules.jobs.dates import parse_absolute_datetime
 from modules.jobs.salary import normalize_salary
 from modules.jobs.schemas import CanonicalJobSchema, SourcePlatform
 from shared.text import clean_text, html_to_text
@@ -32,6 +33,10 @@ _SOURCE_DETAIL_KEYS = {
 _DESCRIPTION_KEYS = {"description", "responsibilities", "job_description", "about", "content"}
 _SKILL_LIST_KEYS = {"skills", "skill", "technologies", "technology", "tech_stack", "tags"}
 _REQUIREMENT_KEYS = {"requirements", "qualification", "qualifications", "requirement_summary"}
+_BENEFIT_NOISE_PATTERN = re.compile(
+    r"\b(thr|tunjangan|benefit|benefits?|fasilitas|bonus|cuti|bpjs|gaji pokok|kompensasi)\b",
+    re.IGNORECASE,
+)
 _FOREIGN_COUNTRY_HINTS = {
     "singapore",
     "malaysia",
@@ -435,6 +440,7 @@ def _apply_defaults(
     prompt_input: AINormalizationPromptInput,
 ) -> CanonicalJobSchema:
     payload = job.model_dump(mode="python")
+    run_scraped_at = parse_absolute_datetime(prompt_input.raw_payload_subset.get("scrapedAt"))
 
     source = payload.get("source")
     if isinstance(source, dict):
@@ -443,6 +449,8 @@ def _apply_defaults(
         if not isinstance(apply_url, str) or not apply_url.strip():
             if isinstance(source_url, str) and source_url.strip():
                 source["external_apply_url"] = source_url.strip()
+        if run_scraped_at is not None:
+            source["scraped_at"] = run_scraped_at
 
     description = clean_description(_normalize_text(payload.get("description")))
     requirements = clean_description(_normalize_text(payload.get("requirements")))
@@ -506,6 +514,9 @@ def _apply_defaults(
             location=location_display,
             source_platform=prompt_input.source_platform.value,
         )
+
+    if run_scraped_at is not None:
+        payload["last_seen_at"] = run_scraped_at
 
     payload = _apply_quality_guards(payload, prompt_input=prompt_input)
     return CanonicalJobSchema.model_validate(payload)
@@ -694,7 +705,10 @@ def _best_requirement_text(candidates: list[str]) -> str | None:
     if not candidates:
         return None
     # Prefer richer requirement-like text when multiple candidates are present.
-    sorted_candidates = sorted(candidates, key=len, reverse=True)
+    filtered = [
+        candidate for candidate in candidates if not _BENEFIT_NOISE_PATTERN.search(candidate)
+    ]
+    sorted_candidates = sorted(filtered or candidates, key=len, reverse=True)
     return sorted_candidates[0]
 
 
@@ -776,6 +790,7 @@ def _country_with_indonesia_default(
         SourcePlatform.GLINTS,
         SourcePlatform.JOBSTREET,
         SourcePlatform.KALIBRR,
+        SourcePlatform.KITALULUS,
     }:
         return None
     joined = " ".join(
@@ -903,6 +918,11 @@ Rules:
 22. Minimum coverage rule for sync completeness:
     - produce at least one requirement and one skill when role evidence exists
       even if detail payload is sparse.
+23. Requirement extraction rule:
+    - write requirements as atomic statements ready for typed downstream rows;
+    - separate education, experience, skill/tool, and responsibility evidence;
+    - never include benefit or compensation noise such as THR, tunjangan,
+      benefit, fasilitas, bonus, cuti, BPJS, or gaji pokok.
 """
 
 
@@ -927,6 +947,12 @@ Rules:
 14. Keep description/requirements concise and useful in Bahasa Indonesia.
 15. Keep skills specific and deduplicated; avoid generic filler skills.
 16. Keep minimum one requirement and one skill when role evidence is present.
+17. Requirements must be atomic, typed-ready statements for SKILL, EXPERIENCE,
+    EDUCATION, RESPONSIBILITY, or OTHER downstream rows.
+18. Exclude benefit and compensation noise from requirements, including THR,
+    tunjangan, benefit, fasilitas, bonus, cuti, BPJS, and gaji pokok.
+19. For Glints list-only records, keep requirements conservative and transparent
+    because official detail text is unavailable.
 """
 
 
@@ -966,6 +992,44 @@ COMPLETION_POLICY: dict[str, Any] = {
             "requirementsMinItemsWhenRoleEvidenceExists": 1,
             "skillsMinItemsWhenRoleEvidenceExists": 1,
         },
+    },
+    "atomicTypedRequirementExtraction": {
+        "target": "downstream requirements[] rows",
+        "rules": [
+            "write requirements as separable atomic statements",
+            "one requirement should express one qualification, skill, education, "
+            "experience, or responsibility",
+            "avoid combined paragraphs that mix benefits, duties, and qualifications",
+            "benefits and compensation are never requirements",
+        ],
+        "allowedTypes": ["SKILL", "EXPERIENCE", "EDUCATION", "RESPONSIBILITY", "OTHER"],
+        "typeGuidance": {
+            "SKILL": "tools, technologies, domain competencies, or explicit skill tags",
+            "EXPERIENCE": "years of experience, seniority, fresh graduate eligibility",
+            "EDUCATION": "degree, diploma, major, or education-level evidence",
+            "RESPONSIBILITY": "job duties and work ownership evidence",
+            "OTHER": "only when evidence is useful but not classifiable",
+        },
+        "noiseExclusions": [
+            "THR",
+            "tunjangan",
+            "benefit",
+            "fasilitas",
+            "bonus",
+            "cuti",
+            "BPJS",
+            "gaji pokok",
+        ],
+        "sourceEvidencePolicy": (
+            "prefer explicit requirement, qualification, skillTags, responsibilities, "
+            "and detail text evidence"
+        ),
+        "weakEvidencePolicy": "lower confidence or skip; do not create generic OTHER filler",
+        "glintsSourceLimitedPolicy": (
+            "for Glints list-only records, derive only conservative requirements "
+            "from list evidence "
+            "and never invent official detail text"
+        ),
     },
     "disallowedPlaceholders": ["-", "--", "N/A", "unknown", ""],
     "defaults": {
@@ -1040,8 +1104,11 @@ COMPLETION_POLICY: dict[str, Any] = {
             "goal": "clean requirement text for downstream extraction",
             "style": "factual, non-fabricated, no raw HTML",
             "normalizationHints": [
+                "split bullet-like evidence into atomic statements",
+                "group education, experience, skill, and responsibility evidence clearly",
                 "remove duplicate sentences",
                 "convert fragmented bullets into readable sentences",
+                "exclude benefit and compensation text",
             ],
         },
         "skills": {
@@ -1070,6 +1137,8 @@ COMPLETION_POLICY: dict[str, Any] = {
         "description should be informative and not vague one-liner when evidence exists",
         "requirements non-empty when evidence exists",
         "skills non-empty when evidence exists",
+        "requirements split cleanly into atomic downstream rows",
+        "requirements do not include benefit or compensation noise",
         "generated prose in Bahasa Indonesia",
         "salary display non-placeholder when numeric salary exists",
         "Indonesia context preserved when geography evidence is Indonesian",

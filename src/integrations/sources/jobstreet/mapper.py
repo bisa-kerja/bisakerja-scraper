@@ -80,8 +80,11 @@ def map_jobstreet_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = No
         ),
         "experience_level": _experience_level_from_payload(list_payload, detail_job),
         "description": html_to_text(detail_job.get("content")) or list_payload.get("teaser"),
-        "requirements": first_text(_dict_value(detail_job.get("products")).get("bullets") or [])
-        or first_text(list_payload.get("bulletPoints") or []),
+        "requirements": _requirements_text(
+            list_payload,
+            detail_job,
+            title=detail_job.get("title") or list_payload.get("title"),
+        ),
         "skills": [],
         "posted_at": posted_at,
         "last_seen_at": scraped_at,
@@ -120,6 +123,61 @@ def map_jobstreet_job(raw_job: RawSourceJob, *, scraped_at: datetime | None = No
 
 def _dict_value(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _requirements_text(
+    list_payload: dict[str, Any],
+    detail_job: dict[str, Any],
+    *,
+    title: Any,
+) -> str | None:
+    product_bullets = _dict_value(detail_job.get("products")).get("bullets")
+    for values in [product_bullets, list_payload.get("bulletPoints")]:
+        bullets = [
+            value.strip() for value in values or [] if isinstance(value, str) and value.strip()
+        ]
+        if bullets:
+            return "\n".join(bullets)
+    content = html_to_text(detail_job.get("content"))
+    if content:
+        content = _drop_inline_requirement_heading(content)
+        title_key = _requirement_heading_key(title)
+        lines = [
+            line
+            for line in content.splitlines()
+            if _requirement_heading_key(line) != title_key
+            and not _looks_like_requirement_heading(line)
+        ]
+        return "\n".join(line for line in lines if line.strip()) or None
+    return None
+
+
+def _requirement_heading_key(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    return "".join(char.casefold() for char in value if char.isalnum())
+
+
+def _looks_like_requirement_heading(value: str) -> bool:
+    text = value.strip()
+    if not text:
+        return True
+    if any(marker in text.casefold() for marker in ["minimal", "pengalaman", "menguasai"]):
+        return False
+    return text.upper() == text and len(text.split()) <= 6
+
+
+def _drop_inline_requirement_heading(value: str) -> str:
+    lowered = value.casefold()
+    markers = ["minimal", "pengalaman", "menguasai", "lulusan", "usia"]
+    positions = [lowered.find(marker) for marker in markers if lowered.find(marker) > 0]
+    if not positions:
+        return value
+    start = min(positions)
+    prefix = value[:start].strip()
+    if prefix.upper() == prefix and len(prefix.split()) <= 6:
+        return value[start:].strip()
+    return value
 
 
 def _location_display(payload: dict[str, Any]) -> str | None:

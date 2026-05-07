@@ -1,6 +1,6 @@
 ---
 title: Job Sources
-description: Source integration matrix for Dealls, Glints, JobStreet, Kalibrr, and planned Kitalulus support, including coverage, auth, field handling, and fallback rules.
+description: Source integration matrix for Dealls, Glints, JobStreet, Kalibrr, and Kitalulus support, including coverage, auth, field handling, and fallback rules.
 owner: data-ingestion-owner
 reviewers:
   - platform-docs-maintainer
@@ -11,7 +11,7 @@ last_reviewed: 2026-05-04
 
 # Job Sources
 
-The scraper supports four implemented source adapters behind one normalized job contract. Kitalulus is documented as the next planned source.
+The scraper supports five source adapters behind one normalized job contract.
 
 ## Source Matrix
 
@@ -23,11 +23,11 @@ The scraper supports four implemented source adapters behind one normalized job 
 | Kalibrr | Next.js `_next/data/{buildId}` JSON | `x-nextjs-data: 1`; browser headers recommended | Available | Included in `jobs[]` | numeric `id`, fallback `slug` |
 | Kitalulus | GraphQL `Vacancies` and `VacancyBySlug` | Browser headers, `origin`/`referer`, `x-channel: web`; no auth captured | Available | Available by slug | `id`, fallback `slug` |
 
-## Source Enablement Target
+## Source Enablement
 
-Each source should have one explicit boolean enablement variable. Live execute mode must respect these flags; fixture dry-run may still validate disabled sources.
+Each source has one explicit boolean enablement variable. Live execute mode respects these flags; fixture dry-run may still validate disabled sources.
 
-| Source | Target flag |
+| Source | Flag |
 | --- | --- |
 | Dealls | `DEALLS_ENABLED` |
 | Glints | `GLINTS_ENABLED` |

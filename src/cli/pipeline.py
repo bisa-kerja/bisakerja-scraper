@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlparse
+from uuid import uuid4
 
 import httpx
 from alembic.config import Config
@@ -30,6 +31,11 @@ from integrations.backend import (
     BackendNotificationHandoffClient,
     BackendSyncClient,
     BackendSyncResult,
+)
+from integrations.backend.payloads import (
+    PrismaRequirementType,
+    classify_requirement_type,
+    split_requirement_text,
 )
 from integrations.sources.dealls.detail import DeallsDetailAdapter
 from integrations.sources.dealls.list import (
@@ -76,6 +82,17 @@ from integrations.sources.kalibrr.list import (
     RawSourceJob as KalibrrRawSourceJob,
 )
 from integrations.sources.kalibrr.mapper import map_kalibrr_job
+from integrations.sources.kitalulus.detail import KitalulusDetailAdapter
+from integrations.sources.kitalulus.list import (
+    KitalulusListAdapter,
+    KitalulusListQuery,
+    build_kitalulus_http_client,
+    extract_kitalulus_source_timestamp,
+)
+from integrations.sources.kitalulus.list import (
+    RawSourceJob as KitalulusRawSourceJob,
+)
+from integrations.sources.kitalulus.mapper import map_kitalulus_job
 from integrations.sources.mapper_utils import SourceMapperResult
 from jobs.pipeline import PipelineConfig, PipelineOrchestrator, PipelineResult
 from jobs.scheduler import ManualTriggerGuard, ScheduledStage
@@ -114,7 +131,7 @@ from modules.persistence import (
 from modules.runs import RunCounts, RunStage, RunStateTracker
 from modules.sync import BackendSyncWorker, SyncEventRepository
 
-SOURCE_CHOICES = ("all", "dealls", "glints", "jobstreet", "kalibrr")
+SOURCE_CHOICES = ("all", "dealls", "glints", "jobstreet", "kalibrr", "kitalulus")
 STAGE_CHOICES = ("full", "scrape", "normalize", "enrich", "sync", "notify-handoff")
 WIZARD_MODE_CHOICES = ("dry-run", "execute", "status", "verify", "staging-report")
 WIZARD_ENV_PRESET_CHOICES = (".env.example", ".env", ".env.production")
@@ -415,7 +432,8 @@ async def run_wizard(args: argparse.Namespace) -> dict[str, Any]:
         WIZARD_MODE_CHOICES,
         default="dry-run",
     )
-    env_file = args.env_file or wizard_prompt_env_file(default=".env.example")
+    env_default = ".env" if mode == "execute" else ".env.example"
+    env_file = args.env_file or wizard_prompt_env_file(default=env_default)
     settings = load_settings(env_file)
 
     if mode in {"dry-run", "execute"}:
@@ -949,14 +967,14 @@ async def run_data_quality(args: argparse.Namespace) -> dict[str, Any]:
     engine = create_engine(to_sync_url(database_url), pool_pre_ping=True)
     try:
         with engine.connect() as connection:
-            summary = build_backend_data_quality_summary(connection)
+            summary = build_backend_data_quality_summary(connection, settings=settings)
     except Exception as exc:
         raise CliInputError(f"failed to read backend data quality: {exc}") from exc
     finally:
         engine.dispose()
     return {
         "check": "pipeline-data-quality",
-        "status": "ok",
+        "status": "fail" if summary.get("semanticQuality", {}).get("status") == "fail" else "ok",
         "database": {"url": redact_database_url(database_url)},
         "summary": summary,
     }
@@ -1026,7 +1044,11 @@ async def run_staging_report(args: argparse.Namespace) -> dict[str, Any]:
     return report
 
 
-def build_backend_data_quality_summary(connection) -> dict[str, Any]:  # noqa: ANN001
+def build_backend_data_quality_summary(
+    connection,  # noqa: ANN001
+    *,
+    settings: Settings | None = None,
+) -> dict[str, Any]:
     total_row = (
         connection.execute(
             text(
@@ -1160,6 +1182,214 @@ def build_backend_data_quality_summary(connection) -> dict[str, Any]:  # noqa: A
         .mappings()
         .all()
     )
+    semantic_rows = (
+        connection.execute(
+            text(
+                """
+            SELECT
+              sp.slug AS source,
+              jl.id AS job_id,
+              COALESCE(req.req_count, 0) AS requirement_count,
+              COALESCE(req.other_count, 0) AS other_requirement_count,
+              COALESCE(req.noisy_count, 0) AS noisy_requirement_count,
+              COALESCE(skill.skill_count, 0) AS skill_count,
+              CASE
+                WHEN LOWER(TRIM(COALESCE(jl.description, ''))) LIKE '%source-limited%'
+                  OR LOWER(TRIM(COALESCE(jl.description, ''))) LIKE '%detail%unavailable%'
+                  OR LOWER(TRIM(COALESCE(jl.description, ''))) LIKE '%detail%tidak tersedia%'
+                THEN 1 ELSE 0
+              END AS source_limited_reason,
+              CASE
+                WHEN LOWER(TRIM(COALESCE(jl.description, ''))) LIKE
+                  '%pelaksanaan tanggung jawab teknis sesuai kebutuhan bisnis%'
+                THEN 1 ELSE 0
+              END AS generic_fallback_description
+            FROM job_listings jl
+            JOIN source_platforms sp ON sp.id = jl.source_platform_id
+            LEFT JOIN (
+              SELECT
+                job_listing_id,
+                COUNT(*) AS req_count,
+                SUM(CASE WHEN type = 'OTHER' THEN 1 ELSE 0 END) AS other_count,
+                SUM(
+                  CASE
+                    WHEN (
+                      ' ' || LOWER(
+                        REPLACE(
+                          REPLACE(
+                            REPLACE(
+                              REPLACE(
+                                REPLACE(value, ',', ' '),
+                                '.', ' '
+                              ),
+                              '(',
+                              ' '
+                            ),
+                            ')',
+                            ' '
+                          ),
+                          '/',
+                          ' '
+                        )
+                      ) || ' '
+                    ) LIKE '% tunjangan %'
+                      OR (
+                        ' ' || LOWER(
+                          REPLACE(
+                            REPLACE(
+                              REPLACE(
+                                REPLACE(
+                                  REPLACE(value, ',', ' '),
+                                  '.', ' '
+                                ),
+                                '(',
+                                ' '
+                              ),
+                              ')',
+                              ' '
+                            ),
+                            '/',
+                            ' '
+                          )
+                        ) || ' '
+                      ) LIKE '% thr %'
+                      OR (
+                        ' ' || LOWER(
+                          REPLACE(
+                            REPLACE(
+                              REPLACE(
+                                REPLACE(
+                                  REPLACE(value, ',', ' '),
+                                  '.', ' '
+                                ),
+                                '(',
+                                ' '
+                              ),
+                              ')',
+                              ' '
+                            ),
+                            '/',
+                            ' '
+                          )
+                        ) || ' '
+                      ) LIKE '% benefit %'
+                      OR (
+                        ' ' || LOWER(
+                          REPLACE(
+                            REPLACE(
+                              REPLACE(
+                                REPLACE(
+                                  REPLACE(value, ',', ' '),
+                                  '.', ' '
+                                ),
+                                '(',
+                                ' '
+                              ),
+                              ')',
+                              ' '
+                            ),
+                            '/',
+                            ' '
+                          )
+                        ) || ' '
+                      ) LIKE '% fasilitas %'
+                      OR (
+                        ' ' || LOWER(
+                          REPLACE(
+                            REPLACE(
+                              REPLACE(
+                                REPLACE(
+                                  REPLACE(value, ',', ' '),
+                                  '.', ' '
+                                ),
+                                '(',
+                                ' '
+                              ),
+                              ')',
+                              ' '
+                            ),
+                            '/',
+                            ' '
+                          )
+                        ) || ' '
+                      ) LIKE '% bonus %'
+                      OR (
+                        ' ' || LOWER(
+                          REPLACE(
+                            REPLACE(
+                              REPLACE(
+                                REPLACE(
+                                  REPLACE(value, ',', ' '),
+                                  '.', ' '
+                                ),
+                                '(',
+                                ' '
+                              ),
+                              ')',
+                              ' '
+                            ),
+                            '/',
+                            ' '
+                          )
+                        ) || ' '
+                      ) LIKE '% cuti %'
+                      OR (
+                        ' ' || LOWER(
+                          REPLACE(
+                            REPLACE(
+                              REPLACE(
+                                REPLACE(
+                                  REPLACE(value, ',', ' '),
+                                  '.', ' '
+                                ),
+                                '(',
+                                ' '
+                              ),
+                              ')',
+                              ' '
+                            ),
+                            '/',
+                            ' '
+                          )
+                        ) || ' '
+                      ) LIKE '% bpjs %'
+                      OR (
+                        ' ' || LOWER(
+                          REPLACE(
+                            REPLACE(
+                              REPLACE(
+                                REPLACE(
+                                  REPLACE(value, ',', ' '),
+                                  '.', ' '
+                                ),
+                                '(',
+                                ' '
+                              ),
+                              ')',
+                              ' '
+                            ),
+                            '/',
+                            ' '
+                          )
+                        ) || ' '
+                      ) LIKE '% gaji pokok %'
+                    THEN 1 ELSE 0
+                  END
+                ) AS noisy_count
+              FROM job_requirements
+              GROUP BY job_listing_id
+            ) req ON req.job_listing_id = jl.id
+            LEFT JOIN (
+              SELECT job_listing_id, COUNT(*) AS skill_count
+              FROM job_skills
+              GROUP BY job_listing_id
+            ) skill ON skill.job_listing_id = jl.id
+            """
+            )
+        )
+        .mappings()
+        .all()
+    )
 
     by_source: dict[str, dict[str, Any]] = {}
     for row in by_source_rows:
@@ -1180,11 +1410,17 @@ def build_backend_data_quality_summary(connection) -> dict[str, Any]:  # noqa: A
 
     _merge_coverage_by_source(by_source, requirements_coverage_rows, key="requirements")
     _merge_coverage_by_source(by_source, skills_coverage_rows, key="skills")
+    semantic_quality = _semantic_quality_summary(
+        semantic_rows,
+        source_enablement=source_enablement_from_settings(settings),
+    )
+    _merge_semantic_quality_by_source(by_source, semantic_quality["bySource"])
 
     return {
         "totalJobs": total_jobs,
         "nullBlankCounts": null_blank,
         "bySource": by_source,
+        "semanticQuality": semantic_quality,
     }
 
 
@@ -1210,6 +1446,171 @@ def _mapping_to_int_dict(mapping: dict[str, Any] | None, *, keys: list[str]) -> 
     if mapping is None:
         return {key: 0 for key in keys}
     return {key: int(mapping.get(key) or 0) for key in keys}
+
+
+def source_enablement_from_settings(settings: Settings | None) -> dict[str, bool] | None:
+    if settings is None:
+        return None
+    return {source: source_enabled(source, settings)[0] for source in PLATFORM_SOURCES}
+
+
+def _semantic_quality_summary(
+    rows: list[dict[str, Any]],
+    *,
+    source_enablement: dict[str, bool] | None = None,
+) -> dict[str, Any]:
+    total_jobs = len(rows)
+    total_requirements = sum(int(row["requirement_count"] or 0) for row in rows)
+    total_skills = sum(int(row["skill_count"] or 0) for row in rows)
+    other_requirements = sum(int(row["other_requirement_count"] or 0) for row in rows)
+    single_requirement_jobs = sum(1 for row in rows if int(row["requirement_count"] or 0) == 1)
+    noisy_requirement_count = sum(int(row["noisy_requirement_count"] or 0) for row in rows)
+    source_limited_glints_count = sum(
+        1
+        for row in rows
+        if row["source"] == "glints" and int(row["source_limited_reason"] or 0) == 1
+    )
+    generic_fallback_description_count = sum(
+        int(row["generic_fallback_description"] or 0) for row in rows
+    )
+    by_source_rows: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_source_rows.setdefault(str(row["source"]), []).append(row)
+    by_source = {
+        source: _semantic_quality_source_summary(source_rows)
+        for source, source_rows in sorted(by_source_rows.items())
+    }
+    warnings = _semantic_quality_warnings(
+        total_jobs=total_jobs,
+        total_requirements=total_requirements,
+        other_requirements=other_requirements,
+        single_requirement_jobs=single_requirement_jobs,
+        noisy_requirement_count=noisy_requirement_count,
+        by_source=by_source,
+        source_enablement=source_enablement,
+    )
+    return {
+        "avgRequirementsPerJob": round(total_requirements / total_jobs, 4) if total_jobs else 0.0,
+        "avgSkillsPerJob": round(total_skills / total_jobs, 4) if total_jobs else 0.0,
+        "requirementsOtherRate": round(other_requirements / total_requirements, 4)
+        if total_requirements
+        else 0.0,
+        "jobsWithSingleRequirementRate": round(single_requirement_jobs / total_jobs, 4)
+        if total_jobs
+        else 0.0,
+        "noisyRequirementCount": noisy_requirement_count,
+        "genericFallbackDescriptionCount": generic_fallback_description_count,
+        "sourceLimitedGlintsCount": source_limited_glints_count,
+        "bySource": by_source,
+        "warnings": warnings,
+        "status": "fail" if any(item["severity"] == "fail" for item in warnings) else "ok",
+    }
+
+
+def _semantic_quality_source_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    total_jobs = len(rows)
+    total_requirements = sum(int(row["requirement_count"] or 0) for row in rows)
+    total_skills = sum(int(row["skill_count"] or 0) for row in rows)
+    other_requirements = sum(int(row["other_requirement_count"] or 0) for row in rows)
+    single_requirement_jobs = sum(1 for row in rows if int(row["requirement_count"] or 0) == 1)
+    noisy_requirement_count = sum(int(row["noisy_requirement_count"] or 0) for row in rows)
+    return {
+        "totalJobs": total_jobs,
+        "avgRequirementsPerJob": round(total_requirements / total_jobs, 4) if total_jobs else 0.0,
+        "avgSkillsPerJob": round(total_skills / total_jobs, 4) if total_jobs else 0.0,
+        "requirementsOtherRate": round(other_requirements / total_requirements, 4)
+        if total_requirements
+        else 0.0,
+        "jobsWithSingleRequirementRate": round(single_requirement_jobs / total_jobs, 4)
+        if total_jobs
+        else 0.0,
+        "noisyRequirementCount": noisy_requirement_count,
+    }
+
+
+def _merge_semantic_quality_by_source(
+    by_source: dict[str, dict[str, Any]],
+    semantic_by_source: dict[str, dict[str, Any]],
+) -> None:
+    for source, values in semantic_by_source.items():
+        by_source.setdefault(source, {"totalJobs": 0})
+        by_source[source].update(values)
+
+
+def _semantic_quality_warnings(
+    *,
+    total_jobs: int,
+    total_requirements: int,
+    other_requirements: int,
+    single_requirement_jobs: int,
+    noisy_requirement_count: int,
+    by_source: dict[str, dict[str, Any]],
+    source_enablement: dict[str, bool] | None,
+) -> list[dict[str, Any]]:
+    warnings: list[dict[str, Any]] = []
+    if source_enablement:
+        for source, enabled in sorted(source_enablement.items()):
+            source_total = int(by_source.get(source, {}).get("totalJobs") or 0)
+            if not enabled and source_total:
+                warnings.append(
+                    {
+                        "name": "disabledSourcePresent",
+                        "severity": "fail",
+                        "source": source,
+                        "reason": "backend contains jobs from a disabled source",
+                    }
+                )
+            if enabled and source_total == 0:
+                warnings.append(
+                    {
+                        "name": "enabledSourceMissing",
+                        "severity": "warn",
+                        "source": source,
+                        "reason": "enabled source has no jobs in backend",
+                    }
+                )
+    if total_requirements and other_requirements == total_requirements:
+        warnings.append(
+            {
+                "name": "requirementsOtherRate",
+                "severity": "fail",
+                "reason": "all requirements are OTHER",
+            }
+        )
+    if total_jobs and single_requirement_jobs == total_jobs:
+        warnings.append(
+            {
+                "name": "jobsWithSingleRequirementRate",
+                "severity": "fail",
+                "reason": "all jobs have exactly one requirement",
+            }
+        )
+    if noisy_requirement_count:
+        warnings.append(
+            {
+                "name": "noisyRequirementCount",
+                "severity": "fail",
+                "reason": "requirements contain benefit or compensation noise",
+            }
+        )
+    for source, values in by_source.items():
+        if source == "glints":
+            continue
+        if values["totalJobs"] < 3:
+            continue
+        if values["avgRequirementsPerJob"] <= 1 or (
+            values["jobsWithSingleRequirementRate"] >= 0.95
+            and values["requirementsOtherRate"] >= 0.5
+        ):
+            warnings.append(
+                {
+                    "name": "detailCapableRequirementQuality",
+                    "severity": "fail",
+                    "source": source,
+                    "reason": "detail-capable source has sparse or mostly OTHER requirements",
+                }
+            )
+    return warnings
 
 
 def build_staging_report(
@@ -2409,10 +2810,16 @@ class ManualPipelineRunner:
 
     async def run_stage(self, stage: ScheduledStage) -> None:
         stage_value = self.stage
-        if self.run_id and stage_value == "full":
-            run_id_prefix = self.run_id
+        if self.run_id and stage_value != "full":
+            stage_suffix = "notify" if stage_value == "notify-handoff" else stage_value
+            run_id_prefix = suffixed_run_id(
+                base_run_id_without_stage_suffix(self.run_id),
+                stage_suffix,
+            )
         else:
             run_id_prefix = self.run_id
+        if stage_value == "full" and run_id_prefix is None:
+            run_id_prefix = str(uuid4())
         orchestrator = self.build_orchestrator()
         self.emit_progress(
             "pipeline start "
@@ -2556,6 +2963,7 @@ class ManualPipelineRunner:
                 scrape_run_id=run_id,
                 limit=max_jobs,
                 batch_size=sync_batch_size,
+                source_platforms=self.source_selection.executed,
             )
             self.session.commit()
             if result.failed:
@@ -2942,33 +3350,51 @@ def pipeline_sources(
 
 
 def select_sources(*, source: str, settings: Settings, execute: bool) -> SourceSelection:
-    if execute and source == "jobstreet" and not settings.jobstreet_enabled:
-        raise CliInputError(
-            "JobStreet source is disabled (JOBSTREET_ENABLED=false). "
-            "Use --dry-run for fixture validation or enable JobStreet for live execute."
-        )
     requested = tuple(PLATFORM_SOURCES) if source == "all" else (source,)
     executed: list[str] = []
     skipped: list[dict[str, str]] = []
     for platform in requested:
-        if execute and platform == "jobstreet" and not settings.jobstreet_enabled:
+        enabled, env_key = source_enabled(platform, settings)
+        if execute and not enabled:
             skipped.append(
                 {
                     "source": platform,
-                    "reason": "disabled (JOBSTREET_ENABLED=false)",
+                    "reason": f"disabled ({env_key}=false)",
                 }
             )
             continue
         executed.append(platform)
     if not executed:
-        skipped_sources = ", ".join(item["source"] for item in skipped) or source
-        mode = "execute" if execute else "dry-run"
-        raise CliInputError(f"no executable sources for mode {mode}: {skipped_sources}")
+        if len(skipped) == 1:
+            reason = f"{skipped[0]['source']} {skipped[0]['reason']}"
+        else:
+            skipped_sources = ", ".join(item["source"] for item in skipped) or source
+            run_mode = "execute" if execute else "dry-run"
+            reason = f"no executable sources for mode {run_mode}: {skipped_sources}"
+        if len(skipped) == 1:
+            raise CliInputError(
+                f"source {reason}. Use --dry-run for fixture validation or enable the source."
+            )
+        raise CliInputError(reason)
     return SourceSelection(
         requested=requested,
         executed=tuple(executed),
         skipped=tuple(skipped),
     )
+
+
+def source_enabled(platform: str, settings: Settings) -> tuple[bool, str]:
+    mapping = {
+        "dealls": (settings.dealls_enabled, "DEALLS_ENABLED"),
+        "glints": (settings.glints_enabled, "GLINTS_ENABLED"),
+        "jobstreet": (settings.jobstreet_enabled, "JOBSTREET_ENABLED"),
+        "kalibrr": (settings.kalibrr_enabled, "KALIBRR_ENABLED"),
+        "kitalulus": (settings.kitalulus_enabled, "KITALULUS_ENABLED"),
+    }
+    try:
+        return mapping[platform]
+    except KeyError as exc:
+        raise CliInputError(f"unsupported source: {platform}") from exc
 
 
 def live_sources(
@@ -2985,6 +3411,7 @@ def live_sources(
         "glints": build_live_glints_source,
         "jobstreet": build_live_jobstreet_source,
         "kalibrr": build_live_kalibrr_source,
+        "kitalulus": build_live_kitalulus_source,
     }
     return [
         factories[platform](
@@ -3226,6 +3653,43 @@ def build_live_kalibrr_source(
         mapper=map_kalibrr_job,
         raw_model=KalibrrRawSourceJob,
         timestamp_extractor=extract_kalibrr_source_timestamp,
+    )
+
+
+def build_live_kitalulus_source(
+    *,
+    keyword: str,
+    limit: int,
+    recency_mode: str,
+    recency_days: int,
+    settings: Settings,
+) -> LivePipelineSource:
+    async def fetcher(keyword: str, limit: int, recency_days: int):
+        async with build_kitalulus_http_client(
+            base_url=origin_base_url(settings.kitalulus_graphql_url),
+            timeout_seconds=settings.http_timeout_seconds,
+            max_retries=settings.http_max_retries,
+            max_response_bytes=settings.http_response_max_bytes,
+            rate_limit_per_minute=settings.kitalulus_rate_limit_per_minute,
+        ) as http_client:
+            list_result = await KitalulusListAdapter(http_client).fetch_page(
+                KitalulusListQuery(keyword=keyword, limit=max(limit, 1))
+            )
+            detail_adapter = KitalulusDetailAdapter(http_client)
+            return [
+                await detail_adapter.fetch_enriched_job(raw_job) for raw_job in list_result.raw_jobs
+            ]
+
+    return LivePipelineSource(
+        source_platform="kitalulus",
+        keyword=keyword,
+        requested_limit=limit,
+        recency_mode=recency_mode,
+        recency_days=recency_days,
+        fetcher=fetcher,
+        mapper=map_kitalulus_job,
+        raw_model=KitalulusRawSourceJob,
+        timestamp_extractor=extract_kitalulus_source_timestamp,
     )
 
 
@@ -3706,20 +4170,24 @@ def source_enrichment_output_from_job(job: NormalizedJob) -> EnrichmentOutput:
     requirements = (
         [
             EnrichedRequirement(
-                type=RequirementType.OTHER,
-                value=raw_requirements.strip(),
+                type=enrichment_requirement_type_from_prisma(classify_requirement_type(value)),
+                value=value,
                 confidence=0.5,
             )
+            for value in split_requirement_text(raw_requirements)
         ]
         if isinstance(raw_requirements, str) and raw_requirements.strip()
         else []
     )
-
     return EnrichmentOutput(
         skills=skills,
         requirements=requirements,
         confidence=0.5 if skills or requirements else 0.0,
     )
+
+
+def enrichment_requirement_type_from_prisma(value: PrismaRequirementType) -> RequirementType:
+    return RequirementType(value.value)
 
 
 if __name__ == "__main__":

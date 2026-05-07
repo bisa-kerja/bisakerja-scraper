@@ -32,7 +32,7 @@ This page locks the initial documentation boundary for the Bisakerja Scraper ser
 | In MVP | Future or external |
 | --- | --- |
 | Aggregate jobs from 1-2 initial sources while keeping four-source schema support | Cross-source duplicate merge |
-| Preserve all current source slugs: `dealls`, `glints`, `jobstreet`, `kalibrr`; add planned `kitalulus` behind an enablement flag | Direct ATS integration |
+| Preserve current source slugs: `dealls`, `glints`, `jobstreet`, `kalibrr`, `kitalulus`; control live source execution with enablement flags | Direct ATS integration |
 | Normalize list/detail fields into Backend API-compatible job records | Auto-apply |
 | Use source-local identity: `sourcePlatform + externalJobId/slug/id` | Employer dashboard |
 | Store raw payloads for replay/debug with secret redaction | Native mobile support |
@@ -76,7 +76,7 @@ This page locks the initial documentation boundary for the Bisakerja Scraper ser
 | `raw-response-glints.txt` | Real header/query/payload evidence for Glints |
 | `raw-response-jobstreet.txt` | Real header/query/payload evidence for JobStreet, including redaction requirement |
 | `raw-response-kalibrr.txt` | Real header/query/payload evidence for Kalibrr |
-| `raw-response-kitalulus.txt` | Real header/query/payload evidence for planned Kitalulus list/detail support |
+| `raw-response-kitalulus.txt` | Real header/query/payload evidence for Kitalulus list/detail support |
 
 ## Coverage Plan
 

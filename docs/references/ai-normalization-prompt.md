@@ -57,6 +57,13 @@ The normalization system prompt enforces:
 - Post-validation quality guard may backfill missing `requirements` or `skills` from explicit raw evidence when model output leaves them empty.
 - When explicit skill list evidence is absent but requirement/description text clearly mentions technologies or tools, post-validation quality guard may derive deterministic skills from that text.
 - Post-validation quality guard may backfill missing `description` from explicit responsibilities/detail evidence when available.
+- Requirement text must be shaped for downstream atomic rows:
+  - education evidence maps to `EDUCATION`.
+  - years, seniority, and fresh graduate evidence map to `EXPERIENCE`.
+  - tools, technologies, and domain competencies map to `SKILL`.
+  - job duties and ownership statements map to `RESPONSIBILITY`.
+  - `OTHER` is allowed only for useful evidence that does not fit those groups.
+- Benefit and compensation text must not become requirements, including THR, tunjangan, benefit, fasilitas, bonus, cuti, BPJS, and gaji pokok.
 - Visual cleanup includes emoji/icon removal and residual invisible symbol stripping (for example variation selectors) on human-readable text fields.
 - Sync-safe minimum relation fallback is enforced downstream so each job keeps at least one requirement and one skill relation, including sparse source records.
 - Contract is standalone and must not depend on external repositories or runtime file reads.

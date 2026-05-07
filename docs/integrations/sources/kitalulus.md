@@ -11,7 +11,7 @@ last_reviewed: 2026-05-06
 
 # Kitalulus Source Contract
 
-Kitalulus is a planned source based on the captured GraphQL list and detail responses in `raw-response-kitalulus.txt`.
+Kitalulus is a supported GraphQL source based on captured list and detail responses in `raw-response-kitalulus.txt`.
 
 ## Endpoint
 
@@ -29,6 +29,7 @@ Kitalulus is a planned source based on the captured GraphQL list and detail resp
 | List variables | `keyword`, `pagination.page`, `pagination.limit`, and filters including `sortBy=updatedAt` |
 | Detail variables | `slug` from list record |
 | Pagination | Use `hasNextPage`, `page`, and configured limit |
+| Enablement | Live execute requires `KITALULUS_ENABLED=true`; dry-run fixture validation remains available when disabled |
 
 ## Field Mapping
 
@@ -56,11 +57,11 @@ Kitalulus is a planned source based on the captured GraphQL list and detail resp
 
 List records are enough for identity, title, company, location, salary, type, and update label. Detail records add rich description, formatted HTML, skills, benefits, company industry, work location, and close/publish fields.
 
-If detail fetch fails, keep the list record with explicit detail coverage metadata and avoid inventing description or requirements.
+If detail fetch fails, keep the list record with explicit detail coverage metadata (`coverage=missing`, `detailCompleteness=partial`, `attempted=true`) and avoid inventing description or requirements.
 
 ## Error Behavior
 
-- Missing `id`, `slug`, `positionName`, or `company.name` should quarantine the record.
+- Missing `id`, `slug`, `positionName`, or `company.name` quarantines the record.
 - GraphQL errors should fail only the affected source run.
 - Empty salary bounds or `0` values mean unknown salary.
 - `isClosed=true` or `isPublished=false` should map to inactive/expired lifecycle when implemented.

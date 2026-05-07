@@ -101,6 +101,84 @@ async def test_sync_worker_only_sends_eligible_jobs() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sync_worker_filters_candidates_by_selected_sources() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        dealls = repository.write_job(raw_input("run-1", "dealls-job"), canonical_job("dealls-job"))
+        glints = repository.write_job(raw_input("run-1", "glints-job"), canonical_job("glints-job"))
+        for result in (dealls, glints):
+            result.normalized_job.status = "active"
+        glints.normalized_job.source_platform = "glints"
+
+        client = RecordingClient()
+        worker = BackendSyncWorker(
+            session=session,
+            client=client,
+            events=SyncEventRepository(session),
+        )
+
+        sync_result = await worker.sync_eligible_jobs(
+            scrape_run_id="run-1",
+            limit=10,
+            source_platforms=("dealls",),
+        )
+
+        assert sync_result.sent == 1
+        assert client.external_ids == ["dealls-job"]
+
+
+@pytest.mark.asyncio
+async def test_sync_worker_filters_candidates_by_scrape_run_id() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        run_one = repository.write_job(raw_input("run-1", "job-run-1"), canonical_job("job-run-1"))
+        run_two = repository.write_job(raw_input("run-2", "job-run-2"), canonical_job("job-run-2"))
+        run_one.normalized_job.status = "active"
+        run_two.normalized_job.status = "active"
+
+        client = RecordingClient()
+        worker = BackendSyncWorker(
+            session=session,
+            client=client,
+            events=SyncEventRepository(session),
+        )
+
+        sync_result = await worker.sync_eligible_jobs(
+            scrape_run_id="run-2",
+            limit=10,
+        )
+
+        assert sync_result.sent == 1
+        assert client.external_ids == ["job-run-2"]
+
+
+@pytest.mark.asyncio
+async def test_sync_worker_maps_stage_run_id_to_scrape_scope() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        scoped = repository.write_job(
+            raw_input("run-42-scrape", "job-run-42"),
+            canonical_job("job-run-42"),
+        )
+        scoped.normalized_job.status = "active"
+
+        client = RecordingClient()
+        worker = BackendSyncWorker(
+            session=session,
+            client=client,
+            events=SyncEventRepository(session),
+        )
+
+        sync_result = await worker.sync_eligible_jobs(
+            scrape_run_id="run-42-sync",
+            limit=10,
+        )
+
+        assert sync_result.sent == 1
+        assert client.external_ids == ["job-run-42"]
+
+
+@pytest.mark.asyncio
 async def test_sync_worker_isolates_failed_chunk_and_continues() -> None:
     with session_scope() as session:
         repository = JobPersistenceRepository(session)
@@ -209,7 +287,7 @@ async def test_sync_worker_resume_skips_sent_and_dead_letter_events() -> None:
         client = RecordingClient()
         worker = BackendSyncWorker(session=session, client=client, events=events)
 
-        sync_result = await worker.sync_eligible_jobs(scrape_run_id="run-2", limit=10)
+        sync_result = await worker.sync_eligible_jobs(scrape_run_id="run-1", limit=10)
 
         assert sync_result.attempted == 1
         assert sync_result.sent == 1
@@ -236,7 +314,7 @@ async def test_sync_worker_retries_after_backend_payload_serializer_changes() ->
         client = RecordingClient()
         worker = BackendSyncWorker(session=session, client=client, events=events)
 
-        sync_result = await worker.sync_eligible_jobs(scrape_run_id="run-2", limit=10)
+        sync_result = await worker.sync_eligible_jobs(scrape_run_id="run-1", limit=10)
 
         sync_events = list(session.scalars(select(SyncEvent)).all())
         assert sync_result.sent == 1

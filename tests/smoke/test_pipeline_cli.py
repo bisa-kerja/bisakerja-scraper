@@ -64,7 +64,7 @@ def test_pipeline_full_dry_run_uses_fixture_flow(monkeypatch, capsys) -> None:
     assert output["limit"] == 1
     assert output["recencyMode"] == "latest"
     assert output["recencyDays"] == 7
-    assert output["counts"]["persisted"] == 4
+    assert output["counts"]["persisted"] == 5
     assert output["stageStatuses"] == {
         "scrape": "completed",
         "normalize": "completed",
@@ -72,21 +72,22 @@ def test_pipeline_full_dry_run_uses_fixture_flow(monkeypatch, capsys) -> None:
         "sync": "completed",
         "notify-handoff": "completed",
     }
-    assert output["countBreakdown"]["rawPersisted"] == 4
-    assert output["countBreakdown"]["normalizedPersisted"] == 4
-    assert output["countBreakdown"]["enrichmentPersisted"] == 4
-    assert output["countBreakdown"]["syncSent"] == 4
-    assert output["countBreakdown"]["notifyHandoffSent"] == 4
-    assert output["requestedSources"] == ["dealls", "glints", "jobstreet", "kalibrr"]
-    assert output["executedSources"] == ["dealls", "glints", "jobstreet", "kalibrr"]
+    assert output["countBreakdown"]["rawPersisted"] == 5
+    assert output["countBreakdown"]["normalizedPersisted"] == 5
+    assert output["countBreakdown"]["enrichmentPersisted"] == 5
+    assert output["countBreakdown"]["syncSent"] == 5
+    assert output["countBreakdown"]["notifyHandoffSent"] == 5
+    assert output["requestedSources"] == ["dealls", "glints", "jobstreet", "kalibrr", "kitalulus"]
+    assert output["executedSources"] == ["dealls", "glints", "jobstreet", "kalibrr", "kitalulus"]
     assert output["skippedSources"] == []
     assert {item["source"] for item in output["sources"]} == {
         "dealls",
         "glints",
         "jobstreet",
         "kalibrr",
+        "kitalulus",
     }
-    assert len(output["sources"]) == 4
+    assert len(output["sources"]) == 5
     assert "password" not in json.dumps(output).lower()
 
 
@@ -409,8 +410,8 @@ def test_pipeline_preflight_reports_source_and_fixture_state(monkeypatch, capsys
     output = json.loads(capsys.readouterr().out)
     assert output["check"] == "pipeline-preflight"
     assert output["status"] == "ok"
-    assert output["requestedSources"] == ["dealls", "glints", "jobstreet", "kalibrr"]
-    assert output["executedSources"] == ["dealls", "glints", "jobstreet", "kalibrr"]
+    assert output["requestedSources"] == ["dealls", "glints", "jobstreet", "kalibrr", "kitalulus"]
+    assert output["executedSources"] == ["dealls", "glints", "jobstreet", "kalibrr", "kitalulus"]
     assert output["fixtures"]["status"] == "ok"
     assert output["migrationTarget"]["status"] == "ok"
 
@@ -433,8 +434,8 @@ def test_pipeline_preflight_execute_all_reports_disabled_jobstreet(monkeypatch, 
     )
     output = json.loads(capsys.readouterr().out)
     assert output["status"] == "ok"
-    assert output["requestedSources"] == ["dealls", "glints", "jobstreet", "kalibrr"]
-    assert output["executedSources"] == ["dealls", "glints", "kalibrr"]
+    assert output["requestedSources"] == ["dealls", "glints", "jobstreet", "kalibrr", "kitalulus"]
+    assert output["executedSources"] == ["dealls", "glints", "kalibrr", "kitalulus"]
     assert output["skippedSources"] == [
         {"reason": "disabled (JOBSTREET_ENABLED=false)", "source": "jobstreet"}
     ]
@@ -450,7 +451,52 @@ def test_pipeline_execute_url_conversion_preserves_runtime_password() -> None:
 def test_live_all_respects_jobstreet_enabled_flag() -> None:
     settings = valid_env(JOBSTREET_ENABLED="false")
 
-    assert live_platforms("all", settings_from_env(settings)) == ("dealls", "glints", "kalibrr")
+    assert live_platforms("all", settings_from_env(settings)) == (
+        "dealls",
+        "glints",
+        "kalibrr",
+        "kitalulus",
+    )
+
+
+def test_live_all_respects_glints_and_kitalulus_enabled_flags() -> None:
+    settings = valid_env(
+        GLINTS_ENABLED="false",
+        JOBSTREET_ENABLED="true",
+        JOBSTREET_BEARER_TOKEN="test-token",
+        KITALULUS_ENABLED="true",
+    )
+
+    assert live_platforms("all", settings_from_env(settings)) == (
+        "dealls",
+        "jobstreet",
+        "kalibrr",
+        "kitalulus",
+    )
+
+
+def test_pipeline_execute_disabled_explicit_source_fails_friendly(monkeypatch, capsys) -> None:
+    apply_env(monkeypatch)
+    monkeypatch.setenv("DEALLS_ENABLED", "false")
+
+    assert (
+        main(
+            [
+                "run",
+                "--stage",
+                "scrape",
+                "--source",
+                "dealls",
+                "--limit",
+                "1",
+                "--execute",
+            ]
+        )
+        == 1
+    )
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "fail"
+    assert "DEALLS_ENABLED=false" in output["reason"]
 
 
 def test_pipeline_execute_uses_recording_clients_when_backend_sync_disabled() -> None:
@@ -561,6 +607,51 @@ async def test_manual_full_run_marks_failed_when_any_stage_failed() -> None:
 
     result = await runner.run_full(FakeOrchestrator(), run_id_prefix=None)
     assert result.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_manual_single_stage_run_id_is_stage_scoped(monkeypatch) -> None:
+    runner = ManualPipelineRunner(
+        session=None,
+        settings=None,
+        stage="normalize",
+        source="dealls",
+        keywords=("developer",),
+        fixture_root=None,
+        limit=1,
+        recency_mode="latest",
+        recency_days=7,
+        execute=False,
+        run_id="audit-live-scrape",
+        source_selection=SourceSelection(
+            requested=("dealls",),
+            executed=("dealls",),
+            skipped=(),
+        ),
+    )
+
+    captured: dict[str, str | None] = {"stage": None, "run_id": None}
+
+    class FakeOrchestrator:
+        async def run_stage(self, stage, run_id=None):  # noqa: ANN001, ANN201
+            captured["stage"] = stage
+            captured["run_id"] = run_id
+            return PipelineResult(
+                run_id=run_id or "fallback-normalize",
+                correlation_id="corr",
+                status="completed",
+                counts=RunCounts(parsed=1, normalized=1, persisted=1),
+                source_results=[],
+                stage_events=["dealls:normalize"],
+            )
+
+    monkeypatch.setattr(runner, "build_orchestrator", lambda: FakeOrchestrator())
+    await runner.run_named_stage("normalize")
+
+    assert captured["stage"] == "normalize"
+    assert captured["run_id"] == "audit-live-normalize"
+    assert runner.output is not None
+    assert runner.output["runId"] == "audit-live-normalize"
 
 
 def test_manual_runner_emit_progress_only_in_execute_mode(capsys) -> None:
@@ -1240,7 +1331,9 @@ def test_pipeline_data_quality_reports_backend_field_coverage(
                 """
                 CREATE TABLE job_requirements (
                   id TEXT PRIMARY KEY,
-                  job_listing_id TEXT NOT NULL
+                  job_listing_id TEXT NOT NULL,
+                  type TEXT NOT NULL,
+                  value TEXT NOT NULL
                 )
                 """
             )
@@ -1290,7 +1383,8 @@ def test_pipeline_data_quality_reports_backend_field_coverage(
         connection.execute(
             text(
                 """
-                INSERT INTO job_requirements (id, job_listing_id) VALUES ('req-1', 'job-1')
+                INSERT INTO job_requirements (id, job_listing_id, type, value)
+                VALUES ('req-1', 'job-1', 'SKILL', 'Menguasai Python')
                 """
             )
         )
@@ -1310,6 +1404,158 @@ def test_pipeline_data_quality_reports_backend_field_coverage(
     assert output["summary"]["nullBlankCounts"]["null_work_type"] == 1
     assert output["summary"]["bySource"]["glints"]["jobsWithoutRequirements"] == 1
     assert output["summary"]["bySource"]["glints"]["jobsWithoutSkills"] == 1
+    assert output["summary"]["semanticQuality"]["avgRequirementsPerJob"] == 0.5
+
+
+def test_pipeline_data_quality_fails_semantic_requirement_noise(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    apply_env(monkeypatch)
+    backend_path = tmp_path / "backend-quality-noise.db"
+    backend_url = f"sqlite:///{backend_path}"
+    engine = create_engine(backend_url)
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE source_platforms (id TEXT PRIMARY KEY, slug TEXT)"))
+        connection.execute(
+            text(
+                """
+                CREATE TABLE job_listings (
+                  id TEXT PRIMARY KEY,
+                  source_platform_id TEXT NOT NULL,
+                  work_type TEXT,
+                  employment_type TEXT,
+                  experience_level TEXT,
+                  province TEXT,
+                  city TEXT,
+                  salary_display TEXT,
+                  description TEXT,
+                  requirement_summary TEXT
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE job_requirements (
+                  id TEXT PRIMARY KEY,
+                  job_listing_id TEXT NOT NULL,
+                  type TEXT NOT NULL,
+                  value TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text("CREATE TABLE job_skills (id TEXT PRIMARY KEY, job_listing_id TEXT NOT NULL)")
+        )
+        connection.execute(
+            text("INSERT INTO source_platforms (id, slug) VALUES ('sp-1', 'jobstreet')")
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO job_listings (
+                  id, source_platform_id, work_type, employment_type, experience_level,
+                  province, city, salary_display, description, requirement_summary
+                ) VALUES (
+                  'job-1', 'sp-1', 'ONSITE', 'FULL_TIME', 'ENTRY_LEVEL',
+                  'DKI Jakarta', 'Jakarta', 'Rp10.000.000', 'Desc', 'Req'
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO job_requirements (id, job_listing_id, type, value)
+                VALUES ('req-1', 'job-1', 'OTHER', 'TUNJANGAN HARI RAYA')
+                """
+            )
+        )
+
+    assert main(["data-quality", "--database-url", backend_url, "--env-file", ".env.example"]) == 1
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "fail"
+    assert output["summary"]["semanticQuality"]["noisyRequirementCount"] == 1
+    assert any(
+        warning["name"] == "noisyRequirementCount" and warning["severity"] == "fail"
+        for warning in output["summary"]["semanticQuality"]["warnings"]
+    )
+
+
+def test_pipeline_data_quality_fails_disabled_source_present(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    apply_env(monkeypatch)
+    monkeypatch.setenv("GLINTS_ENABLED", "false")
+    backend_path = tmp_path / "backend-disabled-source.db"
+    backend_url = f"sqlite:///{backend_path}"
+    engine = create_engine(backend_url)
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE source_platforms (id TEXT PRIMARY KEY, slug TEXT)"))
+        connection.execute(
+            text(
+                """
+                CREATE TABLE job_listings (
+                  id TEXT PRIMARY KEY,
+                  source_platform_id TEXT NOT NULL,
+                  work_type TEXT,
+                  employment_type TEXT,
+                  experience_level TEXT,
+                  province TEXT,
+                  city TEXT,
+                  salary_display TEXT,
+                  description TEXT,
+                  requirement_summary TEXT
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE job_requirements (
+                  id TEXT PRIMARY KEY,
+                  job_listing_id TEXT NOT NULL,
+                  type TEXT NOT NULL,
+                  value TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text("CREATE TABLE job_skills (id TEXT PRIMARY KEY, job_listing_id TEXT NOT NULL)")
+        )
+        connection.execute(
+            text("INSERT INTO source_platforms (id, slug) VALUES ('sp-1', 'glints')")
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO job_listings (
+                  id, source_platform_id, work_type, employment_type, experience_level,
+                  province, city, salary_display, description, requirement_summary
+                ) VALUES (
+                  'job-1', 'sp-1', 'ONSITE', 'FULL_TIME', 'ENTRY_LEVEL',
+                  'DKI Jakarta', 'Jakarta', 'Rp10.000.000', 'Desc', 'Req'
+                )
+                """
+            )
+        )
+
+    assert main(["data-quality", "--database-url", backend_url, "--env-file", ".env.example"]) == 1
+    output = json.loads(capsys.readouterr().out)
+    assert any(
+        warning["name"] == "disabledSourcePresent"
+        and warning["source"] == "glints"
+        and warning["severity"] == "fail"
+        for warning in output["summary"]["semanticQuality"]["warnings"]
+    )
 
 
 def test_pipeline_staging_report_sets_reason_when_sync_completed_zero_sent(
