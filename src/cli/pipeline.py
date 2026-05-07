@@ -2870,6 +2870,11 @@ class ManualPipelineRunner:
             execute=self.execute,
             model_rotator=model_rotator,
         )
+        if self.execute and self.stage in {"full", "normalize"} and ai_normalization_client is None:
+            raise ValueError(
+                "AI normalization requires AI_ENRICHMENT_ENABLED=true, OPENAI_API_KEY, "
+                "OPENAI_BASE_URL, and OPENAI_MODEL in execute mode"
+            )
         ai_enrichment_client = build_ai_enrichment_client(
             self.settings,
             execute=self.execute,

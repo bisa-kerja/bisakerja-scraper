@@ -499,6 +499,30 @@ def test_pipeline_execute_disabled_explicit_source_fails_friendly(monkeypatch, c
     assert "DEALLS_ENABLED=false" in output["reason"]
 
 
+def test_execute_normalize_requires_ai_config() -> None:
+    runner = ManualPipelineRunner(
+        session=None,
+        settings=settings_from_env(valid_env(AI_ENRICHMENT_ENABLED="false")),
+        stage="normalize",
+        source="dealls",
+        keywords=("developer",),
+        fixture_root=None,
+        limit=1,
+        recency_mode="latest",
+        recency_days=7,
+        execute=True,
+        run_id=None,
+        source_selection=SourceSelection(
+            requested=("dealls",),
+            executed=("dealls",),
+            skipped=(),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="AI normalization requires"):
+        runner.build_orchestrator()
+
+
 def test_pipeline_execute_uses_recording_clients_when_backend_sync_disabled() -> None:
     settings = settings_from_env(valid_env(BACKEND_SYNC_ENABLED="false"))
 

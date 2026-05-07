@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -11,6 +12,11 @@ from sqlalchemy import select
 
 from core.errors import NormalizeError, ScraperError
 from integrations.sources.mapper_utils import SourceMapperResult
+from modules.enrichment.repositories import (
+    AIRequestLogInput,
+    AIRequestLogRepository,
+    AIRequestStatus,
+)
 from modules.jobs import (
     AINormalizationBatchPromptInput,
     AINormalizationBatchPromptItem,
@@ -57,7 +63,6 @@ _DETAIL_HINT_KEYS = {
 class PipelineConfig:
     max_concurrency_per_source: int = 4
     allow_partial: bool = True
-    ai_normalization_fail_open: bool = True
     ai_normalization_batch_size: int = 5
     ai_normalization_inter_batch_delay_ms: int = 0
     progress_hook: ProgressHook | None = None
@@ -384,7 +389,6 @@ class PipelineOrchestrator:
         raw_batch: Sequence[RawJob],
         result: SourcePipelineResult,
     ) -> None:
-        mapped_by_item_id: dict[str, SourceMapperResult] = {}
         raw_by_item_id: dict[str, RawJob] = {}
         prompt_items: list[AINormalizationBatchPromptItem] = []
 
@@ -412,7 +416,6 @@ class PipelineOrchestrator:
                 result.counts.persisted += 1
                 continue
 
-            mapped_by_item_id[item_id] = mapped
             raw_by_item_id[item_id] = raw_job
             prompt_items.append(
                 AINormalizationBatchPromptItem(
@@ -431,12 +434,12 @@ class PipelineOrchestrator:
             await self._normalize_batch_with_single_requests(
                 source=source,
                 prompt_items=prompt_items,
-                mapped_by_item_id=mapped_by_item_id,
                 raw_by_item_id=raw_by_item_id,
                 result=result,
             )
             return
 
+        started = time.perf_counter()
         try:
             batch_results = await normalize_jobs(
                 AINormalizationBatchPromptInput(items=prompt_items)
@@ -444,14 +447,6 @@ class PipelineOrchestrator:
         except Exception as exc:  # noqa: BLE001
             for item_id in [item.item_id for item in prompt_items]:
                 raw_job = raw_by_item_id[item_id]
-                mapped = mapped_by_item_id[item_id]
-                if self.config.ai_normalization_fail_open:
-                    self.persistence.upsert_normalized_job(mapped.job, raw_job_id=raw_job.id)
-                    if self.quarantine is not None:
-                        self.quarantine.resolve_for_raw_job(raw_job.id)
-                    result.counts.normalized += 1
-                    result.counts.persisted += 1
-                    continue
                 self._record_normalize_failure(
                     source.source_platform,
                     raw_job,
@@ -462,19 +457,25 @@ class PipelineOrchestrator:
                     ),
                     result,
                 )
+                self._record_normalization_ai_log(
+                    raw_job=raw_job,
+                    request=next(item for item in prompt_items if item.item_id == item_id),
+                    status=AIRequestStatus.FAILED,
+                    latency_ms=elapsed_ms(started),
+                    error=exc,
+                    response_summary=normalization_response_summary(
+                        source_platform=source.source_platform,
+                        endpoint_type=None,
+                        items_count=len(prompt_items),
+                        success_count=0,
+                        failed_count=len(prompt_items),
+                    ),
+                )
             return
 
         for item in batch_results:
             raw_job = raw_by_item_id[item.item_id]
             if item.normalized_job is None:
-                if self.config.ai_normalization_fail_open:
-                    mapped = mapped_by_item_id[item.item_id]
-                    self.persistence.upsert_normalized_job(mapped.job, raw_job_id=raw_job.id)
-                    if self.quarantine is not None:
-                        self.quarantine.resolve_for_raw_job(raw_job.id)
-                    result.counts.normalized += 1
-                    result.counts.persisted += 1
-                    continue
                 self._record_normalize_failure(
                     source.source_platform,
                     raw_job,
@@ -486,8 +487,52 @@ class PipelineOrchestrator:
                     ),
                     result,
                 )
+                self._record_normalization_ai_log(
+                    raw_job=raw_job,
+                    request=next(
+                        prompt_item
+                        for prompt_item in prompt_items
+                        if prompt_item.item_id == item.item_id
+                    ),
+                    status=AIRequestStatus.FAILED,
+                    latency_ms=elapsed_ms(started),
+                    error=normalize_error_from_batch_item(
+                        source_platform=source.source_platform,
+                        external_id=raw_job.external_id,
+                        error_code=item.error_code,
+                        error_message=item.error_message,
+                    ),
+                    response_summary=normalization_response_summary(
+                        source_platform=source.source_platform,
+                        endpoint_type=item_endpoint_type(prompt_items, item.item_id),
+                        items_count=1,
+                        success_count=0,
+                        failed_count=1,
+                    ),
+                )
                 continue
-            self.persistence.upsert_normalized_job(item.normalized_job, raw_job_id=raw_job.id)
+            normalized_job, _ = self.persistence.upsert_normalized_job(
+                item.normalized_job,
+                raw_job_id=raw_job.id,
+            )
+            self._record_normalization_ai_log(
+                raw_job=raw_job,
+                normalized_job_id=normalized_job.id,
+                request=next(
+                    prompt_item
+                    for prompt_item in prompt_items
+                    if prompt_item.item_id == item.item_id
+                ),
+                status=AIRequestStatus.SUCCESS,
+                latency_ms=elapsed_ms(started),
+                response_summary=normalization_response_summary(
+                    source_platform=source.source_platform,
+                    endpoint_type=item_endpoint_type(prompt_items, item.item_id),
+                    items_count=1,
+                    success_count=1,
+                    failed_count=0,
+                ),
+            )
             if self.quarantine is not None:
                 self.quarantine.resolve_for_raw_job(raw_job.id)
             result.counts.normalized += 1
@@ -498,28 +543,51 @@ class PipelineOrchestrator:
         *,
         source: PipelineSource,
         prompt_items: Sequence[AINormalizationBatchPromptItem],
-        mapped_by_item_id: Mapping[str, SourceMapperResult],
         raw_by_item_id: Mapping[str, RawJob],
         result: SourcePipelineResult,
     ) -> None:
         semaphore = asyncio.Semaphore(self.config.max_concurrency_per_source)
         for item in prompt_items:
             raw_job = raw_by_item_id[item.item_id]
-            mapped = mapped_by_item_id[item.item_id]
+            started = time.perf_counter()
             try:
                 normalized = await self._map_stored_raw_job(source, raw_job, semaphore)
             except Exception as exc:
-                if self.config.ai_normalization_fail_open:
-                    self.persistence.upsert_normalized_job(mapped.job, raw_job_id=raw_job.id)
-                    if self.quarantine is not None:
-                        self.quarantine.resolve_for_raw_job(raw_job.id)
-                    result.counts.normalized += 1
-                    result.counts.persisted += 1
-                    continue
                 self._record_normalize_failure(source.source_platform, raw_job, exc, result)
+                self._record_normalization_ai_log(
+                    raw_job=raw_job,
+                    request=item,
+                    status=AIRequestStatus.FAILED,
+                    latency_ms=elapsed_ms(started),
+                    error=exc,
+                    response_summary=normalization_response_summary(
+                        source_platform=source.source_platform,
+                        endpoint_type=item.endpoint_type.value,
+                        items_count=1,
+                        success_count=0,
+                        failed_count=1,
+                    ),
+                )
                 continue
 
-            self.persistence.upsert_normalized_job(normalized.job, raw_job_id=raw_job.id)
+            normalized_job, _ = self.persistence.upsert_normalized_job(
+                normalized.job,
+                raw_job_id=raw_job.id,
+            )
+            self._record_normalization_ai_log(
+                raw_job=raw_job,
+                normalized_job_id=normalized_job.id,
+                request=item,
+                status=AIRequestStatus.SUCCESS,
+                latency_ms=elapsed_ms(started),
+                response_summary=normalization_response_summary(
+                    source_platform=source.source_platform,
+                    endpoint_type=item.endpoint_type.value,
+                    items_count=1,
+                    success_count=1,
+                    failed_count=0,
+                ),
+            )
             if self.quarantine is not None:
                 self.quarantine.resolve_for_raw_job(raw_job.id)
             result.counts.normalized += 1
@@ -543,6 +611,36 @@ class PipelineOrchestrator:
                 source_field_path=source_field_path_from(exc),
                 retryable=retryable_from(exc),
             )
+
+    def _record_normalization_ai_log(
+        self,
+        *,
+        raw_job: RawJob,
+        request: Any,
+        status: AIRequestStatus,
+        latency_ms: int,
+        normalized_job_id: str | None = None,
+        response_summary: dict[str, Any] | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        client = self.ai_normalization_client
+        repository = AIRequestLogRepository(self.persistence.session)
+        repository.create(
+            AIRequestLogInput(
+                normalized_job_id=normalized_job_id,
+                scrape_run_id=raw_job.scrape_run_id,
+                provider="openai-compatible",
+                model=selected_ai_model(client),
+                base_url=selected_ai_base_url(client),
+                latency_ms=latency_ms,
+                status=status,
+                retry_count=0,
+                request=request,
+                response_summary=response_summary,
+                error_category=exception_category(error) if error is not None else None,
+                error_message=str(error) if error is not None else None,
+            )
+        )
 
     def _emit_progress(self, message: str) -> None:
         if self.config.progress_hook is None:
@@ -590,8 +688,6 @@ class PipelineOrchestrator:
         try:
             normalized_job = await self.ai_normalization_client.normalize_job(prompt_input)
         except Exception as exc:  # noqa: BLE001
-            if self.config.ai_normalization_fail_open:
-                return mapped
             raise normalize_error_from_ai_exception(
                 exc,
                 source_platform=source.source_platform,
@@ -894,6 +990,55 @@ def raw_metadata_from(raw_job: Any) -> dict[str, Any]:
         "sourceTimestamp": serialized_datetime(getattr(raw_job, "source_timestamp", None)),
     }
     return {key: value for key, value in metadata.items() if value is not None}
+
+
+def elapsed_ms(started: float) -> int:
+    return int((time.perf_counter() - started) * 1000)
+
+
+def selected_ai_model(client: Any) -> str:
+    for attr in ("last_model", "model"):
+        value = getattr(client, attr, None)
+        if isinstance(value, str) and value.strip():
+            return value
+    return "unknown"
+
+
+def selected_ai_base_url(client: Any) -> str | None:
+    value = getattr(client, "base_url", None)
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def exception_category(exc: Exception) -> str:
+    return str(getattr(exc, "code", exc.__class__.__name__))
+
+
+def normalization_response_summary(
+    *,
+    source_platform: str,
+    endpoint_type: str | None,
+    items_count: int,
+    success_count: int,
+    failed_count: int,
+) -> dict[str, Any]:
+    return {
+        "requestType": "normalization",
+        "sourcePlatform": source_platform,
+        "endpointType": endpoint_type,
+        "itemsCount": items_count,
+        "successCount": success_count,
+        "failedCount": failed_count,
+    }
+
+
+def item_endpoint_type(
+    prompt_items: Sequence[AINormalizationBatchPromptItem],
+    item_id: str,
+) -> str | None:
+    for item in prompt_items:
+        if item.item_id == item_id:
+            return item.endpoint_type.value
+    return None
 
 
 def serialized_datetime(value: Any) -> str | None:

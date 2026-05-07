@@ -21,6 +21,7 @@ from modules.jobs.schemas import (
     SourcePlatform,
 )
 from modules.persistence import (
+    AIRequestLog,
     Base,
     JobPersistenceRepository,
     NormalizationQuarantine,
@@ -153,10 +154,15 @@ async def test_normalize_stage_uses_ai_normalization_when_client_available() -> 
         assert normalized is not None
         assert normalized.title == "AI Normalized Title"
         assert client.calls == 1
+        log = session.scalar(select(AIRequestLog))
+        assert log is not None
+        assert log.status == "success"
+        assert log.normalized_job_id == normalized.id
+        assert log.scrape_run_id == "run-scrape"
 
 
 @pytest.mark.asyncio
-async def test_normalize_stage_falls_back_to_mapper_on_ai_failure_when_fail_open() -> None:
+async def test_normalize_stage_stops_on_ai_failure_without_mapper_fallback() -> None:
     with session_scope() as session:
         repository = JobPersistenceRepository(session)
         repository.upsert_raw_job(raw_input("run-scrape", "ai-fallback-1"))[0]
@@ -173,12 +179,15 @@ async def test_normalize_stage_falls_back_to_mapper_on_ai_failure_when_fail_open
 
         result = await orchestrator.run_normalize(run_id="run-normalize")
 
-        normalized = session.scalar(
-            select(NormalizedJob).where(NormalizedJob.external_id == "ai-fallback-1")
-        )
-        assert result.status == "completed"
-        assert normalized is not None
-        assert normalized.title == "Backend Engineer"
+        logs = session.scalars(select(AIRequestLog)).all()
+        assert result.status == "partial"
+        assert result.counts.skipped == 1
+        assert session.scalars(select(NormalizedJob)).all() == []
+        assert len(logs) == 1
+        assert logs[0].status == "failed"
+        assert logs[0].normalized_job_id is None
+        assert logs[0].scrape_run_id == "run-scrape"
+        assert logs[0].error_category == "NORMALIZE_ERROR"
 
 
 @pytest.mark.asyncio
@@ -194,7 +203,6 @@ async def test_normalize_stage_quarantines_on_ai_failure_when_fail_closed() -> N
             persistence=repository,
             run_tracker=RunStateTracker(session),
             quarantine=QuarantineRepository(session),
-            config=PipelineConfig(ai_normalization_fail_open=False),
             correlation_id_factory=lambda: "corr-1",
             ai_normalization_client=client,
         )
@@ -210,6 +218,7 @@ async def test_normalize_stage_quarantines_on_ai_failure_when_fail_closed() -> N
         assert quarantine.error_category == "NORMALIZE_ERROR"
         assert quarantine.retryable is True
         assert session.scalars(select(NormalizedJob)).all() == []
+        assert session.scalar(select(AIRequestLog)) is not None
 
 
 @pytest.mark.asyncio
@@ -228,7 +237,6 @@ async def test_normalize_stage_uses_batch_ai_and_partial_item_failure() -> None:
             run_tracker=RunStateTracker(session),
             quarantine=QuarantineRepository(session),
             config=PipelineConfig(
-                ai_normalization_fail_open=False,
                 ai_normalization_batch_size=2,
             ),
             correlation_id_factory=lambda: "corr-1",
@@ -249,6 +257,38 @@ async def test_normalize_stage_uses_batch_ai_and_partial_item_failure() -> None:
         assert quarantine is not None
         assert quarantine.raw_job_id == raw_c.id
         assert raw_a.id != raw_c.id
+        logs = session.scalars(select(AIRequestLog).order_by(AIRequestLog.status.asc())).all()
+        assert len(logs) == 3
+        assert {log.status for log in logs} == {"failed", "success"}
+
+
+@pytest.mark.asyncio
+async def test_normalize_stage_batch_request_failure_logs_and_persists_no_fallback() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        repository.upsert_raw_job(raw_input("run-scrape", "ai-batch-fail-1"))[0]
+        repository.upsert_raw_job(raw_input("run-scrape", "ai-batch-fail-2"))[0]
+        session.commit()
+        source = FakeSource("dealls", [])
+        client = FailingBatchAINormalizationClient()
+        orchestrator = PipelineOrchestrator(
+            sources=[source],
+            persistence=repository,
+            run_tracker=RunStateTracker(session),
+            config=PipelineConfig(ai_normalization_batch_size=2),
+            correlation_id_factory=lambda: "corr-1",
+            ai_normalization_client=client,
+        )
+
+        result = await orchestrator.run_normalize(run_id="run-normalize")
+
+        logs = session.scalars(select(AIRequestLog)).all()
+        assert result.status == "partial"
+        assert result.counts.skipped == 2
+        assert session.scalars(select(NormalizedJob)).all() == []
+        assert len(logs) == 2
+        assert {log.status for log in logs} == {"failed"}
+        assert {log.scrape_run_id for log in logs} == {"run-scrape"}
 
 
 @pytest.mark.asyncio
@@ -404,6 +444,9 @@ class FakeAINormalizationClient:
     def __init__(self, *, title: str) -> None:
         self.title = title
         self.calls = 0
+        self.model = "fake-normalizer"
+        self.last_model = self.model
+        self.base_url = "https://ai.example.test/v1"
 
     async def normalize_job(self, prompt_input):  # noqa: ANN001, ANN201
         self.calls += 1
@@ -424,6 +467,10 @@ class FakeAINormalizationClient:
 
 
 class FailingAINormalizationClient:
+    model = "fake-normalizer"
+    last_model = model
+    base_url = "https://ai.example.test/v1"
+
     async def normalize_job(self, prompt_input):  # noqa: ANN001, ANN201
         raise NormalizeError(
             "provider timeout",
@@ -438,6 +485,9 @@ class FakeBatchAINormalizationClient:
     def __init__(self, *, failed_external_ids: set[str]) -> None:
         self.failed_external_ids = failed_external_ids
         self.batch_calls = 0
+        self.model = "fake-normalizer"
+        self.last_model = self.model
+        self.base_url = "https://ai.example.test/v1"
 
     async def normalize_jobs(
         self,
@@ -481,6 +531,24 @@ class FakeBatchAINormalizationClient:
                 )
             )
         return results
+
+
+class FailingBatchAINormalizationClient(FakeBatchAINormalizationClient):
+    def __init__(self) -> None:
+        super().__init__(failed_external_ids=set())
+
+    async def normalize_jobs(
+        self,
+        prompt_input: AINormalizationBatchPromptInput,
+    ) -> list[AINormalizationBatchItemResult]:
+        self.batch_calls += 1
+        raise NormalizeError(
+            "provider timeout",
+            source_platform="dealls",
+            external_id=None,
+            retryable=True,
+            details={"source_field_path": "raw_payload"},
+        )
 
 
 def canonical_job(raw_job: RawJobStub, *, scraped_at: datetime) -> CanonicalJobSchema:

@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 from sqlalchemy import not_, or_, select
 from sqlalchemy.orm import Session
 
-from modules.enrichment.schemas import EnrichmentJobInput, EnrichmentOutput, RequirementType
+from modules.enrichment.schemas import EnrichmentOutput, RequirementType
 from modules.persistence import (
     AIRequestLog,
     JobRequirementStaging,
@@ -47,7 +47,7 @@ class AIRequestLogInput:
     latency_ms: int | None
     status: AIRequestStatus
     retry_count: int
-    request: EnrichmentJobInput
+    request: Any
     response_summary: dict[str, Any] | None = None
     error_category: str | None = None
     error_message: str | None = None

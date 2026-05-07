@@ -1103,13 +1103,10 @@ def improve_description(
         compact_summary = strip_requirement_summary_prefix(requirement_summary)
         if compact_summary:
             details.append(
-                "Kandidat ideal diharapkan memenuhi kualifikasi berikut: "
-                f"{compact_summary}"
+                f"Kandidat ideal diharapkan memenuhi kualifikasi berikut: {compact_summary}"
             )
     elif skills:
-        details.append(
-            f"Kompetensi utama yang dibutuhkan mencakup {', '.join(skills[:8])}."
-        )
+        details.append(f"Kompetensi utama yang dibutuhkan mencakup {', '.join(skills[:8])}.")
 
     if not looks_like_indonesian(" ".join(details)):
         details.insert(0, "Deskripsi peran ini disusun ulang dalam Bahasa Indonesia.")

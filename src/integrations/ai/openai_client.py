@@ -134,6 +134,7 @@ class OpenAIEnrichmentClient:
         self.model = self._model_rotator.models[0]
         self.models = self._model_rotator.models
         self.last_model = self.model
+        self.base_url = base_url
         self.timeout_seconds = timeout_seconds
         self.max_retries = max_retries
         self._metrics_lock = Lock()
@@ -249,6 +250,7 @@ class OpenAINormalizationClient:
         self.model = self._model_rotator.models[0]
         self.models = self._model_rotator.models
         self.last_model = self.model
+        self.base_url = base_url
         self.timeout_seconds = timeout_seconds
         self.max_retries = max_retries
         self._metrics_lock = Lock()
