@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-05
+last_reviewed: 2026-05-07
 ---
 
 # Daily Pipeline Runbook
@@ -37,6 +37,7 @@ Deployment default runs two containers:
 | Enrich               | AI request logs contain status, retry count, model, and safe base URL alias; model usage summary is available by model |
 | Sync                 | Sync events show `sent`, retryable `failed`, or reviewed `dead-letter` states      |
 | Notification handoff | Handoff events exist only for sent sync events                                     |
+| Data quality         | `pipeline data-quality` menunjukkan `requirement_summary_prefix=0` dan `unsafe_html=0` |
 
 ## Manual Stage Commands
 

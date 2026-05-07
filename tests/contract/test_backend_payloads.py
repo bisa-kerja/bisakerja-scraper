@@ -214,8 +214,87 @@ def test_backend_payload_normalizes_requirement_summary_language_to_indonesian()
         payload = build_backend_job_payload(saved).model_dump(mode="json", by_alias=True)
         summary = payload["jobListing"]["requirementSummary"]
         assert summary is not None
-        assert summary.startswith("Kualifikasi utama:")
-        assert "minimal 2 tahun" in summary
+        assert not summary.startswith("Kualifikasi utama:")
+        assert "minimal 2 tahun" in summary.casefold()
+        assert "<ul>" in summary or "<p>" in summary
+
+
+def test_backend_payload_removes_meta_description_disclaimer_phrase() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        job = canonical_job().model_copy(
+            update={
+                "description": (
+                    "Deskripsi peran ini disusun ulang dalam Bahasa Indonesia. "
+                    "Mengembangkan layanan backend dengan fokus reliabilitas sistem."
+                ),
+                "requirements": "Minimal 2 tahun pengalaman backend.",
+            }
+        )
+        repository.write_job(raw_input("run-1", "job-description-guard"), job)
+        session.commit()
+
+        saved = session.scalar(select(NormalizedJob).where(NormalizedJob.external_id == "job-1"))
+        assert saved is not None
+        payload = build_backend_job_payload(saved).model_dump(mode="json", by_alias=True)
+        description = payload["jobListing"]["description"] or ""
+        lowered = description.casefold()
+        assert "deskripsi peran ini disusun ulang" not in lowered
+        assert "backend engineer" in lowered
+        assert "minimal 2 tahun pengalaman backend" in lowered
+
+
+def test_backend_payload_splits_composite_staged_skills_into_atomic_items() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        result = repository.write_job(raw_input("run-1", "job-skill-composite"), canonical_job())
+        staging = EnrichmentStagingRepository(session)
+        staging.upsert_skill(
+            result.normalized_job,
+            value="HTML, CSS, PHP",
+            confidence=0.8,
+            ai_request_log_id=None,
+            source=EnrichmentSource.AI,
+        )
+        session.commit()
+
+        saved = session.scalar(select(NormalizedJob).where(NormalizedJob.external_id == "job-1"))
+        assert saved is not None
+        payload = build_backend_job_payload(saved).model_dump(mode="json", by_alias=True)
+        skill_names = {item["name"] for item in payload["skills"]}
+        assert {"HTML", "CSS", "PHP"}.issubset(skill_names)
+
+
+def test_backend_payload_sanitizes_display_html_fields() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        job = canonical_job().model_copy(
+            update={
+                "description": (
+                    '<p class="x">Bangun <strong onclick="x()">API</strong></p>'
+                    "<script>alert(1)</script><img src=x onerror=1>"
+                ),
+                "requirements": (
+                    '<p onclick="x()">Minimal 2 tahun</p><a href="javascript:x">Klik</a>'
+                ),
+            }
+        )
+        repository.write_job(raw_input("run-1", "job-html-safe"), job)
+        session.commit()
+
+        saved = session.scalar(select(NormalizedJob).where(NormalizedJob.external_id == "job-1"))
+        assert saved is not None
+        payload = build_backend_job_payload(saved).model_dump(mode="json", by_alias=True)
+        description = payload["jobListing"]["description"] or ""
+        summary = payload["jobListing"]["requirementSummary"] or ""
+
+        assert "<p>" in description
+        assert "<strong>" in description or "Backend Engineer" in description
+        assert "<script" not in description.casefold()
+        assert "onclick=" not in description.casefold()
+        assert "<img" not in description.casefold()
+        assert "<a " not in summary.casefold()
+        assert "javascript:" not in summary.casefold()
 
 
 def test_backend_payload_filters_invalid_skill_tokens_from_summary_and_skills() -> None:

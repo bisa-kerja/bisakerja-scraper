@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-06
+last_reviewed: 2026-05-07
 ---
 
 # Backend Sync Schema Map
@@ -29,6 +29,13 @@ This reference locks the scraper sync payload contract before data is sent to Ba
 | Status | `status` | `jobListing.status` | `JobListingStatus` |
 | Requirements staging | structured rows | `requirements[]` | `JobRequirement` |
 | Skills staging | structured rows | `skills[]` | `Skill`, `JobSkill` |
+
+Display field contract:
+
+- `jobListing.description` and `jobListing.requirementSummary` must use sanitized semantic HTML.
+- Allowed tags: `<p>`, `<ul>`, `<ol>`, `<li>`, `<strong>`, `<em>`, `<br>`.
+- Attributes and non-allowlisted tags are not allowed.
+- `requirements[]` rows remain plain text atomic values.
 
 ## Enum Mapping Rules
 
@@ -77,6 +84,7 @@ Skill rows must be evidence-based. Backend sync may derive technical skills from
 - `jobListing.experienceLevel` uses deterministic inference and falls back to `ENTRY_LEVEL`.
 - `jobListing.province` and `jobListing.city` are resolved from source evidence and open-world location parsing; no static city whitelist is used.
 - Placeholder text (`-`, `N/A`, empty string) is rejected for `description`, `requirementSummary`, and display fields.
+- `jobListing.requirementSummary` must not start with fixed label prefixes such as `Kualifikasi utama:`.
 
 ## Validation Gates
 
@@ -95,6 +103,9 @@ Payload is rejected before sync when any of the following occurs:
 - Type mismatch:
   - non-numeric salary fields in numeric slots
   - invalid timestamp format
+- Unsafe display HTML:
+  - non-allowlisted tags in `description` or `requirementSummary`
+  - HTML attributes, script/style content, event handlers, or inline `javascript:` URL payloads
 - Invalid salary range:
   - `salaryMin > salaryMax`
 - Backend limit mismatch:

@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-06
+last_reviewed: 2026-05-07
 ---
 
 # Source Field Mapping Matrix
@@ -32,7 +32,7 @@ This matrix keeps mapper work tied to observed payload fields.
 | `salary.currency` | infer configured source currency if numeric salary exists | `salaries[].CurrencyCode` | parse label only if reliable | `salaryCurrency` | infer `IDR` only when numeric salary exists |
 | `salary.period` | configured/monthly when source semantics confirm | `salaries[].salaryMode` | parse label only if reliable | `salaryInterval` | monthly when source semantics confirm |
 | `salary.display` | derived safe label or null | derived safe label or null | `salaryLabel` | derived safe label or null | derived safe label or null |
-| `description` | detail `description` if fetched | factual source-limited summary from list evidence when detail unavailable | detail `job.content` clean text or list `teaser` | `description` HTML clean text | detail `formattedDescription` sanitized or `description` clean text |
+| `description` | detail `description` if fetched | factual source-limited summary from list evidence when detail unavailable | detail `job.content` sanitized display HTML or list `teaser` | `description` sanitized display HTML | detail `formattedDescription` sanitized display HTML or `description` clean text |
 | `requirements` | detail `requirements` if fetched | safe summary from list `minYearsOfExperience`, `maxYearsOfExperience`, `hierarchicalJobCategory.name`, `skills[].skill.name` when available | detail `job.products.bullets` or list `bulletPoints[]` | `qualifications` HTML clean text | detail `formattedDescription`/`description`; exclude `benefits[]` |
 | `skills` | `skills[].name` | `skills[].skill.name` | enrichment or tags only if mapped | enrichment or detail-derived | detail `skillTags[]` |
 | `postedAt` | `publishedAt` | `createdAt` | `listingDate.dateTimeUtc` | `activationDate` or `createdAt` | detail `updatedAt` as best available source timestamp |
@@ -54,7 +54,8 @@ This matrix keeps mapper work tied to observed payload fields.
 - Normalize enum-like fields into backend-compatible values.
 - Preserve raw source labels only as safe display metadata.
 - Convert empty string salary to `null`.
-- Strip or sanitize HTML before model/display use.
+- Sanitize description display HTML into allowlisted semantic tags (`p`, `ul`, `ol`, `li`, `strong`, `em`, `br`) without attributes.
+- Keep downstream `requirements` extraction input as plain text evidence (not rich HTML).
 - Keep mapper field provenance outside the canonical job object.
 - Ignore UI-only fields unless a product contract explicitly adopts them.
 - For Glints records, set `detailCoverage=unavailable` and `detailCompleteness=partial`.

@@ -17,6 +17,7 @@ from modules.jobs.completion import (
 from modules.jobs.dates import parse_absolute_datetime
 from modules.jobs.schemas import CanonicalJobStatus
 from modules.persistence import JobRequirementStaging, JobSkillStaging, NormalizedJob
+from shared.text import ensure_display_html, html_to_text
 
 MONTHLY_PATTERN = re.compile(r"\b(month|monthly|bulan|bulanan)\b", re.IGNORECASE)
 YEARLY_PATTERN = re.compile(r"\b(year|yearly|tahun|tahunan)\b", re.IGNORECASE)
@@ -47,6 +48,13 @@ RESPONSIBILITY_REQUIREMENT_PATTERN = re.compile(
     r"\b("
     r"bertanggung jawab|mengembangkan|mengelola|membangun|melakukan|membuat|"
     r"memelihara|berkoordinasi|menjaga|mengoptimalkan|menyusun"
+    r")\b",
+    re.IGNORECASE,
+)
+SKILL_REQUIREMENT_PATTERN = re.compile(
+    r"\b("
+    r"menguasai|mahir|proficient|familiar|keahlian|kompetensi|"
+    r"kemampuan\s+(?:teknis|analitis|komunikasi|problem solving)"
     r")\b",
     re.IGNORECASE,
 )
@@ -154,8 +162,34 @@ LOW_SIGNAL_REQUIREMENT_SUBSTRINGS = {
     "telah terdaftar di komisi pestisida",
     "sertifikasi iso 9001",
     "integrated agrochemical company",
+    "lingkungan kerja yang dinamis",
+    "kesempatan berkembang",
+    "peluang pengembangan karir",
+    "berorientasi pada kepuasan pelanggan",
 }
 INVALID_SKILL_PATTERN = re.compile(r"^[a-z]{2,24}_[0-9]{2,}$", re.IGNORECASE)
+HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
+SKILL_SPLIT_PATTERN = re.compile(r"\s*(?:,|/|;|\||\band\b|&)\s*|\s+\+\s+", re.IGNORECASE)
+META_DESCRIPTION_SENTENCE_PATTERN = re.compile(
+    r"\b("
+    r"deskripsi peran ini disusun ulang"
+    r"|deskripsi ini disusun ulang"
+    r"|ringkasan ini disusun ulang"
+    r"|ditulis ulang dalam bahasa indonesia"
+    r"|this (?:role|job) description (?:is|has been) (?:rewritten|rephrased|translated)"
+    r"|rewritten in indonesian"
+    r")\b",
+    re.IGNORECASE,
+)
+LOW_SIGNAL_SKILL_VALUES = {
+    "keterampilan",
+    "kemampuan",
+    "keahlian",
+    "soft skill",
+    "soft skills",
+    "hard skill",
+    "hard skills",
+}
 TECH_SKILL_CANONICAL_MAP = {
     "python": "Python",
     "java": "Java",
@@ -468,13 +502,15 @@ def build_backend_job_payload(job: NormalizedJob) -> BackendJobPayload:
     location_region = optional_text(normalized_location.get("region"))
 
     company_name = first_non_empty([company.get("name"), job.company_name])
-    description = clean_description(payload.get("description"))
+    description = ensure_display_html(clean_description(payload.get("description")))
     if description is None and job.source_platform.strip().lower() == "glints":
-        description = build_source_limited_summary(
-            title=job.title,
-            company=company_name,
-            location=location_display,
-            source_platform=job.source_platform,
+        description = ensure_display_html(
+            build_source_limited_summary(
+                title=job.title,
+                company=company_name,
+                location=location_display,
+                source_platform=job.source_platform,
+            )
         )
     raw_skills = payload.get("skills")
     normalized_skills = sanitize_skill_values(raw_skills if isinstance(raw_skills, list) else [])
@@ -496,6 +532,7 @@ def build_backend_job_payload(job: NormalizedJob) -> BackendJobPayload:
         requirement_summary=requirement_summary,
         skills=normalized_skills,
     )
+    description = ensure_display_html(description)
 
     employment_type = (
         map_employment_type(payload.get("employment_types")) or PrismaEmploymentType.FULL_TIME
@@ -634,7 +671,12 @@ def build_backend_jobs_body(jobs: list[NormalizedJob]) -> dict[str, Any]:
 def build_skill_payloads(job: NormalizedJob) -> list[BackendSkillPayload]:
     staged = list(getattr(job, "skills_staging", []) or [])
     if staged:
-        return [skill_payload_from_staging(job, skill) for skill in staged]
+        staged_payloads: list[BackendSkillPayload] = []
+        for skill in staged:
+            staged_payloads.extend(skill_payloads_from_staging(job, skill))
+        staged_payloads = dedupe_skill_payloads(staged_payloads)
+        if staged_payloads:
+            return staged_payloads
 
     payload = job.normalized_payload if isinstance(job.normalized_payload, dict) else {}
     normalized_skills = [
@@ -655,17 +697,22 @@ def build_skill_payloads(job: NormalizedJob) -> list[BackendSkillPayload]:
     return []
 
 
-def skill_payload_from_staging(job: NormalizedJob, skill: JobSkillStaging) -> BackendSkillPayload:
+def skill_payloads_from_staging(
+    job: NormalizedJob, skill: JobSkillStaging
+) -> list[BackendSkillPayload]:
     if skill.normalized_job_id != job.id:
         raise BackendPayloadValidationError(
             "orphan JobSkill row: normalized job relation mismatch",
             external_job_id=job.external_id,
         )
-    return BackendSkillPayload(
-        name=skill.normalized_value,
-        confidence=skill.confidence,
-        source=skill.source,
-    )
+    names = sanitize_skill_values([skill.normalized_value])
+    if not names:
+        fallback = normalize_text_block(skill.normalized_value)
+        names = [fallback] if fallback and not is_low_signal_skill(fallback) else []
+    return [
+        BackendSkillPayload(name=name, confidence=skill.confidence, source=skill.source)
+        for name in names
+    ]
 
 
 def build_requirement_payloads(job: NormalizedJob) -> list[BackendRequirementPayload]:
@@ -837,6 +884,8 @@ def classify_requirement_items(
 def classify_requirement_type(value: str) -> PrismaRequirementType:
     if TECH_SKILL_PATTERN.search(value):
         return PrismaRequirementType.SKILL
+    if SKILL_REQUIREMENT_PATTERN.search(value):
+        return PrismaRequirementType.SKILL
     if EDUCATION_REQUIREMENT_PATTERN.search(value):
         return PrismaRequirementType.EDUCATION
     if EXPERIENCE_REQUIREMENT_PATTERN.search(value):
@@ -861,6 +910,10 @@ def is_low_signal_requirement(value: str) -> bool:
     if lowered in LOW_SIGNAL_REQUIREMENT_PHRASES:
         return True
     if any(marker in lowered for marker in LOW_SIGNAL_REQUIREMENT_SUBSTRINGS):
+        return True
+    if lowered.startswith(("kesempatan ", "lingkungan ", "budaya kerja ")):
+        return True
+    if lowered.endswith(("yang dinamis", "yang baik")) and len(lowered.split()) <= 6:
         return True
     tokens = re.findall(r"[A-Za-z0-9+#.]+", value)
     if len(tokens) > LOW_SIGNAL_REQUIREMENT_WORD_LIMIT:
@@ -908,17 +961,41 @@ def sanitize_skill_values(values: list[Any]) -> list[str]:
     for raw in values:
         if not isinstance(raw, str):
             continue
-        text = normalize_text_block(raw)
-        if text is None:
-            continue
-        if is_placeholder_text(text):
-            continue
-        if INVALID_SKILL_PATTERN.fullmatch(text.casefold().strip()):
-            continue
-        if len(text) < 2 or len(text) > 80:
-            continue
-        normalized.append(text)
+        for candidate in split_skill_candidates(raw):
+            text = normalize_text_block(candidate)
+            if text is None:
+                continue
+            if is_placeholder_text(text):
+                continue
+            if INVALID_SKILL_PATTERN.fullmatch(text.casefold().strip()):
+                continue
+            if is_low_signal_skill(text):
+                continue
+            if len(text) < 2 or len(text) > 80:
+                continue
+            normalized.append(text)
+        derived_tech = derive_tech_skills_from_texts([raw])
+        normalized.extend(derived_tech)
     return dedupe_strings(normalized)
+
+
+def split_skill_candidates(value: str) -> list[str]:
+    normalized = normalize_text_block(value)
+    if normalized is None:
+        return []
+    if not any(token in normalized for token in [",", "/", ";", "|", "&", " and ", " + "]):
+        return [normalized]
+    pieces = [piece.strip() for piece in SKILL_SPLIT_PATTERN.split(normalized) if piece.strip()]
+    return pieces if pieces else [normalized]
+
+
+def is_low_signal_skill(value: str) -> bool:
+    lowered = value.casefold().strip(" .")
+    if lowered in LOW_SIGNAL_SKILL_VALUES:
+        return True
+    if lowered.startswith(("keterampilan ", "kemampuan ", "keahlian ")) and len(lowered) < 24:
+        return True
+    return False
 
 
 def dedupe_strings(values: list[str]) -> list[str]:
@@ -1063,14 +1140,17 @@ def improve_requirement_summary(value: str | None, *, skills: list[str]) -> str 
     summary_items = dedupe_strings(summary_items)
 
     if summary_items:
-        condensed = ". ".join(item for item in summary_items[:4]).strip()
-        if condensed and not condensed.endswith("."):
-            condensed = f"{condensed}."
-        if condensed:
-            return f"Kualifikasi utama: {condensed}"
+        selected_items = summary_items[:6]
+        if len(selected_items) == 1:
+            sentence = selected_items[0]
+            if not sentence.endswith("."):
+                sentence = f"{sentence}."
+            return ensure_display_html(sentence)
+        bullet_text = "\n".join(f"- {item}" for item in selected_items)
+        return ensure_display_html(bullet_text)
 
     if skills:
-        return f"Kualifikasi utama: Menguasai {', '.join(skills[:6])}."
+        return ensure_display_html(f"Menguasai {', '.join(skills[:6])}.")
     return None
 
 
@@ -1084,12 +1164,12 @@ def improve_description(
     requirement_summary: str | None,
     skills: list[str],
 ) -> str | None:
-    text = normalize_text_block(value)
+    text = strip_meta_description_text(normalize_text_block(value))
     if text is not None:
         if source_platform.casefold() == "glints" and "level listing" in text.casefold():
-            return text
+            return ensure_display_html(text)
         if looks_like_indonesian(text) and not should_rewrite_description(text):
-            return text
+            return ensure_display_html(text)
 
     company_text = company_name or "perusahaan terkait"
     location_text = f" di {location_display}" if location_display else ""
@@ -1107,10 +1187,7 @@ def improve_description(
             )
     elif skills:
         details.append(f"Kompetensi utama yang dibutuhkan mencakup {', '.join(skills[:8])}.")
-
-    if not looks_like_indonesian(" ".join(details)):
-        details.insert(0, "Deskripsi peran ini disusun ulang dalam Bahasa Indonesia.")
-    return " ".join(details)
+    return ensure_display_html(" ".join(details))
 
 
 def should_rewrite_description(value: str) -> bool:
@@ -1130,6 +1207,19 @@ def should_rewrite_description(value: str) -> bool:
     return False
 
 
+def strip_meta_description_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    clauses = re.split(r"(?<=[.!?])\s+|\n+", value)
+    filtered = [clause.strip() for clause in clauses if clause.strip()]
+    filtered = [
+        clause for clause in filtered if not META_DESCRIPTION_SENTENCE_PATTERN.search(clause)
+    ]
+    if not filtered:
+        return None
+    return " ".join(filtered)
+
+
 def strip_requirement_summary_prefix(value: str) -> str:
     text = normalize_text_block(value)
     if text is None:
@@ -1141,7 +1231,11 @@ def strip_requirement_summary_prefix(value: str) -> str:
 def normalize_text_block(value: str | None) -> str | None:
     if value is None:
         return None
-    cleaned = strip_visual_noise(value)
+    source_value = value
+    if HTML_TAG_PATTERN.search(source_value):
+        html_text = html_to_text(source_value)
+        source_value = html_text if isinstance(html_text, str) else source_value
+    cleaned = strip_visual_noise(source_value)
     cleaned = " ".join(cleaned.split())
     if not cleaned:
         return None

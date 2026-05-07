@@ -1426,6 +1426,10 @@ def test_pipeline_data_quality_reports_backend_field_coverage(
     assert output["status"] == "ok"
     assert output["summary"]["totalJobs"] == 2
     assert output["summary"]["nullBlankCounts"]["null_work_type"] == 1
+    assert output["summary"]["nullBlankCounts"]["requirement_summary_prefix"] == 0
+    assert output["summary"]["nullBlankCounts"]["safe_display_html"] == 2
+    assert output["summary"]["nullBlankCounts"]["unsafe_html"] == 0
+    assert output["summary"]["displayHtml"]["safe_display_html"] == 2
     assert output["summary"]["bySource"]["glints"]["jobsWithoutRequirements"] == 1
     assert output["summary"]["bySource"]["glints"]["jobsWithoutSkills"] == 1
     assert output["summary"]["semanticQuality"]["avgRequirementsPerJob"] == 0.5
@@ -1508,6 +1512,76 @@ def test_pipeline_data_quality_fails_semantic_requirement_noise(
         warning["name"] == "noisyRequirementCount" and warning["severity"] == "fail"
         for warning in output["summary"]["semanticQuality"]["warnings"]
     )
+
+
+def test_pipeline_data_quality_fails_prefix_or_unsafe_html(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    apply_env(monkeypatch)
+    backend_path = tmp_path / "backend-quality-html.db"
+    backend_url = f"sqlite:///{backend_path}"
+    engine = create_engine(backend_url)
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE source_platforms (id TEXT PRIMARY KEY, slug TEXT)"))
+        connection.execute(
+            text(
+                """
+                CREATE TABLE job_listings (
+                  id TEXT PRIMARY KEY,
+                  source_platform_id TEXT NOT NULL,
+                  work_type TEXT,
+                  employment_type TEXT,
+                  experience_level TEXT,
+                  province TEXT,
+                  city TEXT,
+                  salary_display TEXT,
+                  description TEXT,
+                  requirement_summary TEXT
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE job_requirements (
+                  id TEXT PRIMARY KEY,
+                  job_listing_id TEXT NOT NULL,
+                  type TEXT NOT NULL,
+                  value TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text("CREATE TABLE job_skills (id TEXT PRIMARY KEY, job_listing_id TEXT NOT NULL)")
+        )
+        connection.execute(
+            text("INSERT INTO source_platforms (id, slug) VALUES ('sp-1', 'dealls')")
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO job_listings (
+                  id, source_platform_id, work_type, employment_type, experience_level,
+                  province, city, salary_display, description, requirement_summary
+                ) VALUES (
+                  'job-1', 'sp-1', 'ONSITE', 'FULL_TIME', 'ENTRY_LEVEL',
+                  'DKI Jakarta', 'Jakarta', 'Rp10.000.000',
+                  '<p onclick=\"x()\">Desc</p>',
+                  'Kualifikasi utama: minimal 2 tahun pengalaman'
+                )
+                """
+            )
+        )
+
+    assert main(["data-quality", "--database-url", backend_url, "--env-file", ".env.example"]) == 1
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "fail"
+    assert output["summary"]["displayHtml"]["requirement_summary_prefix"] == 1
+    assert output["summary"]["displayHtml"]["unsafe_html"] == 1
 
 
 def test_pipeline_data_quality_fails_disabled_source_present(

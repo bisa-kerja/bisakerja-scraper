@@ -18,7 +18,7 @@ from modules.jobs.completion import (
 from modules.jobs.dates import parse_absolute_datetime
 from modules.jobs.salary import normalize_salary
 from modules.jobs.schemas import CanonicalJobSchema, SourcePlatform
-from shared.text import clean_text, html_to_text
+from shared.text import clean_text, ensure_display_html, html_to_text, text_to_display_html
 
 _HTML_LIKE_PATTERN = re.compile(r"<[^>]+>")
 _VISUAL_NOISE_PATTERN = re.compile(r"[\u2600-\u27BF\U0001F300-\U0001FAFF]")
@@ -452,7 +452,7 @@ def _apply_defaults(
         if run_scraped_at is not None:
             source["scraped_at"] = run_scraped_at
 
-    description = clean_description(_normalize_text(payload.get("description")))
+    description = ensure_display_html(payload.get("description"))
     requirements = clean_description(_normalize_text(payload.get("requirements")))
     payload["description"] = description
     payload["requirements"] = requirements
@@ -494,7 +494,7 @@ def _apply_defaults(
     payload["experience_level"] = infer_experience_level(
         explicit=payload.get("experience_level"),
         title=payload.get("title"),
-        description=payload.get("description"),
+        description=_normalize_text(payload.get("description")),
         requirements=payload.get("requirements"),
     )
 
@@ -508,11 +508,13 @@ def _apply_defaults(
         location_display = None
         if isinstance(location, dict):
             location_display = location.get("display")
-        payload["description"] = build_source_limited_summary(
-            title=payload.get("title"),
-            company=company.get("name") if isinstance(company, dict) else None,
-            location=location_display,
-            source_platform=prompt_input.source_platform.value,
+        payload["description"] = text_to_display_html(
+            build_source_limited_summary(
+                title=payload.get("title"),
+                company=company.get("name") if isinstance(company, dict) else None,
+                location=location_display,
+                source_platform=prompt_input.source_platform.value,
+            )
         )
 
     if run_scraped_at is not None:
@@ -738,7 +740,7 @@ def _build_description_from_evidence(
         )
     ]
     if evidence_requirements:
-        sentences.append(f"Kualifikasi utama mencakup: {evidence_requirements}")
+        sentences.append(f"Kualifikasi inti mencakup: {evidence_requirements}")
     elif evidence_skills:
         sentences.append(f"Keahlian yang dibutuhkan antara lain: {', '.join(evidence_skills[:8])}.")
     return " ".join(sentences)
@@ -878,7 +880,9 @@ Rules:
 4. Prioritize filling as many target fields as evidence permits.
    Keep null only when evidence is truly absent.
 5. Output JSON only. No prose, markdown, comments, code fences, or extra keys.
-6. Normalize HTML-like content into clean safe plain text without losing core meaning.
+6. Normalize display content into sanitized semantic HTML.
+   Allowed tags: <p>, <ul>, <ol>, <li>, <strong>, <em>, <br>.
+   Never output attributes, scripts, styles, inline URLs, or event handlers.
 7. Parse salary numbers only when confidence is high. Keep uncertain numeric salary values null.
 8. Map location into display, city, region, and country when evidence exists.
    City/province resolution is open-world (not whitelist-based).
@@ -890,12 +894,12 @@ Rules:
 10. external_apply_url must fall back to source_url when missing.
 11. Prefer explicit defaults aligned with backendSchemaContext default policy.
 12. Keep unknown values null instead of placeholders such as '-', 'N/A', or 'unknown text'.
-13. For generated or normalized prose fields, use Bahasa Indonesia that is concise and natural.
-14. requirement summary text should be Bahasa Indonesia when it is generated/paraphrased by model.
+13. Instruction language in this prompt is English.
+14. Generated or normalized human-readable output must be concise natural Indonesian.
 15. When requirement or skill evidence exists in source data,
     avoid empty requirements/skills output.
 16. Keep generated requirement text factual, short, and ready for downstream requirement extraction.
-17. Keep generated/paraphrased human-readable fields in Bahasa Indonesia.
+17. Keep generated/paraphrased human-readable fields in Indonesian.
     Avoid English paraphrase unless direct verbatim source evidence is intentionally preserved.
 18. salary.display consistency rule:
     when salary min/max values are present, salary display must not be placeholder text.
@@ -910,11 +914,15 @@ Rules:
     - generated prose must be Bahasa Indonesia;
     - location should keep Indonesia context when evidence is Indonesian;
     - avoid icons, emoji, and decorative symbols in human-readable fields.
+    - never include meta process statements such as
+      "Deskripsi peran ini disusun ulang dalam Bahasa Indonesia."
 21. Field-specific output standards:
-    - description: 2-5 concise Indonesian sentences, include role focus
-      and execution context when evidence exists;
-    - requirement_summary/requirements: factual Indonesian phrasing, readable and non-duplicative;
+    - description: safe display HTML with 2-5 short Indonesian paragraphs
+      or paragraph+list when evidence supports it;
+    - requirement_summary display (derived downstream): do not use fixed label prefixes;
+    - requirements: plain factual Indonesian text for downstream atomic extraction;
     - skills: specific technology/domain terms only, deduplicated, no generic filler.
+      Split composite entries (for example "HTML, CSS, PHP") into atomic skill items.
 22. Minimum coverage rule for sync completeness:
     - produce at least one requirement and one skill when role evidence exists
       even if detail payload is sparse.
@@ -938,19 +946,23 @@ Rules:
    enums, and relation safety.
 7. Fill as many fields as evidence permits; keep null only when evidence is truly absent.
 8. Output JSON only. No prose, markdown, comments, code fences, or extra keys.
-9. For generated/paraphrased prose fields use Bahasa Indonesia.
+9. Instruction language is English, while generated/paraphrased prose output must be Indonesian.
 10. When evidence for requirements or skills exists, do not return both as empty.
 11. When salary min/max are present, avoid placeholder salary display text.
 12. For Dealls-like payloads, use responsibilities as description evidence
     when description is missing.
 13. Avoid icons, emoji, and decorative symbols in human-readable fields.
-14. Keep description/requirements concise and useful in Bahasa Indonesia.
+14. Description output should be sanitized semantic display HTML.
+    Requirements output should stay concise plain text in Indonesian.
 15. Keep skills specific and deduplicated; avoid generic filler skills.
+    Split composite skills into atomic items.
 16. Keep minimum one requirement and one skill when role evidence is present.
 17. Requirements must be atomic, typed-ready statements for SKILL, EXPERIENCE,
     EDUCATION, RESPONSIBILITY, or OTHER downstream rows.
 18. Exclude benefit and compensation noise from requirements, including THR,
     tunjangan, benefit, fasilitas, bonus, cuti, BPJS, and gaji pokok.
+19. Never include meta process statements in description/requirements fields
+    (for example "deskripsi disusun ulang" style disclaimers).
 19. For Glints list-only records, keep requirements conservative and transparent
     because official detail text is unavailable.
 """
@@ -1065,7 +1077,9 @@ COMPLETION_POLICY: dict[str, Any] = {
         "source-limited summary and explicitly non-official detail text"
     ),
     "languagePolicy": {
-        "generatedProse": "Bahasa Indonesia",
+        "instructionLanguage": "English",
+        "outputLanguage": "Indonesian",
+        "generatedProse": "Indonesian",
         "appliesTo": [
             "description_generated",
             "requirements_generated",
@@ -1079,9 +1093,10 @@ COMPLETION_POLICY: dict[str, Any] = {
         ],
     },
     "contentStructurePolicy": {
+        "safeDisplayHtmlTags": ["p", "ul", "ol", "li", "strong", "em", "br"],
         "description": {
-            "goal": "clear role overview in natural Bahasa Indonesia",
-            "lengthGuidance": "2-5 sentences, avoid vague one-liners",
+            "goal": "safe display HTML role overview in natural Indonesian",
+            "lengthGuidance": "2-5 short paragraphs or paragraph+list; avoid vague one-liners",
             "mustIncludeWhenEvidenceExists": [
                 "role focus or core responsibilities",
                 "execution context (product/system/team/process)",
@@ -1089,20 +1104,23 @@ COMPLETION_POLICY: dict[str, Any] = {
             "mustAvoid": [
                 "claims not supported by source evidence",
                 "empty boilerplate wording",
+                "raw source HTML",
+                "unsafe HTML tags or attributes",
             ],
         },
         "requirementSummary": {
             "goal": "display-ready summary of key qualifications",
-            "style": "professional, concise, factual Bahasa Indonesia",
-            "prefixRule": "prefer 'Kualifikasi utama:' when text is summarized/paraphrased",
+            "style": "professional, concise, factual Indonesian in safe HTML paragraph/list",
+            "prefixRule": "do not use fixed prefixes like 'Kualifikasi utama:'",
             "mustIncludeWhenEvidenceExists": [
                 "experience",
                 "core competencies",
             ],
+            "shapeGuidance": "one short paragraph or <ul><li>...</li></ul> with 3-6 items",
         },
         "requirements": {
             "goal": "clean requirement text for downstream extraction",
-            "style": "factual, non-fabricated, no raw HTML",
+            "style": "factual, non-fabricated plain text, no raw HTML",
             "normalizationHints": [
                 "split bullet-like evidence into atomic statements",
                 "group education, experience, skill, and responsibility evidence clearly",
@@ -1117,6 +1135,7 @@ COMPLETION_POLICY: dict[str, Any] = {
                 "use technology/domain terms explicitly present in source",
                 "dedupe case-insensitive",
                 "avoid overly generic skills without direct evidence",
+                "split composite skills into atomic items",
             ],
         },
         "cleanPresentation": {
@@ -1127,6 +1146,9 @@ COMPLETION_POLICY: dict[str, Any] = {
                 "requirements",
                 "skills",
             ],
+            "metaStatementRule": (
+                "never include process/disclaimer text about rewriting or translation"
+            ),
         },
     },
     "salaryPresentationPolicy": {
@@ -1135,6 +1157,8 @@ COMPLETION_POLICY: dict[str, Any] = {
     },
     "finalQualityChecklist": [
         "description should be informative and not vague one-liner when evidence exists",
+        "description is safe semantic display HTML with allowlisted tags only",
+        "requirement summary display must not start with a fixed prefix label",
         "requirements non-empty when evidence exists",
         "skills non-empty when evidence exists",
         "requirements split cleanly into atomic downstream rows",
@@ -1143,6 +1167,7 @@ COMPLETION_POLICY: dict[str, Any] = {
         "salary display non-placeholder when numeric salary exists",
         "Indonesia context preserved when geography evidence is Indonesian",
         "description/requirement_summary/requirements/skills contain no icon or emoji noise",
+        "description/requirements/skills contain no rewrite/translation disclaimer text",
     ],
 }
 
@@ -1415,11 +1440,11 @@ NORMALIZATION_OUTPUT_EXAMPLES: dict[str, Any] = {
         "employment_types": ["full_time"],
         "work_type": "onsite",
         "description": (
-            "Posisi Programmer di Gamma Persada berfokus pada pengembangan sistem aplikasi "
-            "dan peningkatan stabilitas layanan."
+            "<p>Posisi Programmer di Gamma Persada berfokus pada pengembangan sistem aplikasi "
+            "dan peningkatan stabilitas layanan.</p>"
         ),
         "requirements": (
-            "Kualifikasi utama: memiliki pengalaman relevan dalam pengembangan perangkat lunak, "
+            "Memiliki pengalaman relevan dalam pengembangan perangkat lunak, "
             "mampu bekerja kolaboratif, dan memahami praktik coding yang baik."
         ),
         "skills": [],
@@ -1469,11 +1494,12 @@ NORMALIZATION_OUTPUT_EXAMPLES: dict[str, Any] = {
         "employment_types": ["full_time"],
         "work_type": "remote",
         "description": (
-            "Posisi Backend Engineer berfokus pada pengembangan dan pemeliharaan API, "
-            "pipeline data, serta peningkatan keandalan layanan backend."
+            "<p>Posisi Backend Engineer berfokus pada pengembangan dan pemeliharaan API, "
+            "pipeline data, serta peningkatan keandalan layanan backend.</p>"
+            "<ul><li>Berkoordinasi lintas tim produk dan infrastruktur.</li></ul>"
         ),
         "requirements": (
-            "Kualifikasi utama: memiliki pengalaman backend minimal 3 tahun, "
+            "Memiliki pengalaman backend minimal 3 tahun, "
             "menguasai Python dan SQL, serta memahami layanan cloud."
         ),
         "skills": ["Python", "PostgreSQL", "FastAPI", "Docker"],

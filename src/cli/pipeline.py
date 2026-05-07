@@ -140,6 +140,16 @@ DEFAULT_FIXTURE_ROOT = Path("tests/fixtures/raw")
 PLATFORM_SOURCES = SOURCE_CHOICES[1:]
 SENSITIVE_TOKEN_PATTERN = re.compile(r"(bearer\s+)[^\s]+", re.IGNORECASE)
 SENSITIVE_QUERY_PATTERN = re.compile(r"((token|password|secret|key)=)[^&\s]+", re.IGNORECASE)
+DISPLAY_HTML_TAG_PATTERN = re.compile(r"<\s*/?\s*([a-zA-Z0-9]+)([^>]*)>")
+DISPLAY_HTML_ALLOWLIST = {"p", "ul", "ol", "li", "strong", "em", "br"}
+DISPLAY_HTML_UNSAFE_TOKEN_PATTERN = re.compile(
+    r"(?:<\s*/?\s*(?:script|style|iframe|object|embed|svg)\b|\bon[a-z]+\s*=|javascript\s*:)",
+    re.IGNORECASE,
+)
+REQUIREMENT_SUMMARY_PREFIX_PATTERN = re.compile(
+    r"^\s*(?:<p>\s*)?(kualifikasi utama|kualifikasi|persyaratan)\s*:\s*",
+    re.IGNORECASE,
+)
 
 
 class CliInputError(ValueError):
@@ -972,9 +982,18 @@ async def run_data_quality(args: argparse.Namespace) -> dict[str, Any]:
         raise CliInputError(f"failed to read backend data quality: {exc}") from exc
     finally:
         engine.dispose()
+    display_html = summary.get("displayHtml", {})
+    html_violation = (
+        int(display_html.get("unsafe_html", 0)) > 0
+        or int(display_html.get("requirement_summary_prefix", 0)) > 0
+    )
     return {
         "check": "pipeline-data-quality",
-        "status": "fail" if summary.get("semanticQuality", {}).get("status") == "fail" else "ok",
+        "status": (
+            "fail"
+            if summary.get("semanticQuality", {}).get("status") == "fail" or html_violation
+            else "ok"
+        ),
         "database": {"url": redact_database_url(database_url)},
         "summary": summary,
     }
@@ -1102,6 +1121,22 @@ def build_backend_data_quality_summary(
             "blank_requirement_summary",
         ],
     )
+    display_rows = (
+        connection.execute(
+            text(
+                """
+            SELECT description, requirement_summary
+            FROM job_listings
+            """
+            )
+        )
+        .mappings()
+        .all()
+    )
+    display_html = _display_html_quality_summary(display_rows)
+    null_blank["requirement_summary_prefix"] = display_html["requirement_summary_prefix"]
+    null_blank["safe_display_html"] = display_html["safe_display_html"]
+    null_blank["unsafe_html"] = display_html["unsafe_html"]
 
     by_source_rows = (
         connection.execute(
@@ -1419,9 +1454,56 @@ def build_backend_data_quality_summary(
     return {
         "totalJobs": total_jobs,
         "nullBlankCounts": null_blank,
+        "displayHtml": display_html,
         "bySource": by_source,
         "semanticQuality": semantic_quality,
     }
+
+
+def _display_html_quality_summary(rows: list[dict[str, Any]]) -> dict[str, int]:
+    requirement_summary_prefix = 0
+    safe_display_html = 0
+    unsafe_html = 0
+    for row in rows:
+        description = row.get("description")
+        requirement_summary = row.get("requirement_summary")
+        description_safe = _is_safe_display_html_value(description)
+        summary_safe = _is_safe_display_html_value(requirement_summary)
+        if description_safe and summary_safe:
+            safe_display_html += 1
+        else:
+            unsafe_html += 1
+        if _has_legacy_requirement_summary_prefix(requirement_summary):
+            requirement_summary_prefix += 1
+    return {
+        "requirement_summary_prefix": requirement_summary_prefix,
+        "safe_display_html": safe_display_html,
+        "unsafe_html": unsafe_html,
+    }
+
+
+def _has_legacy_requirement_summary_prefix(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    return bool(REQUIREMENT_SUMMARY_PREFIX_PATTERN.search(value))
+
+
+def _is_safe_display_html_value(value: Any) -> bool:
+    if not isinstance(value, str):
+        return True
+    text = value.strip()
+    if not text:
+        return True
+    if DISPLAY_HTML_UNSAFE_TOKEN_PATTERN.search(text):
+        return False
+    for match in DISPLAY_HTML_TAG_PATTERN.finditer(text):
+        tag_name = match.group(1).casefold()
+        attrs = match.group(2)
+        if tag_name not in DISPLAY_HTML_ALLOWLIST:
+            return False
+        if attrs and attrs.strip().strip("/") not in {"", "/"}:
+            return False
+    return True
 
 
 def _merge_coverage_by_source(

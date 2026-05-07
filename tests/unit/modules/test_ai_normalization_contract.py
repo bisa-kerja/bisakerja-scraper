@@ -49,7 +49,7 @@ def test_golden_outputs_validate_against_canonical_contract() -> None:
             if scenario["name"] == "detail-html-and-salary":
                 assert (
                     normalized.description
-                    == "Build and maintain frontend dashboards for business operations"
+                    == "<p>Build and maintain frontend dashboards for business operations</p>"
                 )
                 assert (
                     normalized.requirements == "Minimum 3 years of experience as Frontend Engineer"
@@ -68,10 +68,9 @@ def test_golden_outputs_validate_against_canonical_contract() -> None:
                 assert normalized.salary.min_amount is None
                 assert normalized.salary.max_amount is None
             if scenario["name"] == "list-with-embedded-detail-html":
-                assert (
-                    normalized.description
-                    == "Revenue Ownership Take full ownership of revenue targets."
-                )
+                assert normalized.description is not None
+                assert "Revenue Ownership" in normalized.description
+                assert "<strong>" in normalized.description or "<ul>" in normalized.description
                 assert normalized.requirements == "Bachelor's degree in Business."
                 assert normalized.location.display == "North Jakarta, DKI Jakarta, Indonesia"
 
@@ -125,7 +124,9 @@ def test_prompt_contract_includes_schema_and_strict_rules() -> None:
         payload["completionPolicy"]["locationResolutionPolicy"]["countryPreference"]
         == "Indonesia when evidence indicates Indonesian geography"
     )
-    assert payload["completionPolicy"]["languagePolicy"]["generatedProse"] == "Bahasa Indonesia"
+    assert payload["completionPolicy"]["languagePolicy"]["instructionLanguage"] == "English"
+    assert payload["completionPolicy"]["languagePolicy"]["outputLanguage"] == "Indonesian"
+    assert payload["completionPolicy"]["languagePolicy"]["generatedProse"] == "Indonesian"
     assert (
         payload["completionPolicy"]["completenessPolicy"]["preferFactualCoverageOverNulls"] is True
     )
@@ -159,11 +160,34 @@ def test_prompt_contract_includes_schema_and_strict_rules() -> None:
     assert "contentStructurePolicy" in payload["completionPolicy"]
     assert (
         payload["completionPolicy"]["contentStructurePolicy"]["description"]["goal"]
-        == "clear role overview in natural Bahasa Indonesia"
+        == "safe display HTML role overview in natural Indonesian"
+    )
+    assert payload["completionPolicy"]["contentStructurePolicy"]["safeDisplayHtmlTags"] == [
+        "p",
+        "ul",
+        "ol",
+        "li",
+        "strong",
+        "em",
+        "br",
+    ]
+    assert (
+        payload["completionPolicy"]["contentStructurePolicy"]["requirementSummary"]["prefixRule"]
+        == "do not use fixed prefixes like 'Kualifikasi utama:'"
     )
     assert (
         payload["completionPolicy"]["contentStructurePolicy"]["cleanPresentation"]["rule"]
         == "no icons, emoji, decorative symbols, or noisy visual markers"
+    )
+    assert (
+        payload["completionPolicy"]["contentStructurePolicy"]["cleanPresentation"][
+            "metaStatementRule"
+        ]
+        == "never include process/disclaimer text about rewriting or translation"
+    )
+    assert (
+        "split composite skills into atomic items"
+        in payload["completionPolicy"]["contentStructurePolicy"]["skills"]["rules"]
     )
     assert (
         "exclude benefit and compensation text"

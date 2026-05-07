@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-04
+last_reviewed: 2026-05-07
 ---
 
 # Parsing and Normalization Module
@@ -26,7 +26,7 @@ Normalization execution path:
 | --- | --- |
 | Parser | Reads source payload roots and extracts source fields |
 | Mapper | Converts source values into canonical job/company/location/salary fields |
-| Sanitizer | Converts HTML description and qualifications into safe content |
+| Sanitizer | Converts display fields into sanitized semantic HTML and strips unsafe markup |
 | Validation gate | Blocks or quarantines rows missing required identity/display fields |
 | Provenance | Records source field paths used by each mapper |
 
@@ -71,7 +71,7 @@ Presentation-only fields:
 | --- | --- |
 | Salary | Unknown stays `null`; structured ranges and reliable labels normalize into min, max, currency, period, and display label |
 | HTML | Sanitize before staging, enrichment, display, or model input |
-| Raw HTML | Keep only in raw payload storage; canonical `description` and `requirements` contain clean text |
+| Raw HTML | Keep only in raw payload storage; canonical `description` is sanitized semantic display HTML while `requirements` stays plain text |
 | Dates | Absolute timestamps normalize to timezone-aware UTC datetimes |
 | Relative labels | Keep display-only; do not convert labels such as `3 hari yang lalu` into fake timestamps |
 | Tags/skills | Keep only mapped canonical tags or skill names |
@@ -109,7 +109,7 @@ Posted date normalization separates canonical time from presentation text.
 | --- | --- |
 | Missing source identity | Quarantine row |
 | Missing title/company/source URL | Hold from visible staging |
-| Invalid HTML | Strip unsafe content; keep sanitized text |
+| Invalid HTML | Strip unsafe content and attributes; keep allowlisted display HTML only |
 | Unknown enum | Store raw display text only if canonical mapping is absent |
 | Source shape drift | Mark mapper failure and attach sanitized field path |
 

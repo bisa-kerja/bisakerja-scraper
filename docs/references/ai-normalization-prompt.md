@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-06
+last_reviewed: 2026-05-07
 ---
 
 # AI Normalization Prompt Contract
@@ -45,12 +45,16 @@ The normalization system prompt enforces:
   - `normalizedJob`, or
   - `errorCode` + `errorMessage`.
 - No invented facts outside `rawPayloadSubset`.
-- HTML fields are normalized into safe plain text.
+- Display fields are normalized into sanitized semantic HTML.
+- Safe display HTML tags are limited to: `<p>`, `<ul>`, `<ol>`, `<li>`, `<strong>`, `<em>`, `<br>`.
+- HTML attributes, event handlers, inline URLs, script/style content, and non-allowlisted tags are removed.
 - Salary parsing may use numeric fields or salary labels.
 - Unknown values remain `null`.
 - Glints list data stays partial when detail fields are absent and must use transparent source-limited summary text.
-- Generated/paraphrased prose fields use Bahasa Indonesia for consistent downstream UX.
-- Generated/paraphrased prose fields must be Bahasa Indonesia; English paraphrase is disallowed unless verbatim source text is intentionally preserved.
+- Prompt instruction language is English.
+- Generated/paraphrased prose output language is Indonesian for consistent downstream UX.
+- English paraphrase is disallowed unless verbatim source text is intentionally preserved.
+- Process/disclaimer meta text is disallowed in display fields (for example rewrite/translation notices).
 - `external_apply_url` falls back to `source_url` when unavailable.
 - When salary numeric evidence exists (`minAmount`/`maxAmount`), `salary.display` must not be placeholder text.
 - Location uses open-world city/province resolution and Indonesia-first country context when geography evidence is Indonesian.
@@ -74,10 +78,10 @@ Expected content structure is explicit so output stays consistent across sources
 
 | Field | Target shape | Minimum expectation |
 | --- | --- | --- |
-| `description` | 2-5 kalimat Bahasa Indonesia, informatif, bukan one-liner generik | Menyebut fokus peran/tanggung jawab utama dan konteks eksekusi kerja bila evidence tersedia |
-| `requirement_summary` | Ringkasan singkat siap tampil, gaya profesional Bahasa Indonesia | Saat diringkas/parafrase, gunakan prefiks `Kualifikasi utama:` dan pertahankan poin pengalaman + kompetensi inti |
-| `requirements` | Teks requirement bersih untuk ekstraksi lanjutan | Factual, tanpa HTML mentah, tanpa duplikasi kalimat, tidak mengada-ada |
-| `skills` | Daftar skill spesifik berbasis evidence | Dedupe case-insensitive, utamakan teknologi/domain eksplisit, hindari skill terlalu abstrak tanpa evidence |
+| `description` | Safe display HTML (`<p>`, `<ul>/<ol>`, `<li>`, `<strong>`, `<em>`, `<br>`) | Menyebut fokus peran/tanggung jawab utama dan konteks eksekusi kerja bila evidence tersedia |
+| `requirement_summary` | Ringkasan singkat safe display HTML, gaya profesional Bahasa Indonesia | Tidak boleh diawali label tetap seperti `Kualifikasi utama:`; pertahankan poin pengalaman + kompetensi inti |
+| `requirements` | Teks requirement plain text untuk ekstraksi lanjutan | Factual, tanpa HTML mentah, tanpa duplikasi kalimat, tidak mengada-ada |
+| `skills` | Daftar skill spesifik berbasis evidence | Dedupe case-insensitive, utamakan teknologi/domain eksplisit, pecah skill komposit jadi item atomic, hindari skill terlalu abstrak tanpa evidence |
 
 All four fields must avoid emoji, decorative icons, and noisy visual symbols.
 
@@ -93,7 +97,8 @@ AI output is accepted only when:
 4. Default normalization pass succeeds:
    - `external_apply_url` fallback is resolved.
    - salary values are normalized using shared salary parser.
-   - HTML-like text fields are cleaned.
+   - `description` dikonversi ke sanitized semantic display HTML.
+   - `requirements` tetap plain text untuk ekstraksi requirement terstruktur.
    - work type defaults to `onsite` when unknown.
    - employment type defaults to `full_time` when unknown.
    - experience level uses deterministic inference and safe fallback.
