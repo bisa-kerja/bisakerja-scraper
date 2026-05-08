@@ -26,8 +26,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from config.database_urls import to_sync_postgres_url
 from config.settings import Settings
+from core.errors import FetchError, ParseError
 from integrations.ai import OpenAIEnrichmentClient, OpenAIModelRotator, OpenAINormalizationClient
 from integrations.backend import (
+    BackendIdentityLookup,
     BackendNotificationHandoffClient,
     BackendSyncClient,
     BackendSyncResult,
@@ -39,6 +41,7 @@ from integrations.backend.payloads import (
 )
 from integrations.sources.dealls.detail import DeallsDetailAdapter
 from integrations.sources.dealls.list import (
+    DEALLS_MAX_PAGE_SIZE,
     DeallsListAdapter,
     DeallsListQuery,
     build_dealls_http_client,
@@ -63,6 +66,7 @@ from integrations.sources.jobstreet.detail import JobStreetDetailAdapter
 from integrations.sources.jobstreet.list import (
     JobStreetListQuery,
     build_jobstreet_http_client,
+    build_jobstreet_public_http_client,
     extract_jobstreet_source_timestamp,
     parse_jobstreet_list_payload,
 )
@@ -96,6 +100,7 @@ from integrations.sources.kitalulus.mapper import map_kitalulus_job
 from integrations.sources.mapper_utils import SourceMapperResult
 from jobs.pipeline import PipelineConfig, PipelineOrchestrator, PipelineResult
 from jobs.scheduler import ManualTriggerGuard, ScheduledStage
+from modules.eligibility import EligibilityResolver
 from modules.enrichment import EnrichmentService, EnrichmentServiceConfig
 from modules.enrichment.repositories import EnrichmentSource, EnrichmentStagingRepository
 from modules.enrichment.schemas import (
@@ -120,6 +125,7 @@ from modules.persistence import (
     JobPersistenceRepository,
     JobRequirementStaging,
     JobSkillStaging,
+    NormalizationEligibilityDecision,
     NormalizationQuarantine,
     NormalizedJob,
     NotificationHandoffEvent,
@@ -886,6 +892,11 @@ async def run_preflight(args: argparse.Namespace) -> dict[str, Any]:
     fixture_check = fixture_availability(source_selection.requested, fixture_root=fixture_root)
     migration_check = migration_target_check()
     backend_mode = backend_sync_mode(settings, execute=args.execute)
+    backend_batch_guard = backend_sync_batch_guard(settings)
+    backend_endpoint_probe = await backend_sync_endpoint_probe(settings, execute=args.execute)
+    backend_partial_support = backend_partial_response_support_check(
+        backend_endpoint_probe=backend_endpoint_probe
+    )
 
     checks = [
         {"name": "env", "passed": True},
@@ -896,6 +907,12 @@ async def run_preflight(args: argparse.Namespace) -> dict[str, Any]:
         },
         {"name": "fixtures", "passed": fixture_check["status"] == "ok"},
         {"name": "backendSyncMode", "passed": backend_mode["status"] == "ok"},
+        {"name": "backendSyncBatchGuard", "passed": backend_batch_guard["status"] == "ok"},
+        {"name": "backendSyncEndpoint", "passed": backend_endpoint_probe["status"] == "ok"},
+        {
+            "name": "backendPartialResponseSupport",
+            "passed": backend_partial_support["status"] == "ok",
+        },
         {"name": "secretRedaction", "passed": True},
     ]
     failed = sum(1 for check in checks if not check["passed"])
@@ -917,6 +934,9 @@ async def run_preflight(args: argparse.Namespace) -> dict[str, Any]:
         "migrationTarget": migration_check,
         "fixtures": fixture_check,
         "backendSyncMode": backend_mode,
+        "backendSyncBatchGuard": backend_batch_guard,
+        "backendSyncEndpointProbe": backend_endpoint_probe,
+        "backendPartialResponseSupport": backend_partial_support,
         "redactedEvidencePreview": {
             "scraperDatabaseUrl": redact_database_url(settings.scraper_database_url),
             "backendDatabaseUrl": redact_database_url(settings.backend_database_url),
@@ -1730,6 +1750,16 @@ def build_staging_report(
             ).all()
         )
     normalized_job_ids = [job.id for job in normalized_jobs]
+    eligibility_decisions = list(
+        session.scalars(
+            select(NormalizationEligibilityDecision)
+            .where(NormalizationEligibilityDecision.scrape_run_id.in_(run_ids))
+            .order_by(
+                NormalizationEligibilityDecision.created_at.asc(),
+                NormalizationEligibilityDecision.id.asc(),
+            )
+        ).all()
+    )
 
     sync_events = list(
         session.scalars(
@@ -1859,6 +1889,7 @@ def build_staging_report(
         stage_runs=stage_runs,
         raw_jobs=raw_jobs,
         normalized_jobs=normalized_jobs,
+        eligibility_decisions=eligibility_decisions,
         quarantine_rows=quarantine_rows,
         ai_logs=ai_logs,
         sync_events=sync_events,
@@ -1878,6 +1909,7 @@ def build_staging_report(
             "fetched": len(raw_jobs),
             "rawPersisted": len(raw_jobs),
             "normalized": len(normalized_jobs),
+            "eligibilityDecisions": len(eligibility_decisions),
             "enriched": len(enriched_job_ids),
             "syncUpserted": len(sync_sent),
             "skipped": run_skipped,
@@ -1904,6 +1936,12 @@ def build_staging_report(
             "count": len(quarantine_rows),
             "openCount": sum(1 for row in quarantine_rows if row.status == "open"),
             "byReason": dict(sorted(quarantine_by_reason.items())),
+        },
+        "eligibility": {
+            "count": len(eligibility_decisions),
+            "byReason": dict(
+                sorted(Counter(row.decision for row in eligibility_decisions).items())
+            ),
         },
         "consistency": {
             "duplicateRawIdentities": duplicate_count(raw_identity_counts),
@@ -2339,6 +2377,7 @@ def build_strict_invariant_checks(
     stage_runs: dict[str, ScrapeRun | None],
     raw_jobs: Sequence[RawJob],
     normalized_jobs: Sequence[NormalizedJob],
+    eligibility_decisions: Sequence[NormalizationEligibilityDecision],
     quarantine_rows: Sequence[NormalizationQuarantine],
     ai_logs: Sequence[AIRequestLog],
     sync_events: Sequence[SyncEvent],
@@ -2360,10 +2399,17 @@ def build_strict_invariant_checks(
     raw_count = len(raw_jobs)
     normalized_count = len(normalized_jobs)
     quarantine_count = len(quarantine_rows)
+    decision_count = len(eligibility_decisions)
+    decision_by_raw_id = {decision.raw_job_id: decision for decision in eligibility_decisions}
     normalize_run = stage_runs.get("normalize")
     normalize_skipped = run_summary_counts(normalize_run).get("skipped", 0)
     raw_gap = raw_count - normalized_count
-    normalize_gap_has_reason = raw_gap <= 0 or quarantine_count > 0 or normalize_skipped > 0
+    decision_skipped = sum(
+        1 for decision in eligibility_decisions if decision.decision != "normalization_eligible"
+    )
+    normalize_gap_has_reason = (
+        raw_gap <= 0 or quarantine_count > 0 or normalize_skipped > 0 or decision_skipped > 0
+    )
     checks.append(
         gate_entry(
             name="normalizeCountInvariant",
@@ -2373,9 +2419,49 @@ def build_strict_invariant_checks(
                 "normalizedRows": normalized_count,
                 "quarantineRows": quarantine_count,
                 "normalizeSkipped": normalize_skipped,
+                "eligibilitySkipped": decision_skipped,
                 "gap": raw_gap,
             },
-            expected="rawRows >= normalizedRows and any gap has quarantine or skipped evidence",
+            expected=(
+                "rawRows >= normalizedRows and any gap has quarantine, "
+                "normalize skipped, or eligibility skipped evidence"
+            ),
+        )
+    )
+
+    missing_decision_raw_ids = sorted(
+        raw_job.id for raw_job in raw_jobs if raw_job.id not in decision_by_raw_id
+    )
+    checks.append(
+        gate_entry(
+            name="normalizeHasEligibilityDecision",
+            passed=not missing_decision_raw_ids,
+            actual={
+                "missingRawJobIds": missing_decision_raw_ids[:20],
+                "missingCount": len(missing_decision_raw_ids),
+                "rawRows": raw_count,
+                "decisionRows": decision_count,
+            },
+            expected="every raw job in run has one eligibility decision",
+        )
+    )
+
+    normalized_without_eligible = sorted(
+        job.raw_job_id
+        for job in normalized_jobs
+        if job.raw_job_id is not None
+        and decision_by_raw_id.get(job.raw_job_id) is not None
+        and decision_by_raw_id[job.raw_job_id].decision != "normalization_eligible"
+    )
+    checks.append(
+        gate_entry(
+            name="normalizeRespectsEligibilityDecision",
+            passed=not normalized_without_eligible,
+            actual={
+                "violatingRawJobIds": normalized_without_eligible[:20],
+                "violatingCount": len(normalized_without_eligible),
+            },
+            expected="normalized rows originate only from normalization_eligible raw jobs",
         )
     )
 
@@ -2671,6 +2757,13 @@ def verify_database_state(session: Session, *, run_id: str) -> dict[str, Any]:
             ).all()
         )
     normalized_job_ids = [job.id for job in normalized_jobs]
+    eligibility_decisions = list(
+        session.scalars(
+            select(NormalizationEligibilityDecision).where(
+                NormalizationEligibilityDecision.scrape_run_id.in_(run_ids)
+            )
+        ).all()
+    )
     quarantine_rows = list(
         session.scalars(
             select(NormalizationQuarantine).where(
@@ -2729,6 +2822,7 @@ def verify_database_state(session: Session, *, run_id: str) -> dict[str, Any]:
         stage_runs=stage_runs,
         raw_jobs=raw_jobs,
         normalized_jobs=normalized_jobs,
+        eligibility_decisions=eligibility_decisions,
         quarantine_rows=quarantine_rows,
         ai_logs=ai_logs,
         sync_events=sync_events,
@@ -2758,6 +2852,10 @@ def verify_database_state(session: Session, *, run_id: str) -> dict[str, Any]:
         ],
         "rawRows": len(raw_jobs),
         "normalizedRows": len(normalized_jobs),
+        "eligibilityDecisions": len(eligibility_decisions),
+        "eligibilityByReason": dict(
+            sorted(Counter(decision.decision for decision in eligibility_decisions).items())
+        ),
         "quarantineRows": len(quarantine_rows),
         "aiRequestLogs": len(ai_logs),
         "aiByModel": ai_by_model,
@@ -2828,6 +2926,11 @@ def latest_metadata_summary(raw_jobs: Sequence[RawJob]) -> dict[str, Any]:
     requested_limit = None
     recency_mode = None
     recency_days = None
+    pages_attempted = 0
+    pages_succeeded = 0
+    pages_failed = 0
+    stop_reasons: Counter[str] = Counter()
+    deduped_count = 0
     for job in raw_jobs:
         metadata = job.metadata_json if isinstance(job.metadata_json, dict) else {}
         requested_limit = requested_limit or metadata.get("requestedLimit")
@@ -2837,13 +2940,35 @@ def latest_metadata_summary(raw_jobs: Sequence[RawJob]) -> dict[str, Any]:
         if isinstance(source_timestamp, str):
             newest = source_timestamp if newest is None else max(newest, source_timestamp)
             oldest = source_timestamp if oldest is None else min(oldest, source_timestamp)
+        pages_attempted += safe_int(metadata.get("pagesAttempted"))
+        pages_succeeded += safe_int(metadata.get("pagesSucceeded"))
+        pages_failed += safe_int(metadata.get("pagesFailed"))
+        deduped_count += safe_int(metadata.get("dedupedCount"))
+        stop_reason = metadata.get("stopReason")
+        if isinstance(stop_reason, str) and stop_reason:
+            stop_reasons[stop_reason] += 1
     return {
         "recencyMode": recency_mode,
         "recencyDays": recency_days,
         "requestedLimit": requested_limit,
         "newestSourceTimestamp": newest,
         "oldestSourceTimestamp": oldest,
+        "pagesAttempted": pages_attempted,
+        "pagesSucceeded": pages_succeeded,
+        "pagesFailed": pages_failed,
+        "dedupedCount": deduped_count,
+        "stopReasons": dict(sorted(stop_reasons.items())),
     }
+
+
+def safe_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return 0
 
 
 class ManualPipelineRunner:
@@ -2962,6 +3087,12 @@ class ManualPipelineRunner:
             execute=self.execute,
             model_rotator=model_rotator,
         )
+        require_backend_lookup = self.execute
+        backend_lookup = (
+            BackendIdentityLookup(database_url=self.settings.backend_database_url)
+            if require_backend_lookup and self.settings.backend_database_url is not None
+            else None
+        )
         self._ai_normalization_client = ai_normalization_client
         self._ai_enrichment_client = ai_enrichment_client
         backend_sync_client = build_backend_sync_client(
@@ -3043,7 +3174,10 @@ class ManualPipelineRunner:
                 client=backend_sync_client,
                 events=SyncEventRepository(self.session),
             )
-            max_jobs = self.limit * len(self.source_selection.executed) * len(self.keywords)
+            max_jobs = min(
+                self.limit * len(self.source_selection.executed) * len(self.keywords),
+                self.settings.scraper_target_total_jobs_per_run,
+            )
             sync_batch_size = min(max_jobs, self.settings.backend_sync_batch_size)
             self.emit_progress(f"sync start limit={max_jobs} batch_size={sync_batch_size}")
             result = await worker.sync_eligible_jobs(
@@ -3053,8 +3187,20 @@ class ManualPipelineRunner:
                 source_platforms=self.source_selection.executed,
             )
             self.session.commit()
+            self.sync_diagnostics = {
+                "attempted": result.attempted,
+                "sent": result.sent,
+                "failed": result.failed,
+                "chunksAttempted": result.chunks_attempted,
+                "chunksFailed": result.chunks_failed,
+                "adaptiveBatchReductions": result.adaptive_batch_reductions,
+                "chunkLatencyMsP50": result.chunk_latency_ms_p50,
+                "chunkLatencyMsP95": result.chunk_latency_ms_p95,
+                "statusClassCounts": result.status_class_counts,
+                "zeroSentReason": result.zero_sent_reason,
+            }
             if result.failed:
-                self.sync_diagnostics = {"failures": self.sync_failure_summary(run_id)}
+                self.sync_diagnostics["failures"] = self.sync_failure_summary(run_id)
                 self.emit_progress(
                     "sync failures "
                     f"summary={json.dumps(self.sync_diagnostics['failures'], sort_keys=True)}"
@@ -3110,6 +3256,9 @@ class ManualPipelineRunner:
             ),
             correlation_id_factory=lambda: "manual-pipeline",
             ai_normalization_client=ai_normalization_client,
+            eligibility_resolver=EligibilityResolver(self.session),
+            backend_identity_lookup=backend_lookup,
+            require_backend_identity_lookup=require_backend_lookup,
         )
 
     def normalized_jobs_for_stage(self, run_id: str) -> list[NormalizedJob]:
@@ -3349,6 +3498,18 @@ class LiveRawJob:
     recency_days: int
     source_timestamp: datetime | None
     source_job: Any
+    fetch_metadata: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class PaginatedFetchResult:
+    raw_jobs: list[Any]
+    pages_attempted: int
+    pages_succeeded: int
+    pages_failed: int
+    stop_reason: str
+    deduped_count: int
+    total_available: int | None = None
 
 
 class LivePipelineSource:
@@ -3374,10 +3535,29 @@ class LivePipelineSource:
         self._mapper = mapper
         self._raw_model = raw_model
         self._timestamp_extractor = timestamp_extractor
+        self._last_pagination_report: dict[str, Any] | None = None
 
     async def fetch_raw_jobs(self) -> list[LiveRawJob]:
-        raw_jobs = await self._fetcher(self.keyword, self.requested_limit, self.recency_days)
+        fetched = await self._fetcher(self.keyword, self.requested_limit, self.recency_days)
+        if isinstance(fetched, PaginatedFetchResult):
+            raw_jobs = fetched.raw_jobs
+            self._last_pagination_report = {
+                "pagesAttempted": fetched.pages_attempted,
+                "pagesSucceeded": fetched.pages_succeeded,
+                "pagesFailed": fetched.pages_failed,
+                "stopReason": fetched.stop_reason,
+                "dedupedCount": fetched.deduped_count,
+                "totalAvailable": fetched.total_available,
+            }
+        else:
+            raw_jobs = fetched
+            self._last_pagination_report = None
         selected = raw_jobs[: self.requested_limit]
+        truncated_count = max(len(raw_jobs) - len(selected), 0)
+        metadata = {
+            **(self._last_pagination_report or {}),
+            "truncatedCount": truncated_count,
+        }
         return [
             LiveRawJob(
                 source_platform=raw_job.source_platform,
@@ -3390,6 +3570,7 @@ class LivePipelineSource:
                 recency_days=self.recency_days,
                 source_timestamp=self._timestamp_extractor(raw_job.raw_payload),
                 source_job=raw_job,
+                fetch_metadata=metadata,
             )
             for raw_job in selected
         ]
@@ -3404,6 +3585,9 @@ class LivePipelineSource:
                 raw_payload=raw_job.raw_payload,
             )
         return self._mapper(source_job, scraped_at=scraped_at)
+
+    def pagination_report(self) -> dict[str, Any] | None:
+        return self._last_pagination_report
 
 
 def pipeline_sources(
@@ -3493,6 +3677,10 @@ def live_sources(
     recency_mode: str,
     recency_days: int,
 ) -> list[LivePipelineSource]:
+    jobstreet_challenge_state: dict[str, str | bool] = {
+        "blocked": False,
+        "reason": "cloudflare_challenge",
+    }
     factories = {
         "dealls": build_live_dealls_source,
         "glints": build_live_glints_source,
@@ -3500,21 +3688,87 @@ def live_sources(
         "kalibrr": build_live_kalibrr_source,
         "kitalulus": build_live_kitalulus_source,
     }
-    return [
-        factories[platform](
-            keyword=keyword,
-            limit=limit,
-            recency_mode=recency_mode,
-            recency_days=recency_days,
-            settings=settings,
-        )
-        for platform in selected_platforms
-        for keyword in keywords
-    ]
+    sources: list[LivePipelineSource] = []
+    for platform in selected_platforms:
+        for keyword in keywords:
+            if platform == "jobstreet":
+                sources.append(
+                    build_live_jobstreet_source(
+                        keyword=keyword,
+                        limit=limit,
+                        recency_mode=recency_mode,
+                        recency_days=recency_days,
+                        settings=settings,
+                        challenge_state=jobstreet_challenge_state,
+                    )
+                )
+                continue
+            sources.append(
+                factories[platform](
+                    keyword=keyword,
+                    limit=limit,
+                    recency_mode=recency_mode,
+                    recency_days=recency_days,
+                    settings=settings,
+                )
+            )
+    return sources
 
 
 def live_platforms(source: str, settings: Settings) -> tuple[str, ...]:
     return select_sources(source=source, settings=settings, execute=True).executed
+
+
+def dedupe_new_jobs(raw_jobs: list[Any], seen_external_ids: set[str]) -> tuple[list[Any], int]:
+    selected: list[Any] = []
+    deduped = 0
+    for raw_job in raw_jobs:
+        external_id = getattr(raw_job, "external_id", None)
+        if not isinstance(external_id, str):
+            continue
+        if external_id in seen_external_ids:
+            deduped += 1
+            continue
+        seen_external_ids.add(external_id)
+        selected.append(raw_job)
+    return selected, deduped
+
+
+async def map_with_concurrency(
+    jobs: list[Any],
+    *,
+    concurrency: int,
+    mapper,
+) -> list[Any]:
+    if not jobs:
+        return []
+    semaphore = asyncio.Semaphore(max(concurrency, 1))
+
+    async def run_one(job: Any):
+        async with semaphore:
+            return await mapper(job)
+
+    return list(await asyncio.gather(*[run_one(job) for job in jobs]))
+
+
+def stop_reason_from_exception(exc: Exception) -> str:
+    if isinstance(exc, ParseError):
+        return "parse_error"
+    if isinstance(exc, FetchError):
+        status_code = exc.details.get("statusCode")
+        blocker = exc.details.get("blocker")
+        if blocker == "cloudflare_challenge":
+            return "cloudflare_challenge"
+        if status_code == 400:
+            return "invalid_request"
+        if status_code in {401, 403}:
+            return "auth_required"
+        if status_code == 429:
+            return "rate_limited"
+        if status_code is not None and int(status_code) >= 500:
+            return "source_unavailable"
+        return "fetch_error"
+    return "source_error"
 
 
 def build_live_dealls_source(
@@ -3526,6 +3780,26 @@ def build_live_dealls_source(
     settings: Settings,
 ) -> LivePipelineSource:
     async def fetcher(keyword: str, limit: int, recency_days: int):
+        target_limit = min(
+            limit,
+            settings.scraper_max_items_per_keyword,
+            settings.scraper_max_items_per_source_run,
+        )
+        page_size = min(
+            settings.dealls_page_size,
+            max(target_limit, 1),
+            DEALLS_MAX_PAGE_SIZE,
+        )
+        max_pages = settings.scraper_max_pages_per_keyword
+        seen_external_ids: set[str] = set()
+        collected: list[DeallsRawSourceJob] = []
+        deduped_count = 0
+        pages_attempted = 0
+        pages_succeeded = 0
+        pages_failed = 0
+        stop_reason = "target_reached"
+        total_available: int | None = None
+        empty_pages = 0
         async with build_dealls_http_client(
             base_url=dealls_api_base_url(settings.dealls_base_url),
             timeout_seconds=settings.http_timeout_seconds,
@@ -3533,13 +3807,66 @@ def build_live_dealls_source(
             max_response_bytes=settings.http_response_max_bytes,
             rate_limit_per_minute=settings.dealls_rate_limit_per_minute,
         ) as http_client:
-            list_result = await DeallsListAdapter(http_client).fetch_page(
-                DeallsListQuery(limit=limit, search=keyword)
-            )
+            adapter = DeallsListAdapter(http_client)
             detail_adapter = DeallsDetailAdapter(http_client)
-            return [
-                await detail_adapter.fetch_enriched_job(raw_job) for raw_job in list_result.raw_jobs
-            ]
+            page = 1
+            while len(collected) < target_limit and pages_attempted < max_pages:
+                pages_attempted += 1
+                try:
+                    list_result = await adapter.fetch_page(
+                        DeallsListQuery(
+                            page=page,
+                            limit=page_size,
+                            search=keyword,
+                        )
+                    )
+                except (FetchError, ParseError) as exc:
+                    pages_failed += 1
+                    stop_reason = stop_reason_from_exception(exc)
+                    break
+                pages_succeeded += 1
+                total_available = list_result.pagination.total_docs
+                page_jobs, deduped_now = dedupe_new_jobs(
+                    list_result.raw_jobs,
+                    seen_external_ids,
+                )
+                deduped_count += deduped_now
+                if not page_jobs:
+                    empty_pages += 1
+                else:
+                    empty_pages = 0
+                    enriched = await map_with_concurrency(
+                        page_jobs,
+                        concurrency=settings.scraper_detail_fetch_concurrency,
+                        mapper=detail_adapter.fetch_enriched_job,
+                    )
+                    collected.extend(enriched)
+                if len(collected) >= target_limit:
+                    stop_reason = "target_reached"
+                    break
+                if empty_pages >= 2:
+                    stop_reason = "source_exhausted"
+                    break
+                if (
+                    list_result.pagination.total_pages
+                    and page >= list_result.pagination.total_pages
+                ):
+                    stop_reason = "source_exhausted"
+                    break
+                page += 1
+            else:
+                if len(collected) < target_limit:
+                    stop_reason = "max_pages_reached"
+
+            return PaginatedFetchResult(
+                raw_jobs=collected,
+                pages_attempted=pages_attempted,
+                pages_succeeded=pages_succeeded,
+                pages_failed=pages_failed,
+                stop_reason=stop_reason,
+                deduped_count=deduped_count,
+                total_available=total_available,
+            )
 
     return LivePipelineSource(
         source_platform="dealls",
@@ -3568,13 +3895,14 @@ def origin_base_url(configured_url: str) -> str:
     return configured_url
 
 
-def jobstreet_search_path(*, keyword: str, recency_days: int) -> str:
+def jobstreet_search_path(*, keyword: str, recency_days: int, page: int = 1) -> str:
     clean_keyword = keyword.strip()
+    page_param = f"&page={page}" if page > 1 else ""
     if "/" in clean_keyword:
         encoded_keyword = quote(clean_keyword, safe="")
-        return f"/id/jobs?keywords={encoded_keyword}&daterange={recency_days}"
+        return f"/id/jobs?keywords={encoded_keyword}&daterange={recency_days}{page_param}"
     slug = quote(clean_keyword.replace(" ", "-"), safe="")
-    return f"/id/{slug}-jobs?daterange={recency_days}"
+    return f"/id/{slug}-jobs?daterange={recency_days}{page_param}"
 
 
 def jobstreet_payload_from_search_page(html: str) -> dict[str, Any]:
@@ -3625,6 +3953,22 @@ def build_live_glints_source(
     settings: Settings,
 ) -> LivePipelineSource:
     async def fetcher(keyword: str, limit: int, recency_days: int):
+        target_limit = min(
+            limit,
+            settings.scraper_max_items_per_keyword,
+            settings.scraper_max_items_per_source_run,
+        )
+        page_size = min(settings.glints_page_size, max(target_limit, 1))
+        max_pages = settings.scraper_max_pages_per_keyword
+        seen_external_ids: set[str] = set()
+        collected: list[GlintsRawSourceJob] = []
+        deduped_count = 0
+        pages_attempted = 0
+        pages_succeeded = 0
+        pages_failed = 0
+        stop_reason = "target_reached"
+        total_available: int | None = None
+        empty_pages = 0
         async with build_glints_http_client(
             base_url=origin_base_url(settings.glints_graphql_url),
             timeout_seconds=settings.http_timeout_seconds,
@@ -3632,14 +3976,60 @@ def build_live_glints_source(
             max_response_bytes=settings.http_response_max_bytes,
             rate_limit_per_minute=settings.glints_rate_limit_per_minute,
         ) as http_client:
-            result = await GlintsListAdapter(http_client).fetch_page(
-                GlintsListQuery(
-                    page_size=limit,
-                    search_term=keyword,
-                    country_code=settings.glints_country_code,
+            adapter = GlintsListAdapter(http_client)
+            page = 1
+            while len(collected) < target_limit and pages_attempted < max_pages:
+                pages_attempted += 1
+                try:
+                    result = await adapter.fetch_page(
+                        GlintsListQuery(
+                            page=page,
+                            page_size=page_size,
+                            search_term=keyword,
+                            country_code=settings.glints_country_code,
+                        )
+                    )
+                except (FetchError, ParseError) as exc:
+                    pages_failed += 1
+                    stop_reason = stop_reason_from_exception(exc)
+                    break
+                pages_succeeded += 1
+                page_jobs, deduped_now = dedupe_new_jobs(result.raw_jobs, seen_external_ids)
+                deduped_count += deduped_now
+                total_available = max(
+                    total_available or 0,
+                    (page - 1) * page_size + len(result.raw_jobs),
                 )
+                if not page_jobs:
+                    empty_pages += 1
+                else:
+                    empty_pages = 0
+                    collected.extend(
+                        [merge_glints_list_with_fallback(raw_job) for raw_job in page_jobs]
+                    )
+                if len(collected) >= target_limit:
+                    stop_reason = "target_reached"
+                    break
+                if empty_pages >= 2:
+                    stop_reason = "source_exhausted"
+                    break
+                if not result.pagination.has_more:
+                    stop_reason = "source_exhausted"
+                    break
+                page += 1
+            else:
+                if len(collected) < target_limit:
+                    stop_reason = "max_pages_reached"
+
+            return PaginatedFetchResult(
+                raw_jobs=collected,
+                pages_attempted=pages_attempted,
+                pages_succeeded=pages_succeeded,
+                pages_failed=pages_failed,
+                stop_reason=stop_reason,
+                deduped_count=deduped_count,
+                total_available=total_available,
             )
-            return [merge_glints_list_with_fallback(raw_job) for raw_job in result.raw_jobs]
 
     return LivePipelineSource(
         source_platform="glints",
@@ -3661,39 +4051,146 @@ def build_live_jobstreet_source(
     recency_mode: str,
     recency_days: int,
     settings: Settings,
+    challenge_state: dict[str, str | bool] | None = None,
 ) -> LivePipelineSource:
     async def fetcher(keyword: str, limit: int, recency_days: int):
+        if challenge_state is not None and bool(challenge_state.get("blocked")):
+            reason = challenge_state.get("reason")
+            stop_reason = reason if isinstance(reason, str) and reason else "cloudflare_challenge"
+            return PaginatedFetchResult(
+                raw_jobs=[],
+                pages_attempted=0,
+                pages_succeeded=0,
+                pages_failed=0,
+                stop_reason=stop_reason,
+                deduped_count=0,
+                total_available=None,
+            )
+        target_limit = min(
+            limit,
+            settings.scraper_max_items_per_keyword,
+            settings.scraper_max_items_per_source_run,
+        )
+        page_size = min(settings.jobstreet_page_size, max(target_limit, 1))
+        max_pages = settings.scraper_max_pages_per_keyword
+        seen_external_ids: set[str] = set()
+        collected: list[JobStreetRawSourceJob] = []
+        deduped_count = 0
+        pages_attempted = 0
+        pages_succeeded = 0
+        pages_failed = 0
+        stop_reason = "target_reached"
+        total_available: int | None = None
+        empty_pages = 0
         token = (
             settings.jobstreet_bearer_token.get_secret_value()
             if settings.jobstreet_bearer_token is not None
             else None
         )
-        async with build_jobstreet_http_client(
-            base_url=origin_base_url(settings.jobstreet_graphql_url),
-            bearer_token=token,
-            timeout_seconds=settings.http_timeout_seconds,
-            max_retries=settings.http_max_retries,
-            max_response_bytes=settings.http_response_max_bytes,
-            rate_limit_per_minute=settings.jobstreet_rate_limit_per_minute,
-        ) as http_client:
-            html = await http_client.request_text(
-                "GET",
-                jobstreet_search_path(keyword=keyword, recency_days=recency_days),
-                headers={"accept": "text/html"},
+        cookie_header = (
+            settings.jobstreet_cookie.get_secret_value()
+            if settings.jobstreet_cookie is not None
+            else None
+        )
+        async with (
+            build_jobstreet_public_http_client(
+                base_url=origin_base_url(settings.jobstreet_graphql_url),
+                cookie_header=cookie_header,
+                timeout_seconds=settings.http_timeout_seconds,
+                max_retries=settings.http_max_retries,
+                max_response_bytes=settings.http_response_max_bytes,
+                rate_limit_per_minute=settings.jobstreet_rate_limit_per_minute,
+            ) as public_http_client,
+            build_jobstreet_http_client(
+                base_url=origin_base_url(settings.jobstreet_graphql_url),
+                bearer_token=token,
+                cookie_header=cookie_header,
+                timeout_seconds=settings.http_timeout_seconds,
+                max_retries=settings.http_max_retries,
+                max_response_bytes=settings.http_response_max_bytes,
+                rate_limit_per_minute=settings.jobstreet_rate_limit_per_minute,
+            ) as detail_http_client,
+        ):
+            detail_adapter = JobStreetDetailAdapter(detail_http_client)
+            page = 1
+            while len(collected) < target_limit and pages_attempted < max_pages:
+                pages_attempted += 1
+                try:
+                    html = await public_http_client.request_text(
+                        "GET",
+                        jobstreet_search_path(
+                            keyword=keyword,
+                            recency_days=recency_days,
+                            page=page,
+                        ),
+                        headers={"accept": "text/html"},
+                    )
+                    payload = jobstreet_payload_from_search_page(html)
+                    list_result = parse_jobstreet_list_payload(
+                        payload,
+                        query=JobStreetListQuery(
+                            keywords=keyword,
+                            page=page,
+                            page_size=page_size,
+                            date_range=recency_days,
+                        ),
+                    )
+                except (FetchError, ParseError) as exc:
+                    pages_failed += 1
+                    stop_reason = stop_reason_from_exception(exc)
+                    if (
+                        isinstance(exc, FetchError)
+                        and exc.details.get("blocker") == "cloudflare_challenge"
+                        and challenge_state is not None
+                    ):
+                        challenge_state["blocked"] = True
+                        challenge_state["reason"] = (
+                            "cloudflare_challenge_cookie_required"
+                            if cookie_header is None or not cookie_header.strip()
+                            else "cloudflare_challenge"
+                        )
+                        stop_reason = str(challenge_state["reason"])
+                    break
+                pages_succeeded += 1
+                total_available = list_result.pagination.total_count
+                page_jobs, deduped_now = dedupe_new_jobs(list_result.raw_jobs, seen_external_ids)
+                deduped_count += deduped_now
+                if not page_jobs:
+                    empty_pages += 1
+                else:
+                    empty_pages = 0
+                    enriched = await map_with_concurrency(
+                        page_jobs,
+                        concurrency=settings.scraper_detail_fetch_concurrency,
+                        mapper=detail_adapter.fetch_enriched_job,
+                    )
+                    collected.extend(enriched)
+                if len(collected) >= target_limit:
+                    stop_reason = "target_reached"
+                    break
+                if empty_pages >= 2:
+                    stop_reason = "source_exhausted"
+                    break
+                if (
+                    list_result.pagination.total_pages
+                    and page >= list_result.pagination.total_pages
+                ):
+                    stop_reason = "source_exhausted"
+                    break
+                page += 1
+            else:
+                if len(collected) < target_limit:
+                    stop_reason = "max_pages_reached"
+
+            return PaginatedFetchResult(
+                raw_jobs=collected,
+                pages_attempted=pages_attempted,
+                pages_succeeded=pages_succeeded,
+                pages_failed=pages_failed,
+                stop_reason=stop_reason,
+                deduped_count=deduped_count,
+                total_available=total_available,
             )
-            payload = jobstreet_payload_from_search_page(html)
-            list_result = parse_jobstreet_list_payload(
-                payload,
-                query=JobStreetListQuery(
-                    keywords=keyword,
-                    page_size=max(limit, 1),
-                    date_range=recency_days,
-                ),
-            )
-            detail_adapter = JobStreetDetailAdapter(http_client)
-            return [
-                await detail_adapter.fetch_enriched_job(raw_job) for raw_job in list_result.raw_jobs
-            ]
 
     return LivePipelineSource(
         source_platform="jobstreet",
@@ -3717,6 +4214,22 @@ def build_live_kalibrr_source(
     settings: Settings,
 ) -> LivePipelineSource:
     async def fetcher(keyword: str, limit: int, recency_days: int):
+        target_limit = min(
+            limit,
+            settings.scraper_max_items_per_keyword,
+            settings.scraper_max_items_per_source_run,
+        )
+        page_size = min(settings.kalibrr_page_size, max(target_limit, 1), 100)
+        max_pages = settings.scraper_max_pages_per_keyword
+        seen_external_ids: set[str] = set()
+        collected: list[KalibrrRawSourceJob] = []
+        deduped_count = 0
+        pages_attempted = 0
+        pages_succeeded = 0
+        pages_failed = 0
+        stop_reason = "target_reached"
+        total_available: int | None = None
+        empty_pages = 0
         async with build_kalibrr_http_client(
             base_url=settings.kalibrr_base_url,
             timeout_seconds=settings.http_timeout_seconds,
@@ -3724,11 +4237,59 @@ def build_live_kalibrr_source(
             max_response_bytes=settings.http_response_max_bytes,
             rate_limit_per_minute=settings.kalibrr_rate_limit_per_minute,
         ) as http_client:
-            result = await KalibrrListAdapter(
+            adapter = KalibrrListAdapter(
                 http_client=http_client,
                 build_id_resolver=KalibrrBuildIdResolver(http_client),
-            ).fetch_page(KalibrrListQuery(keyword=keyword))
-            return [merge_kalibrr_list_and_detail(raw_job) for raw_job in result.raw_jobs]
+            )
+            offset = 0
+            while len(collected) < target_limit and pages_attempted < max_pages:
+                pages_attempted += 1
+                try:
+                    result = await adapter.fetch_page(
+                        KalibrrListQuery(
+                            keyword=keyword,
+                            offset=offset,
+                        )
+                    )
+                except (FetchError, ParseError) as exc:
+                    pages_failed += 1
+                    stop_reason = stop_reason_from_exception(exc)
+                    break
+                pages_succeeded += 1
+                total_available = result.pagination.total_count
+                page_jobs, deduped_now = dedupe_new_jobs(result.raw_jobs, seen_external_ids)
+                deduped_count += deduped_now
+                if not page_jobs:
+                    empty_pages += 1
+                else:
+                    empty_pages = 0
+                    collected.extend(
+                        [merge_kalibrr_list_and_detail(raw_job) for raw_job in page_jobs]
+                    )
+                if len(collected) >= target_limit:
+                    stop_reason = "target_reached"
+                    break
+                if empty_pages >= 2:
+                    stop_reason = "source_exhausted"
+                    break
+                if total_available is not None and offset + len(result.raw_jobs) >= total_available:
+                    stop_reason = "source_exhausted"
+                    break
+                observed_limit = max(result.pagination.limit, 1)
+                offset += min(observed_limit, page_size)
+            else:
+                if len(collected) < target_limit:
+                    stop_reason = "max_pages_reached"
+
+            return PaginatedFetchResult(
+                raw_jobs=collected,
+                pages_attempted=pages_attempted,
+                pages_succeeded=pages_succeeded,
+                pages_failed=pages_failed,
+                stop_reason=stop_reason,
+                deduped_count=deduped_count,
+                total_available=total_available,
+            )
 
     return LivePipelineSource(
         source_platform="kalibrr",
@@ -3752,6 +4313,22 @@ def build_live_kitalulus_source(
     settings: Settings,
 ) -> LivePipelineSource:
     async def fetcher(keyword: str, limit: int, recency_days: int):
+        target_limit = min(
+            limit,
+            settings.scraper_max_items_per_keyword,
+            settings.scraper_max_items_per_source_run,
+        )
+        page_size = min(settings.kitalulus_page_size, max(target_limit, 1), 100)
+        max_pages = settings.scraper_max_pages_per_keyword
+        seen_external_ids: set[str] = set()
+        collected: list[KitalulusRawSourceJob] = []
+        deduped_count = 0
+        pages_attempted = 0
+        pages_succeeded = 0
+        pages_failed = 0
+        stop_reason = "target_reached"
+        total_available: int | None = None
+        empty_pages = 0
         async with build_kitalulus_http_client(
             base_url=origin_base_url(settings.kitalulus_graphql_url),
             timeout_seconds=settings.http_timeout_seconds,
@@ -3759,13 +4336,63 @@ def build_live_kitalulus_source(
             max_response_bytes=settings.http_response_max_bytes,
             rate_limit_per_minute=settings.kitalulus_rate_limit_per_minute,
         ) as http_client:
-            list_result = await KitalulusListAdapter(http_client).fetch_page(
-                KitalulusListQuery(keyword=keyword, limit=max(limit, 1))
-            )
             detail_adapter = KitalulusDetailAdapter(http_client)
-            return [
-                await detail_adapter.fetch_enriched_job(raw_job) for raw_job in list_result.raw_jobs
-            ]
+            adapter = KitalulusListAdapter(http_client)
+            page = 1
+            while len(collected) < target_limit and pages_attempted < max_pages:
+                pages_attempted += 1
+                try:
+                    list_result = await adapter.fetch_page(
+                        KitalulusListQuery(
+                            keyword=keyword,
+                            page=page,
+                            limit=page_size,
+                        )
+                    )
+                except (FetchError, ParseError) as exc:
+                    pages_failed += 1
+                    stop_reason = stop_reason_from_exception(exc)
+                    break
+                pages_succeeded += 1
+                total_available = list_result.pagination.total_count
+                page_jobs, deduped_now = dedupe_new_jobs(
+                    list_result.raw_jobs,
+                    seen_external_ids,
+                )
+                deduped_count += deduped_now
+                if not page_jobs:
+                    empty_pages += 1
+                else:
+                    empty_pages = 0
+                    enriched = await map_with_concurrency(
+                        page_jobs,
+                        concurrency=settings.scraper_detail_fetch_concurrency,
+                        mapper=detail_adapter.fetch_enriched_job,
+                    )
+                    collected.extend(enriched)
+                if len(collected) >= target_limit:
+                    stop_reason = "target_reached"
+                    break
+                if empty_pages >= 2:
+                    stop_reason = "source_exhausted"
+                    break
+                if not list_result.pagination.has_next_page:
+                    stop_reason = "source_exhausted"
+                    break
+                page += 1
+            else:
+                if len(collected) < target_limit:
+                    stop_reason = "max_pages_reached"
+
+            return PaginatedFetchResult(
+                raw_jobs=collected,
+                pages_attempted=pages_attempted,
+                pages_succeeded=pages_succeeded,
+                pages_failed=pages_failed,
+                stop_reason=stop_reason,
+                deduped_count=deduped_count,
+                total_available=total_available,
+            )
 
     return LivePipelineSource(
         source_platform="kitalulus",
@@ -3916,6 +4543,94 @@ def backend_sync_mode(settings: Settings, *, execute: bool) -> dict[str, Any]:
         "status": "ok",
         "mode": "live",
         "baseUrl": settings.backend_sync_base_url,
+    }
+
+
+def backend_sync_batch_guard(settings: Settings) -> dict[str, Any]:
+    if settings.backend_sync_batch_size > 100:
+        return {
+            "status": "fail",
+            "batchSize": settings.backend_sync_batch_size,
+            "reason": "BACKEND_SYNC_BATCH_SIZE must be less than or equal to 100",
+        }
+    return {
+        "status": "ok",
+        "batchSize": settings.backend_sync_batch_size,
+        "maxAllowed": 100,
+    }
+
+
+async def backend_sync_endpoint_probe(settings: Settings, *, execute: bool) -> dict[str, Any]:
+    if not execute:
+        return {"status": "ok", "mode": "recording", "reason": "dry-run mode"}
+    if not settings.backend_sync_enabled:
+        return {"status": "ok", "mode": "recording", "reason": "backend sync disabled"}
+    if settings.backend_sync_base_url is None:
+        return {"status": "fail", "reason": "missing BACKEND_SYNC_BASE_URL"}
+    if settings.backend_sync_service_token is None:
+        return {"status": "fail", "reason": "missing BACKEND_SYNC_SERVICE_TOKEN"}
+
+    endpoint = f"{settings.backend_sync_base_url.rstrip('/')}/api/v1/internal/scraper/jobs"
+    token = settings.backend_sync_service_token.get_secret_value()
+    timeout = httpx.Timeout(settings.backend_sync_timeout_seconds)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.request(
+                "OPTIONS",
+                endpoint,
+                headers={"authorization": f"Bearer {token}"},
+            )
+    except httpx.HTTPError as exc:
+        return {
+            "status": "fail",
+            "mode": "live",
+            "endpoint": endpoint,
+            "reason": redact_text(str(exc)),
+        }
+
+    status_code = response.status_code
+    status_class = f"{status_code // 100}xx"
+    if status_code == 404:
+        return {
+            "status": "fail",
+            "mode": "live",
+            "endpoint": endpoint,
+            "statusCode": status_code,
+            "statusClass": status_class,
+            "reason": "backend sync endpoint not found",
+        }
+    if status_code >= 500:
+        return {
+            "status": "fail",
+            "mode": "live",
+            "endpoint": endpoint,
+            "statusCode": status_code,
+            "statusClass": status_class,
+            "reason": "backend sync endpoint unavailable",
+        }
+    return {
+        "status": "ok",
+        "mode": "live",
+        "endpoint": endpoint,
+        "statusCode": status_code,
+        "statusClass": status_class,
+    }
+
+
+def backend_partial_response_support_check(
+    *,
+    backend_endpoint_probe: dict[str, Any],
+) -> dict[str, Any]:
+    if backend_endpoint_probe.get("status") != "ok":
+        return {
+            "status": "fail",
+            "support": "unknown",
+            "reason": "backend endpoint probe failed",
+        }
+    return {
+        "status": "ok",
+        "support": "unknown",
+        "reason": "partial response capability requires backend contract confirmation",
     }
 
 
@@ -4095,16 +4810,52 @@ def output_from_result(
         "counts": result.counts.model_dump(),
         "countBreakdown": count_breakdown,
         "sources": [
-            {
-                "source": source_result.source_platform,
-                "keyword": source_result.keyword,
-                "status": source_result.status,
-                "counts": source_result.counts.model_dump(),
-                "requestedLimit": source_result.requested_limit,
-                "newestSourceTimestamp": serialize_datetime(source_result.newest_source_timestamp),
-                "oldestSourceTimestamp": serialize_datetime(source_result.oldest_source_timestamp),
-                "truncatedCount": source_result.truncated_count,
-            }
+            (
+                {
+                    "source": source_result.source_platform,
+                    "keyword": source_result.keyword,
+                    "status": source_result.status,
+                    "counts": source_result.counts.model_dump(),
+                    "requestedLimit": source_result.requested_limit,
+                    "newestSourceTimestamp": serialize_datetime(
+                        source_result.newest_source_timestamp
+                    ),
+                    "oldestSourceTimestamp": serialize_datetime(
+                        source_result.oldest_source_timestamp
+                    ),
+                    "truncatedCount": source_result.truncated_count,
+                }
+                | (
+                    {"pagesAttempted": source_result.pages_attempted}
+                    if source_result.pages_attempted is not None
+                    else {}
+                )
+                | (
+                    {"pagesSucceeded": source_result.pages_succeeded}
+                    if source_result.pages_succeeded is not None
+                    else {}
+                )
+                | (
+                    {"pagesFailed": source_result.pages_failed}
+                    if source_result.pages_failed is not None
+                    else {}
+                )
+                | (
+                    {"stopReason": source_result.stop_reason}
+                    if source_result.stop_reason is not None
+                    else {}
+                )
+                | (
+                    {"dedupedCount": source_result.deduped_count}
+                    if source_result.deduped_count is not None
+                    else {}
+                )
+                | (
+                    {"totalAvailable": source_result.total_available}
+                    if source_result.total_available is not None
+                    else {}
+                )
+            )
             for source_result in result.source_results
         ],
         "events": result.stage_events,
@@ -4122,7 +4873,11 @@ def output_from_result(
 def build_engine(database_url: str, *, execute: bool) -> Engine:
     if not execute:
         return create_engine("sqlite:///:memory:")
-    return create_engine(to_sync_url(database_url), pool_pre_ping=True)
+    return create_engine(
+        to_sync_url(database_url),
+        pool_pre_ping=True,
+        pool_recycle=240,
+    )
 
 
 def to_sync_url(database_url: str) -> str:
@@ -4139,8 +4894,8 @@ def positive_int(value: str) -> int:
     parsed = int(value)
     if parsed <= 0:
         raise argparse.ArgumentTypeError("must be greater than zero")
-    if parsed > 100:
-        raise argparse.ArgumentTypeError("must be less than or equal to 100")
+    if parsed > 5000:
+        raise argparse.ArgumentTypeError("must be less than or equal to 5000")
     return parsed
 
 

@@ -9,6 +9,7 @@ from integrations.sources.jobstreet import (
     JOBSTREET_DETAIL_OPERATION,
     JOBSTREET_GRAPHQL_OPERATION,
     JOBSTREET_GRAPHQL_PATH,
+    JOBSTREET_PUBLIC_DEFAULT_HEADERS,
     JobStreetDetailAdapter,
     JobStreetDetailQuery,
     JobStreetListAdapter,
@@ -16,6 +17,7 @@ from integrations.sources.jobstreet import (
     build_jobstreet_default_headers,
     build_jobstreet_detail_request_body,
     build_jobstreet_list_request_body,
+    build_jobstreet_public_headers,
     extract_jobstreet_source_timestamp,
     merge_jobstreet_list_and_detail,
     parse_jobstreet_detail_payload,
@@ -119,6 +121,25 @@ def test_jobstreet_missing_bearer_is_config_error() -> None:
     assert exc_info.value.stage.value == "config"
     assert exc_info.value.source_platform == "jobstreet"
     assert exc_info.value.details == {"configKey": "JOBSTREET_BEARER_TOKEN"}
+
+
+def test_jobstreet_public_headers_exclude_authorization() -> None:
+    assert "authorization" not in JOBSTREET_PUBLIC_DEFAULT_HEADERS
+    assert JOBSTREET_PUBLIC_DEFAULT_HEADERS["x-seek-site"] == "chalice"
+
+
+def test_jobstreet_public_headers_can_include_cookie() -> None:
+    headers = build_jobstreet_public_headers("cf_clearance=test-cookie")
+    assert headers["cookie"] == "cf_clearance=test-cookie"
+
+
+def test_jobstreet_default_headers_can_include_cookie() -> None:
+    headers = build_jobstreet_default_headers(
+        "test-bearer-token",
+        cookie_header="cf_clearance=test-cookie",
+    )
+    assert headers["authorization"] == "Bearer test-bearer-token"
+    assert headers["cookie"] == "cf_clearance=test-cookie"
 
 
 def test_parse_jobstreet_detail_fixture_preserves_html_description() -> None:

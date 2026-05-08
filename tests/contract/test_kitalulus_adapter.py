@@ -84,6 +84,26 @@ def test_kitalulus_list_parser_rejects_missing_slug() -> None:
         parse_kitalulus_list_payload({"data": {"vacanciesV4": payload}})
 
 
+def test_kitalulus_list_parser_tolerates_zero_page_on_empty_results() -> None:
+    payload = {
+        "hasNextPage": False,
+        "hasPrevPage": False,
+        "elements": 0,
+        "page": 0,
+        "list": [],
+    }
+
+    result = parse_kitalulus_list_payload(
+        {"data": {"vacanciesV4": payload}},
+        query=KitalulusListQuery(keyword="developer", page=1, limit=30),
+    )
+
+    assert result.pagination.page == 1
+    assert result.pagination.total_count == 0
+    assert result.pagination.total_pages == 0
+    assert result.raw_jobs == []
+
+
 def list_payload() -> dict:
     return {
         "hasNextPage": False,

@@ -23,6 +23,7 @@ Deployment default runs two containers:
 | Time        | Stage                | Expected result                                                       |
 | ----------- | -------------------- | --------------------------------------------------------------------- |
 | 00:00       | Scrape               | Raw records stored per source                                         |
+| 01:00       | Eligibility gate     | Every raw row has one normalize eligibility decision                  |
 | 02:00       | Normalize            | Valid records become normalized jobs; invalid records are quarantined |
 | 04:00       | Enrich               | Skills and requirements staged from normalized safe text              |
 | 06:00       | Sync                 | Eligible jobs are sent to Backend API in chunks                       |
@@ -33,6 +34,7 @@ Deployment default runs two containers:
 | Stage                | Check                                                                              |
 | -------------------- | ---------------------------------------------------------------------------------- |
 | Scrape               | Run record exists; per-source fetched counts are non-zero or intentionally partial |
+| Eligibility gate     | Decision coverage equals raw rows; skip reasons are explicit and auditable          |
 | Normalize            | Normalized count and quarantine count match source health                          |
 | Enrich               | AI request logs contain status, retry count, model, and safe base URL alias; model usage summary is available by model |
 | Sync                 | Sync events show `sent`, retryable `failed`, or reviewed `dead-letter` states      |
@@ -119,7 +121,7 @@ Pipeline command rules:
 - `--run-id` must be unique per execute run. For `--stage full`, stage rows use deterministic ids (`<run-id>-scrape`, `<run-id>-normalize`, `<run-id>-enrich`, `<run-id>-sync`, `<run-id>-notify`), so reusing the same run id will fail on primary-key collisions.
 - Deployed scheduler stage runs use deterministic day-based ids (`scheduled-YYYYMMDD-<stage>`). Completed day-stage rows are skipped; failed or partial rows run with retry ids (`scheduled-YYYYMMDD-<stage>-retry-XX`).
 - `verify` summarizes run rows, raw and normalized counts, source/keyword counts, sync and handoff counts, duplicate identity counts, and latest metadata without printing raw payloads or secrets.
-- `verify` also runs strict invariants for stage-row completeness, normalize gap evidence, quarantine error safety, failed-stage evidence, and zero-sent reason checks for sync and notification handoff.
+- `verify` also runs strict invariants for stage-row completeness, normalize gap evidence, eligibility decision coverage, normalize-dispatch eligibility compliance, quarantine error safety, failed-stage evidence, and zero-sent reason checks for sync and notification handoff.
 - `staging-report` adds staging evidence checks for latency percentiles, retries, quarantine distribution, backend relation consistency, backend read-path sampling, strict invariants, and explicit `syncOutcome`/`notifyOutcome` zero-sent reasons.
 - Normalize stage AI processing is serial per batch (`OPENAI_NORMALIZATION_BATCH_SIZE`) and always waits fixed inter-batch delay (`OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS`).
 - Normalize and enrich stages use per-item partial handling; one failed item does not stop the whole stage.

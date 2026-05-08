@@ -34,7 +34,7 @@ def test_positive_int_validator() -> None:
     with pytest.raises(argparse.ArgumentTypeError):
         positive_int("0")
     with pytest.raises(argparse.ArgumentTypeError):
-        positive_int("101")
+        positive_int("5001")
 
 
 def test_recency_days_validator() -> None:

@@ -203,15 +203,17 @@ async def test_sync_worker_isolates_failed_chunk_and_continues() -> None:
         )
 
         events = list(session.scalars(select(SyncEvent).order_by(SyncEvent.external_id)).all())
-        assert sync_result.chunks_attempted == 2
+        assert sync_result.chunks_attempted == 4
         assert sync_result.chunks_failed == 1
-        assert sync_result.sent == 1
-        assert sync_result.failed == 2
-        assert client.calls == [["job-3", "job-2"], ["job-1"]]
+        assert sync_result.sent == 3
+        assert sync_result.failed == 0
+        assert sync_result.adaptive_batch_reductions == 1
+        assert sync_result.status_class_counts["5xx"] == 1
+        assert client.calls == [["job-3", "job-2"], ["job-3"], ["job-2"], ["job-1"]]
         assert [event.status for event in events] == [
             SyncEventStatus.SENT.value,
-            SyncEventStatus.FAILED.value,
-            SyncEventStatus.FAILED.value,
+            SyncEventStatus.SENT.value,
+            SyncEventStatus.SENT.value,
         ]
         assert all(event.metadata_json["chunkPayloadHash"] for event in events)
 
@@ -324,6 +326,49 @@ async def test_sync_worker_retries_after_backend_payload_serializer_changes() ->
             SyncEventStatus.SENT.value,
         ]
         assert client.external_ids == ["job-1"]
+
+
+@pytest.mark.asyncio
+async def test_sync_worker_sets_zero_sent_reason_for_no_candidates() -> None:
+    with session_scope() as session:
+        result = JobPersistenceRepository(session).write_job(
+            raw_input("run-1", "job-1"),
+            canonical_job("job-1"),
+        )
+        result.normalized_job.status = "unknown"
+        worker = BackendSyncWorker(
+            session=session,
+            client=RecordingClient(),
+            events=SyncEventRepository(session),
+        )
+
+        sync_result = await worker.sync_eligible_jobs(scrape_run_id="run-1", limit=10)
+
+        assert sync_result.attempted == 0
+        assert sync_result.sent == 0
+        assert sync_result.zero_sent_reason == "no eligible jobs for sync"
+
+
+@pytest.mark.asyncio
+async def test_sync_worker_sets_zero_sent_reason_for_all_failures() -> None:
+    with session_scope() as session:
+        result = JobPersistenceRepository(session).write_job(
+            raw_input("run-1", "job-1"),
+            canonical_job("job-1"),
+        )
+        result.normalized_job.status = "active"
+        worker = BackendSyncWorker(
+            session=session,
+            client=RejectingClient(),
+            events=SyncEventRepository(session),
+        )
+
+        sync_result = await worker.sync_eligible_jobs(scrape_run_id="run-1", limit=10)
+
+        assert sync_result.attempted == 1
+        assert sync_result.sent == 0
+        assert sync_result.failed == 1
+        assert sync_result.zero_sent_reason == "all candidate jobs failed sync attempts"
 
 
 class RejectingClient:

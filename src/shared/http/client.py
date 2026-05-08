@@ -229,10 +229,20 @@ class SourceHttpClient:
         if response.is_error:
             status_code = response.status_code
             retryable = is_retriable_status(status_code)
+            details: dict[str, Any] = {"statusCode": status_code}
+            if status_code == 403:
+                text_preview = body[:4096].decode("utf-8", errors="ignore").lower()
+                if (
+                    "cf_chl_opt" in text_preview
+                    or "challenge-platform" in text_preview
+                    or "just a moment" in text_preview
+                    or "cloudflare" in text_preview
+                ):
+                    details["blocker"] = "cloudflare_challenge"
             raise FetchError(
                 "source request returned error status",
                 source_platform=self.config.source_platform,
-                details={"statusCode": status_code},
+                details=details,
                 retryable=retryable,
             )
         if self._rate_limiter is not None:

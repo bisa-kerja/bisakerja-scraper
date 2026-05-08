@@ -121,6 +121,9 @@ Behavior rules:
 - `429` and `5xx` responses may be retried up to the configured limit.
 - Sync batches must contain `1` to `100` jobs.
 - Large sync runs are split into repeated requests. For example, `205` jobs with `BACKEND_SYNC_BATCH_SIZE=100` sends three Backend API requests with `100`, `100`, and `5` jobs.
+- Retryable chunk failures may trigger adaptive chunk downsizing so a large failing chunk can be retried as smaller chunks in the same run.
+- Sync diagnostics track chunk attempt counts, chunk failure counts, status class distribution, and chunk latency percentiles (`p50` and `p95`).
+- Completed sync runs with `sent=0` must include an explicit safe reason classifier.
 - For list-only sources such as current Glints capture, `description` may stay `null` and `requirementSummary` may stay `null` or safe list-derived summary text.
 - `externalApplyUrl` must be present; when source apply URL is unavailable, fallback to `sourceUrl`.
 - Foreign-key, missing source platform, and company resolution mismatches are recorded as sync failures with safe response summaries.

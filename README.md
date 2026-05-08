@@ -183,7 +183,7 @@ Important groups:
 - Application: `APP_NAME`, `APP_ENV`, `PORT`, `API_PREFIX`
 - Database: `SCRAPER_DATABASE_URL`, `BACKEND_DATABASE_URL`, `BACKEND_SYNC_ENABLED`
 - Schedule: scrape, normalize, enrich, sync, and notify handoff cron values
-- Scrape plan: `SCRAPER_KEYWORDS`, `SCRAPER_MAX_ITEMS_PER_KEYWORD`, `SCRAPER_RECENCY_MODE`, `SCRAPER_RECENCY_DAYS`
+- Scrape plan: `SCRAPER_KEYWORDS`, `SCRAPER_MAX_ITEMS_PER_KEYWORD`, `SCRAPER_MAX_ITEMS_PER_SOURCE_RUN`, `SCRAPER_MAX_PAGES_PER_KEYWORD`, `SCRAPER_TARGET_TOTAL_JOBS_PER_RUN`, `SCRAPER_RECENCY_MODE`, `SCRAPER_RECENCY_DAYS`
 - Sources: Dealls, Glints, JobStreet, and Kalibrr settings
 - Backend sync: base URL, service token, timeout, batch size, freshness thresholds
 - AI provider: OpenAI-compatible API key, base URL, model, enrichment batch settings, normalization batch settings, and fixed inter-batch delay

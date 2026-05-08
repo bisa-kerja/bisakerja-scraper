@@ -20,6 +20,7 @@ def test_persistence_metadata_contains_required_tables_and_constraints() -> None
         "job_skills_staging",
         "job_requirements_staging",
         "stage_jobs",
+        "normalization_eligibility_decisions",
     } <= set(tables)
     assert any(
         constraint.name == "raw_jobs_source_external_id_unique"

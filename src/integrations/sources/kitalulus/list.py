@@ -206,8 +206,8 @@ def parse_kitalulus_list_payload(
         )
 
     query = query or KitalulusListQuery(limit=len(jobs) or 1)
-    total_count = _optional_int(vacancies.get("elements"), len(jobs))
-    page = _optional_int(vacancies.get("page"), query.page)
+    total_count = max(_optional_int(vacancies.get("elements"), len(jobs)), 0)
+    page = max(_optional_int(vacancies.get("page"), query.page), 1)
     page_size = query.limit
     request_body = request_body or build_kitalulus_list_request_body(query)
     return KitalulusListResult(

@@ -91,7 +91,12 @@ def test_settings_load_required_values() -> None:
     assert settings.cors_origins is None
     assert settings.openai_normalization_batch_size == 5
     assert settings.openai_normalization_inter_batch_delay_ms == 1000
+    assert settings.scraper_max_items_per_source_run == 2000
+    assert settings.scraper_max_pages_per_keyword == 50
+    assert settings.scraper_target_total_jobs_per_run == 1000
+    assert settings.scraper_detail_fetch_concurrency == 4
     assert settings.dealls_enabled is True
+    assert settings.dealls_page_size == 20
     assert settings.glints_enabled is True
     assert settings.jobstreet_enabled is False
     assert settings.kalibrr_enabled is True
@@ -229,9 +234,21 @@ def test_scraper_keywords_reject_empty_entries() -> None:
 
 
 def test_scraper_limit_rejects_unsafe_values() -> None:
-    env = valid_env(SCRAPER_MAX_ITEMS_PER_KEYWORD="101")
+    env = valid_env(SCRAPER_MAX_ITEMS_PER_KEYWORD="1001")
 
     with pytest.raises(ValidationError, match="SCRAPER_MAX_ITEMS_PER_KEYWORD"):
+        Settings(**env, _env_file=None)
+
+
+def test_source_page_size_rejects_unsafe_values() -> None:
+    env = valid_env(GLINTS_PAGE_SIZE="31")
+
+    with pytest.raises(ValidationError, match="GLINTS_PAGE_SIZE"):
+        Settings(**env, _env_file=None)
+
+    env = valid_env(DEALLS_PAGE_SIZE="21")
+
+    with pytest.raises(ValidationError, match="DEALLS_PAGE_SIZE"):
         Settings(**env, _env_file=None)
 
 

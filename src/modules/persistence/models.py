@@ -66,6 +66,9 @@ class ScrapeRun(Base):
     quarantine_records: Mapped[list[NormalizationQuarantine]] = relationship(
         back_populates="scrape_run"
     )
+    eligibility_decisions: Mapped[list[NormalizationEligibilityDecision]] = relationship(
+        back_populates="scrape_run"
+    )
 
     __table_args__ = (
         Index(
@@ -99,6 +102,9 @@ class RawJob(Base):
     scrape_run: Mapped[ScrapeRun] = relationship(back_populates="raw_jobs")
     normalized_jobs: Mapped[list[NormalizedJob]] = relationship(back_populates="raw_job")
     quarantine_records: Mapped[list[NormalizationQuarantine]] = relationship(
+        back_populates="raw_job"
+    )
+    eligibility_decisions: Mapped[list[NormalizationEligibilityDecision]] = relationship(
         back_populates="raw_job"
     )
 
@@ -148,6 +154,9 @@ class NormalizedJob(Base):
         back_populates="normalized_job"
     )
     stage_jobs: Mapped[list[StageJob]] = relationship(back_populates="normalized_job")
+    eligibility_decisions: Mapped[list[NormalizationEligibilityDecision]] = relationship(
+        back_populates="normalized_job"
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -388,6 +397,52 @@ class StageJob(Base):
         Index("stage_jobs_status_available_at_idx", "status", "available_at"),
         Index("stage_jobs_correlation_id_idx", "correlation_id"),
         Index("stage_jobs_scrape_run_id_idx", "scrape_run_id"),
+    )
+
+
+class NormalizationEligibilityDecision(Base):
+    __tablename__ = "normalization_eligibility_decisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    scrape_run_id: Mapped[str | None] = mapped_column(ForeignKey("scrape_runs.id"))
+    raw_job_id: Mapped[str] = mapped_column(ForeignKey("raw_jobs.id"), nullable=False)
+    normalized_job_id: Mapped[str | None] = mapped_column(ForeignKey("normalized_jobs.id"))
+    source_platform: Mapped[str] = mapped_column(String(64), nullable=False)
+    external_id: Mapped[str | None] = mapped_column(String(255))
+    identity_key: Mapped[str | None] = mapped_column(String(512))
+    identity_hash: Mapped[str | None] = mapped_column(String(128))
+    payload_hash: Mapped[str | None] = mapped_column(String(128))
+    decision: Mapped[str] = mapped_column(String(64), nullable=False)
+    backend_job_id: Mapped[str | None] = mapped_column(String(64))
+    normalized_sync_state: Mapped[str | None] = mapped_column(String(32))
+    reason_details: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    scrape_run: Mapped[ScrapeRun | None] = relationship(back_populates="eligibility_decisions")
+    raw_job: Mapped[RawJob] = relationship(back_populates="eligibility_decisions")
+    normalized_job: Mapped[NormalizedJob | None] = relationship(
+        back_populates="eligibility_decisions"
+    )
+
+    __table_args__ = (
+        UniqueConstraint("raw_job_id", name="eligibility_decisions_raw_job_unique"),
+        Index("eligibility_decisions_scrape_run_id_idx", "scrape_run_id"),
+        Index("eligibility_decisions_decision_idx", "decision"),
+        Index(
+            "eligibility_decisions_source_external_idx",
+            "source_platform",
+            "external_id",
+        ),
     )
 
 

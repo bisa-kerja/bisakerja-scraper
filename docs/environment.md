@@ -85,7 +85,11 @@ Rules:
 | `HTTP_RESPONSE_MAX_BYTES` | Yes | Maximum response body size accepted from external sources |
 | `DEFAULT_RATE_LIMIT_PER_MINUTE` | Yes | Default bounded source request rate |
 | `SCRAPER_KEYWORDS` | Yes | Comma-separated keyword list |
-| `SCRAPER_MAX_ITEMS_PER_KEYWORD` | Yes | Positive integer, maximum `100` |
+| `SCRAPER_MAX_ITEMS_PER_KEYWORD` | Yes | Positive integer, maximum `1000` |
+| `SCRAPER_MAX_ITEMS_PER_SOURCE_RUN` | Yes | Positive integer cap per source per run |
+| `SCRAPER_MAX_PAGES_PER_KEYWORD` | Yes | Positive integer page cap per keyword |
+| `SCRAPER_TARGET_TOTAL_JOBS_PER_RUN` | Yes | Positive integer target cap for one pipeline run |
+| `SCRAPER_DETAIL_FETCH_CONCURRENCY` | Yes | Positive integer bounded detail-fetch concurrency |
 | `SCRAPER_RECENCY_MODE` | Yes | `latest` |
 | `SCRAPER_RECENCY_DAYS` | Yes | Positive integer, maximum `365` |
 
@@ -161,21 +165,27 @@ Baseline schedule:
 | `DEALLS_ENABLED` | Yes | Explicit `true` or `false`; live execute source enablement flag |
 | `DEALLS_BASE_URL` | Yes | Public/semi-public REST base URL |
 | `DEALLS_RATE_LIMIT_PER_MINUTE` | Yes | Bounded source request rate |
+| `DEALLS_PAGE_SIZE` | Yes | Positive page size for Dealls list pagination (`<= 20`) |
 | `GLINTS_ENABLED` | Yes | Explicit `true` or `false`; live execute source enablement flag |
 | `GLINTS_GRAPHQL_URL` | Yes | GraphQL endpoint |
 | `GLINTS_COUNTRY_CODE` | Yes | Example: `ID` |
 | `GLINTS_RATE_LIMIT_PER_MINUTE` | Yes | Bounded source request rate |
+| `GLINTS_PAGE_SIZE` | Yes | Positive page size for Glints pagination (`<= 30`) |
 | `JOBSTREET_ENABLED` | Yes | Explicit `true` or `false`; current live JobStreet enablement flag |
 | `JOBSTREET_GRAPHQL_URL` | Yes | GraphQL endpoint |
 | `JOBSTREET_BEARER_TOKEN` | Yes when JobStreet enabled | Secret store only |
+| `JOBSTREET_COOKIE` | Optional (operationally required when Cloudflare challenge is active) | Cookie header from an operator-managed browser session |
 | `JOBSTREET_RATE_LIMIT_PER_MINUTE` | Yes | Bounded source request rate |
+| `JOBSTREET_PAGE_SIZE` | Yes | Positive page size for JobStreet pagination |
 | `KALIBRR_ENABLED` | Yes | Explicit `true` or `false`; live execute source enablement flag |
 | `KALIBRR_BASE_URL` | Yes | Public web base URL |
 | `KALIBRR_BUILD_ID_REFRESH_ENABLED` | Yes | Explicit `true` or `false` |
 | `KALIBRR_RATE_LIMIT_PER_MINUTE` | Yes | Bounded source request rate |
+| `KALIBRR_PAGE_SIZE` | Yes | Positive page size for Kalibrr pagination planning |
 | `KITALULUS_ENABLED` | Yes | Explicit `true` or `false`; live execute source enablement flag |
 | `KITALULUS_GRAPHQL_URL` | Yes | GraphQL endpoint |
 | `KITALULUS_RATE_LIMIT_PER_MINUTE` | Yes | Bounded source request rate |
+| `KITALULUS_PAGE_SIZE` | Yes | Positive page size for Kitalulus pagination |
 
 Source enablement applies to live execute mode. Dry-run fixture validation can still run for supported sources even when the live source flag is disabled. `--source all --execute` runs enabled sources and reports disabled sources in `skippedSources`; `--source <source> --execute` fails with a friendly operator error when that source is disabled.
 

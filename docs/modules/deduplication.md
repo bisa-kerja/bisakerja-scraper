@@ -52,6 +52,7 @@ Fallback identity is only a recovery path for records that lack a source externa
 | --- | --- |
 | Valid normalized candidate | Existing row update, new staging row, or quarantine reason |
 | Identity decision | `insert`, `update`, or `quarantine` with a stable dedup reason |
+| Raw scrape identity before normalize | Eligibility decision: `normalization_eligible`, `existing_backend`, `existing_normalized_unsynced`, `existing_normalized_synced`, `duplicate_in_scrape_scope`, `missing_identity`, `identity_conflict`, or `reprocess_required` |
 
 ## Failure Modes
 
@@ -73,6 +74,7 @@ Track:
 - Identity drift count.
 - Identity collision count.
 - Quarantine count.
+- Eligibility decision distribution and top skip reasons before normalize.
 
 ## Tests
 

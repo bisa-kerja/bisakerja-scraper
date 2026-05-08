@@ -4,7 +4,7 @@ import json
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session
 
 from cli.pipeline import (
@@ -24,6 +24,7 @@ from jobs.pipeline import PipelineResult, SourcePipelineResult
 from modules.persistence import (
     AIRequestLog,
     Base,
+    NormalizationEligibilityDecision,
     NormalizedJob,
     NotificationHandoffEvent,
     RawJob,
@@ -439,6 +440,9 @@ def test_pipeline_preflight_execute_all_reports_disabled_jobstreet(monkeypatch, 
     assert output["skippedSources"] == [
         {"reason": "disabled (JOBSTREET_ENABLED=false)", "source": "jobstreet"}
     ]
+    assert output["backendSyncBatchGuard"]["status"] == "ok"
+    assert output["backendSyncEndpointProbe"]["status"] == "ok"
+    assert output["backendPartialResponseSupport"]["status"] == "ok"
 
 
 def test_pipeline_execute_url_conversion_preserves_runtime_password() -> None:
@@ -835,6 +839,20 @@ def test_pipeline_verify_summarizes_database_without_raw_payload(
         )
         session.add(normalized)
         session.flush()
+        session.add(
+            NormalizationEligibilityDecision(
+                scrape_run_id="phase82-scrape",
+                raw_job_id=raw.id,
+                normalized_job_id=normalized.id,
+                source_platform="dealls",
+                external_id="job-1",
+                identity_key="dealls:job-1",
+                identity_hash="elig-hash-82",
+                payload_hash="raw-hash-82",
+                decision="normalization_eligible",
+                reason_details={"backendLookup": "miss"},
+            )
+        )
         session.add_all(
             [
                 AIRequestLog(
@@ -1039,6 +1057,20 @@ def test_pipeline_staging_report_validates_counts_consistency_and_backend_checks
         )
         session.add(normalized)
         session.flush()
+        session.add(
+            NormalizationEligibilityDecision(
+                scrape_run_id="phase85-scrape",
+                raw_job_id=raw.id,
+                normalized_job_id=normalized.id,
+                source_platform="dealls",
+                external_id="dealls-1",
+                identity_key="dealls:dealls-1",
+                identity_hash="elig-hash-85",
+                payload_hash="raw-hash-85",
+                decision="normalization_eligible",
+                reason_details={"backendLookup": "miss"},
+            )
+        )
         sync_event = SyncEvent(
             scrape_run_id="phase85-sync",
             normalized_job_id=normalized.id,
@@ -1283,6 +1315,25 @@ def test_pipeline_staging_report_tracks_glints_partial_data_rate(
                     }
                 },
                 last_seen_at=now,
+            )
+        )
+        session.flush()
+        normalized = session.scalar(
+            select(NormalizedJob).where(NormalizedJob.external_id == "glints-1")
+        )
+        assert normalized is not None
+        session.add(
+            NormalizationEligibilityDecision(
+                scrape_run_id="phase86-scrape",
+                raw_job_id=raw.id,
+                normalized_job_id=normalized.id,
+                source_platform="glints",
+                external_id="glints-1",
+                identity_key="glints:glints-1",
+                identity_hash="elig-hash-86",
+                payload_hash="raw-hash-86",
+                decision="normalization_eligible",
+                reason_details={"backendLookup": "miss"},
             )
         )
         session.commit()
@@ -1739,6 +1790,25 @@ def test_pipeline_staging_report_sets_reason_when_sync_completed_zero_sent(
                 status="ACTIVE",
                 normalized_payload={"title": "Backend Engineer"},
                 last_seen_at=now,
+            )
+        )
+        session.flush()
+        normalized = session.scalar(
+            select(NormalizedJob).where(NormalizedJob.external_id == "dealls-zero-sync")
+        )
+        assert normalized is not None
+        session.add(
+            NormalizationEligibilityDecision(
+                scrape_run_id="phase90-scrape",
+                raw_job_id=raw.id,
+                normalized_job_id=normalized.id,
+                source_platform="dealls",
+                external_id="dealls-zero-sync",
+                identity_key="dealls:dealls-zero-sync",
+                identity_hash="elig-hash-90",
+                payload_hash="raw-hash-90",
+                decision="normalization_eligible",
+                reason_details={"backendLookup": "miss"},
             )
         )
         session.commit()

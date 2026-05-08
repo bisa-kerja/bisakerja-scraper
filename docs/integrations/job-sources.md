@@ -17,9 +17,9 @@ The scraper supports five source adapters behind one normalized job contract.
 
 | Source | Transport | Auth/header requirement | List | Detail | Identity |
 | --- | --- | --- | --- | --- | --- |
-| Dealls | REST `GET /v1/explore-job/job` and `GET /v1/job-portal/job/slug/{slug}` | Browser headers recommended; no auth required | Available | Available by slug; missing detail does not block list records | `id`, fallback `slug` |
+| Dealls | REST `GET /v1/explore-job/job` and `GET /v1/job-portal/job/slug/{slug}` | Browser headers recommended; no auth required; list query `limit` must be `<= 20` | Available | Available by slug; missing detail does not block list records | `id`, fallback `slug` |
 | Glints | GraphQL `searchJobsV3` | Browser headers and `x-glints-country-code`; cookies optional/redacted | Available | Not captured | job `id` |
-| JobStreet | GraphQL `JobSearchV6` | Bearer auth and session-like headers/cookies from configured secret flow | Available | Detail-ready fields/source URL assumptions | job `id` |
+| JobStreet | GraphQL `JobSearchV6` | Bearer auth and session-like headers/cookies from configured secret flow; Cloudflare-protected periods require operator-managed cookie | Available | Detail-ready fields/source URL assumptions | job `id` |
 | Kalibrr | Next.js `_next/data/{buildId}` JSON | `x-nextjs-data: 1`; browser headers recommended | Available | Included in `jobs[]` | numeric `id`, fallback `slug` |
 | Kitalulus | GraphQL `Vacancies` and `VacancyBySlug` | Browser headers, `origin`/`referer`, `x-channel: web`; no auth captured | Available | Available by slug | `id`, fallback `slug` |
 
@@ -87,6 +87,33 @@ Source requests use isolated rate limiter state per source platform. A throttled
 | Repeated retryable failures | Open a run-local circuit breaker for that source and mark the source degraded |
 
 Circuit breaker state is local to the running client instance. Persistent recovery decisions belong to run tracking and operations review, not a process-global block list.
+
+## High-Volume Pagination Policy
+
+All live sources use multi-page retrieval with deterministic stop rules:
+
+- Stop when target per-keyword limit is reached.
+- Stop when source pagination indicates exhaustion.
+- Stop when max pages per keyword is reached.
+- Stop when repeated empty pages indicate no additional records.
+
+Run-level controls:
+
+- `SCRAPER_MAX_ITEMS_PER_KEYWORD`
+- `SCRAPER_MAX_ITEMS_PER_SOURCE_RUN`
+- `SCRAPER_MAX_PAGES_PER_KEYWORD`
+- `SCRAPER_TARGET_TOTAL_JOBS_PER_RUN`
+- `SCRAPER_DETAIL_FETCH_CONCURRENCY`
+
+Source page-size controls:
+
+- `DEALLS_PAGE_SIZE`
+- `GLINTS_PAGE_SIZE`
+- `JOBSTREET_PAGE_SIZE`
+- `KALIBRR_PAGE_SIZE`
+- `KITALULUS_PAGE_SIZE`
+
+Each source report should expose `pagesAttempted`, `pagesSucceeded`, `pagesFailed`, `stopReason`, and `dedupedCount`.
 
 ## Source Pages
 

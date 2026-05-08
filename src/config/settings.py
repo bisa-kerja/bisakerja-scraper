@@ -76,7 +76,31 @@ class Settings(BaseSettings):
     scraper_max_items_per_keyword: int = Field(
         validation_alias="SCRAPER_MAX_ITEMS_PER_KEYWORD",
         ge=1,
-        le=100,
+        le=1000,
+    )
+    scraper_max_items_per_source_run: int = Field(
+        default=2000,
+        validation_alias="SCRAPER_MAX_ITEMS_PER_SOURCE_RUN",
+        ge=1,
+        le=10000,
+    )
+    scraper_max_pages_per_keyword: int = Field(
+        default=50,
+        validation_alias="SCRAPER_MAX_PAGES_PER_KEYWORD",
+        ge=1,
+        le=500,
+    )
+    scraper_target_total_jobs_per_run: int = Field(
+        default=1000,
+        validation_alias="SCRAPER_TARGET_TOTAL_JOBS_PER_RUN",
+        ge=1,
+        le=50000,
+    )
+    scraper_detail_fetch_concurrency: int = Field(
+        default=4,
+        validation_alias="SCRAPER_DETAIL_FETCH_CONCURRENCY",
+        ge=1,
+        le=32,
     )
     scraper_recency_mode: ScraperRecencyMode = Field(validation_alias="SCRAPER_RECENCY_MODE")
     scraper_recency_days: int = Field(
@@ -139,6 +163,7 @@ class Settings(BaseSettings):
         validation_alias="DEALLS_RATE_LIMIT_PER_MINUTE",
         ge=1,
     )
+    dealls_page_size: int = Field(default=20, validation_alias="DEALLS_PAGE_SIZE", ge=1, le=20)
     glints_enabled: bool = Field(validation_alias="GLINTS_ENABLED")
     glints_graphql_url: NonEmptyStr = Field(validation_alias="GLINTS_GRAPHQL_URL")
     glints_country_code: NonEmptyStr = Field(validation_alias="GLINTS_COUNTRY_CODE")
@@ -146,15 +171,26 @@ class Settings(BaseSettings):
         validation_alias="GLINTS_RATE_LIMIT_PER_MINUTE",
         ge=1,
     )
+    glints_page_size: int = Field(default=30, validation_alias="GLINTS_PAGE_SIZE", ge=1, le=30)
     jobstreet_graphql_url: NonEmptyStr = Field(validation_alias="JOBSTREET_GRAPHQL_URL")
     jobstreet_enabled: bool = Field(validation_alias="JOBSTREET_ENABLED")
     jobstreet_bearer_token: SecretStr | None = Field(
         default=None,
         validation_alias="JOBSTREET_BEARER_TOKEN",
     )
+    jobstreet_cookie: SecretStr | None = Field(
+        default=None,
+        validation_alias="JOBSTREET_COOKIE",
+    )
     jobstreet_rate_limit_per_minute: int = Field(
         validation_alias="JOBSTREET_RATE_LIMIT_PER_MINUTE",
         ge=1,
+    )
+    jobstreet_page_size: int = Field(
+        default=32,
+        validation_alias="JOBSTREET_PAGE_SIZE",
+        ge=1,
+        le=100,
     )
     kalibrr_enabled: bool = Field(validation_alias="KALIBRR_ENABLED")
     kalibrr_base_url: NonEmptyStr = Field(validation_alias="KALIBRR_BASE_URL")
@@ -165,11 +201,23 @@ class Settings(BaseSettings):
         validation_alias="KALIBRR_RATE_LIMIT_PER_MINUTE",
         ge=1,
     )
+    kalibrr_page_size: int = Field(
+        default=30,
+        validation_alias="KALIBRR_PAGE_SIZE",
+        ge=1,
+        le=100,
+    )
     kitalulus_enabled: bool = Field(validation_alias="KITALULUS_ENABLED")
     kitalulus_graphql_url: NonEmptyStr = Field(validation_alias="KITALULUS_GRAPHQL_URL")
     kitalulus_rate_limit_per_minute: int = Field(
         validation_alias="KITALULUS_RATE_LIMIT_PER_MINUTE",
         ge=1,
+    )
+    kitalulus_page_size: int = Field(
+        default=30,
+        validation_alias="KITALULUS_PAGE_SIZE",
+        ge=1,
+        le=100,
     )
 
     scraper_internal_service_token: SecretStr = Field(
@@ -262,6 +310,7 @@ class Settings(BaseSettings):
     @field_validator(
         "backend_sync_service_token",
         "jobstreet_bearer_token",
+        "jobstreet_cookie",
         "scraper_internal_service_token",
         "openai_api_key",
     )

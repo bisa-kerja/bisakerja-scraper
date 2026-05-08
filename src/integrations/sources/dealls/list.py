@@ -12,6 +12,7 @@ from shared.http import HttpClientConfig, JsonHttpClient, SourceHttpClient
 DEALLS_SOURCE_PLATFORM = "dealls"
 DEALLS_LIST_PATH = "/explore-job/job"
 DEALLS_PUBLIC_JOB_BASE_URL = "https://dealls.com/jobs"
+DEALLS_MAX_PAGE_SIZE = 20
 DEALLS_DEFAULT_HEADERS = {
     "origin": "https://dealls.com",
     "referer": "https://dealls.com/",
@@ -23,7 +24,7 @@ DEALLS_DEFAULT_HEADERS = {
 @dataclass(frozen=True)
 class DeallsListQuery:
     page: int = 1
-    limit: int = 18
+    limit: int = DEALLS_MAX_PAGE_SIZE
     search: str | None = None
     sort_param: str = "publishedAt"
     sort_by: str = "desc"
@@ -125,10 +126,10 @@ def parse_dealls_list_payload(payload: dict[str, Any]) -> DeallsListResult:
 
     pagination = DeallsPagination.model_validate(
         {
-            "page": data.get("page"),
-            "limit": data.get("limit", len(docs)) or len(docs),
-            "total_docs": data.get("totalDocs", len(docs)),
-            "total_pages": data.get("totalPages", 0),
+            "page": _positive_int_or_default(data.get("page"), 1),
+            "limit": _positive_int_or_default(data.get("limit"), max(len(docs), 1)),
+            "total_docs": _non_negative_int_or_default(data.get("totalDocs"), len(docs)),
+            "total_pages": _non_negative_int_or_default(data.get("totalPages"), 0),
         }
     )
     raw_jobs = [_parse_raw_job(raw_job) for raw_job in docs]
@@ -157,6 +158,36 @@ def _parse_raw_job(raw_job: Any) -> RawSourceJob:
         source_url=source_url,
         raw_payload=raw_job,
     )
+
+
+def _positive_int_or_default(value: Any, default: int) -> int:
+    parsed = _parse_int(value)
+    if parsed is None or parsed <= 0:
+        return default
+    return parsed
+
+
+def _non_negative_int_or_default(value: Any, default: int) -> int:
+    parsed = _parse_int(value)
+    if parsed is None or parsed < 0:
+        return default
+    return parsed
+
+
+def _parse_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return int(text)
+        except ValueError:
+            return None
+    return None
 
 
 def extract_dealls_source_timestamp(raw_payload: dict[str, Any]):

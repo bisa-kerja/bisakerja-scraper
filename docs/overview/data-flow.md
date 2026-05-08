@@ -30,7 +30,7 @@ source request
 
 ## Pipeline Orchestration
 
-The scraper pipeline executes source work through the ordered stages `scrape -> normalize -> enrich -> sync -> notify-handoff`.
+The scraper pipeline executes source work through the ordered stages `scrape -> eligibility-gate -> normalize -> enrich -> sync -> notify-handoff`.
 
 Orchestration rules:
 
@@ -38,6 +38,7 @@ Orchestration rules:
 - Source adapters are invoked through an injected source interface so tests can run without external network calls.
 - Fetch runs per source, then raw records are normalized through the source mapper.
 - Scrape, normalize, enrich, sync, and notify handoff can run independently when operators need to resume from durable state.
+- Eligibility gate runs after scrape persistence and before normalize dispatch to prevent duplicate or already-synced identities from re-entering AI normalization.
 - Per-source normalization and enrichment use bounded concurrency.
 - Persistence writes raw and normalized records idempotently before sync handoff.
 - Normalization failures create quarantine records and keep the run partial instead of pretending the payload was completed.
@@ -53,6 +54,7 @@ Orchestration rules:
 | --- | --- | --- | --- | --- |
 | Fetch | Source config, headers, query params | HTTP response body and safe metadata | Source adapter | Status, pagination, auth/header behavior |
 | Raw capture | Source response | Redacted raw payload record | Scraper persistence | No tokens/cookies/session ids in published artifacts |
+| Eligibility gate | Raw rows from scrape scope, backend identity lookup, local normalized/sync state | One decision per raw row (`normalization_eligible` or explicit skip reason) | Normalizer | Decision coverage, backend lookup evidence, unsynced protection |
 | Normalize | Raw payload | Canonical job/company/location/salary fields | Normalizer | Identity, title, company, source URL/apply URL |
 | Quarantine | Malformed raw record and mapper error | Held record with safe error category and field path | Normalizer | No sync eligibility until normalized successfully |
 | Dedup | Normalized candidate | Unique source-local job row | Deduplicator | `sourcePlatform + externalJobId/slug/id` |
@@ -94,6 +96,11 @@ A job can become visible in normal search only after it has:
 - Source/apply URL.
 - `lastSeenAt`.
 - Safe text fields if description or requirements are present.
+
+Normalize dispatch guard:
+
+- Only rows with eligibility decision `normalization_eligible` can enter AI normalization.
+- Rows marked `existing_backend`, `existing_normalized_unsynced`, `existing_normalized_synced`, `duplicate_in_scrape_scope`, `missing_identity`, or `identity_conflict` are skipped and kept as audit evidence.
 
 ## AI Enrichment Boundary
 

@@ -7,6 +7,10 @@ from integrations.backend.client import (
     BackendSyncResult,
     BackendSyncServerError,
 )
+from integrations.backend.identity_lookup import (
+    BackendIdentityLookup,
+    BackendIdentityLookupError,
+)
 from integrations.backend.notifications import (
     BackendNotificationHandoffClient,
     BackendNotificationHandoffError,
@@ -24,6 +28,8 @@ __all__ = [
     "BackendSyncError",
     "BackendSyncResult",
     "BackendSyncServerError",
+    "BackendIdentityLookup",
+    "BackendIdentityLookupError",
     "BackendNotificationHandoffClient",
     "BackendNotificationHandoffError",
     "BackendJobPayload",

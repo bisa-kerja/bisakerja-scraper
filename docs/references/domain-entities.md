@@ -82,6 +82,7 @@ Canonical enums normalize source-specific labels into stable values for status, 
 | --- | --- |
 | `IngestionRun` | `scrape_runs` |
 | `ScrapedJobRaw` | `raw_jobs` |
+| Normalize eligibility audit | `normalization_eligibility_decisions` |
 | Canonical job candidate | `normalized_jobs` |
 | Sync handoff attempt | `sync_events` |
 

@@ -97,3 +97,23 @@ def test_parse_dealls_list_payload_classifies_missing_docs() -> None:
     assert exc_info.value.stage.value == "parse"
     assert exc_info.value.source_platform == "dealls"
     assert exc_info.value.retryable is False
+
+
+def test_parse_dealls_list_payload_tolerates_zero_limit_on_empty_docs() -> None:
+    result = parse_dealls_list_payload(
+        {
+            "data": {
+                "page": 1,
+                "limit": 0,
+                "totalDocs": 0,
+                "totalPages": 0,
+                "docs": [],
+            }
+        }
+    )
+
+    assert result.pagination.page == 1
+    assert result.pagination.limit == 1
+    assert result.pagination.total_docs == 0
+    assert result.pagination.total_pages == 0
+    assert result.raw_jobs == []

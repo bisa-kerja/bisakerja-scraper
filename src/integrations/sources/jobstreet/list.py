@@ -21,6 +21,12 @@ JOBSTREET_DEFAULT_HEADERS = {
     "referer": "https://id.jobstreet.com/",
     "x-seek-site": "chalice",
 }
+JOBSTREET_PUBLIC_DEFAULT_HEADERS = {
+    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "origin": "https://id.jobstreet.com",
+    "referer": "https://id.jobstreet.com/",
+    "x-seek-site": "chalice",
+}
 
 JOBSTREET_SEARCH_QUERY = """query JobSearchV6($params: JobSearchParamsInput) {
   jobSearchV6(params: $params) {
@@ -153,6 +159,7 @@ def build_jobstreet_http_client(
     *,
     base_url: str,
     bearer_token: str | None,
+    cookie_header: str | None = None,
     timeout_seconds: float,
     max_retries: int,
     max_response_bytes: int,
@@ -165,13 +172,42 @@ def build_jobstreet_http_client(
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,
             max_response_bytes=max_response_bytes,
-            default_headers=build_jobstreet_default_headers(bearer_token),
+            default_headers=build_jobstreet_default_headers(
+                bearer_token,
+                cookie_header=cookie_header,
+            ),
             rate_limit_per_minute=rate_limit_per_minute,
         )
     )
 
 
-def build_jobstreet_default_headers(bearer_token: str | None) -> dict[str, str]:
+def build_jobstreet_public_http_client(
+    *,
+    base_url: str,
+    cookie_header: str | None = None,
+    timeout_seconds: float,
+    max_retries: int,
+    max_response_bytes: int,
+    rate_limit_per_minute: int | None = None,
+) -> SourceHttpClient:
+    return SourceHttpClient(
+        HttpClientConfig(
+            source_platform=JOBSTREET_SOURCE_PLATFORM,
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+            max_response_bytes=max_response_bytes,
+            default_headers=build_jobstreet_public_headers(cookie_header),
+            rate_limit_per_minute=rate_limit_per_minute,
+        )
+    )
+
+
+def build_jobstreet_default_headers(
+    bearer_token: str | None,
+    *,
+    cookie_header: str | None = None,
+) -> dict[str, str]:
     if bearer_token is None or not bearer_token.strip():
         raise ConfigError(
             "JobStreet bearer token is required",
@@ -179,10 +215,20 @@ def build_jobstreet_default_headers(bearer_token: str | None) -> dict[str, str]:
             details={"configKey": "JOBSTREET_BEARER_TOKEN"},
             retryable=False,
         )
-    return {
+    headers = {
         **JOBSTREET_DEFAULT_HEADERS,
         "authorization": f"Bearer {bearer_token.strip()}",
     }
+    if cookie_header is not None and cookie_header.strip():
+        headers["cookie"] = cookie_header.strip()
+    return headers
+
+
+def build_jobstreet_public_headers(cookie_header: str | None = None) -> dict[str, str]:
+    headers = {**JOBSTREET_PUBLIC_DEFAULT_HEADERS}
+    if cookie_header is not None and cookie_header.strip():
+        headers["cookie"] = cookie_header.strip()
+    return headers
 
 
 def build_jobstreet_list_request_body(query: JobStreetListQuery) -> dict[str, Any]:

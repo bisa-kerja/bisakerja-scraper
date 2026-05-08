@@ -6,11 +6,13 @@ from typing import Any
 
 import pytest
 from sqlalchemy import create_engine, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from core.errors import FetchError, NormalizeError
 from integrations.sources.mapper_utils import SourceMapperResult
 from jobs.pipeline import PipelineConfig, PipelineOrchestrator
+from modules.eligibility import EligibilityResolver
 from modules.jobs import AINormalizationBatchItemResult, AINormalizationBatchPromptInput
 from modules.jobs.schemas import (
     CanonicalJobSchema,
@@ -24,6 +26,7 @@ from modules.persistence import (
     AIRequestLog,
     Base,
     JobPersistenceRepository,
+    NormalizationEligibilityDecision,
     NormalizationQuarantine,
     NormalizedJob,
     RawJob,
@@ -162,6 +165,43 @@ async def test_normalize_stage_uses_ai_normalization_when_client_available() -> 
 
 
 @pytest.mark.asyncio
+async def test_normalize_stage_retries_transient_operational_error_on_upsert(monkeypatch) -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        repository.upsert_raw_job(raw_input("run-scrape", "retry-1"))
+        session.commit()
+        source = FakeSource("dealls", [])
+        orchestrator = PipelineOrchestrator(
+            sources=[source],
+            persistence=repository,
+            run_tracker=RunStateTracker(session),
+            correlation_id_factory=lambda: "corr-1",
+        )
+
+        original_upsert = repository.upsert_normalized_job
+        state = {"calls": 0}
+
+        def flaky_upsert(job, *, raw_job_id=None):  # noqa: ANN001
+            state["calls"] += 1
+            if state["calls"] == 1:
+                raise OperationalError("SELECT 1", {}, RuntimeError("socket timeout"))
+            return original_upsert(job, raw_job_id=raw_job_id)
+
+        monkeypatch.setattr(repository, "upsert_normalized_job", flaky_upsert)
+
+        result = await orchestrator.run_normalize(run_id="run-normalize")
+
+        normalized = session.scalar(
+            select(NormalizedJob).where(NormalizedJob.external_id == "retry-1")
+        )
+        assert result.status == "completed"
+        assert result.counts.normalized == 1
+        assert result.counts.persisted == 1
+        assert state["calls"] == 2
+        assert normalized is not None
+
+
+@pytest.mark.asyncio
 async def test_normalize_stage_stops_on_ai_failure_without_mapper_fallback() -> None:
     with session_scope() as session:
         repository = JobPersistenceRepository(session)
@@ -188,6 +228,37 @@ async def test_normalize_stage_stops_on_ai_failure_without_mapper_fallback() -> 
         assert logs[0].normalized_job_id is None
         assert logs[0].scrape_run_id == "run-scrape"
         assert logs[0].error_category == "NORMALIZE_ERROR"
+
+
+@pytest.mark.asyncio
+async def test_normalize_stage_skips_existing_backend_identity_via_eligibility_gate() -> None:
+    with session_scope() as session:
+        repository = JobPersistenceRepository(session)
+        repository.upsert_raw_job(raw_input("run-scrape", "job-existing-backend"))[0]
+        session.commit()
+        source = FakeSource("dealls", [])
+        orchestrator = PipelineOrchestrator(
+            sources=[source],
+            persistence=repository,
+            run_tracker=RunStateTracker(session),
+            correlation_id_factory=lambda: "corr-1",
+            eligibility_resolver=EligibilityResolver(session),
+            backend_identity_lookup=StaticBackendLookup(
+                {
+                    ("dealls", "job-existing-backend"): {"jobId": "backend-job-1"},
+                }
+            ),
+        )
+
+        result = await orchestrator.run_normalize(run_id="run-normalize")
+
+        decision = session.scalar(select(NormalizationEligibilityDecision))
+        assert result.status == "completed"
+        assert result.counts.normalized == 0
+        assert result.counts.skipped == 1
+        assert session.scalars(select(NormalizedJob)).all() == []
+        assert decision is not None
+        assert decision.decision == "existing_backend"
 
 
 @pytest.mark.asyncio
@@ -352,6 +423,48 @@ async def test_scrape_stage_tracks_keyword_metadata_without_changing_identity() 
         assert {source.keyword for source in result.source_results} == {"developer", "intern"}
 
 
+@pytest.mark.asyncio
+async def test_scrape_stage_tracks_pagination_metadata_and_source_report() -> None:
+    with session_scope() as session:
+        source = PaginatedKeywordSource(
+            "dealls",
+            "developer",
+            ["job-1", "job-2"],
+            report={
+                "pagesAttempted": 3,
+                "pagesSucceeded": 2,
+                "pagesFailed": 1,
+                "stopReason": "target_reached",
+                "dedupedCount": 4,
+                "totalAvailable": 120,
+            },
+        )
+        orchestrator = PipelineOrchestrator(
+            sources=[source],
+            persistence=JobPersistenceRepository(session),
+            run_tracker=RunStateTracker(session),
+            correlation_id_factory=lambda: "corr-1",
+        )
+
+        result = await orchestrator.run_scrape(run_id="run-scrape")
+
+        raw_jobs = session.scalars(select(RawJob)).all()
+        assert result.status == "completed"
+        assert raw_jobs
+        assert raw_jobs[0].metadata_json["pagesAttempted"] == 3
+        assert raw_jobs[0].metadata_json["pagesSucceeded"] == 2
+        assert raw_jobs[0].metadata_json["pagesFailed"] == 1
+        assert raw_jobs[0].metadata_json["stopReason"] == "target_reached"
+        assert raw_jobs[0].metadata_json["dedupedCount"] == 4
+        source_result = result.source_results[0]
+        assert source_result.pages_attempted == 3
+        assert source_result.pages_succeeded == 2
+        assert source_result.pages_failed == 1
+        assert source_result.stop_reason == "target_reached"
+        assert source_result.deduped_count == 4
+        assert source_result.total_available == 120
+
+
 @dataclass
 class RawJobStub:
     source_platform: str
@@ -363,6 +476,7 @@ class RawJobStub:
     recency_mode: str | None = None
     recency_days: int | None = None
     source_timestamp: datetime | None = None
+    fetch_metadata: dict[str, Any] | None = None
 
 
 class FakeSource:
@@ -415,6 +529,39 @@ class KeywordSource(FakeSource):
             )
             for external_id in self.external_ids
         ]
+
+
+class PaginatedKeywordSource(KeywordSource):
+    def __init__(
+        self,
+        source_platform: str,
+        keyword: str,
+        external_ids: list[str],
+        report: dict[str, Any],
+    ) -> None:
+        super().__init__(source_platform, keyword, external_ids)
+        self._report = report
+
+    async def fetch_raw_jobs(self) -> list[RawJobStub]:
+        raw_jobs = await super().fetch_raw_jobs()
+        return [
+            RawJobStub(
+                source_platform=job.source_platform,
+                external_id=job.external_id,
+                source_url=job.source_url,
+                raw_payload=job.raw_payload,
+                keyword=job.keyword,
+                requested_limit=job.requested_limit,
+                recency_mode=job.recency_mode,
+                recency_days=job.recency_days,
+                source_timestamp=job.source_timestamp,
+                fetch_metadata=self._report,
+            )
+            for job in raw_jobs
+        ]
+
+    def pagination_report(self) -> dict[str, Any]:
+        return self._report
 
 
 class FailingSource:
@@ -549,6 +696,18 @@ class FailingBatchAINormalizationClient(FakeBatchAINormalizationClient):
             retryable=True,
             details={"source_field_path": "raw_payload"},
         )
+
+
+class StaticBackendLookup:
+    def __init__(self, existing: dict[tuple[str, str], dict[str, Any]]) -> None:
+        self.existing = existing
+
+    def find_existing(
+        self,
+        *,
+        identities: set[tuple[str, str]],
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        return {key: value for key, value in self.existing.items() if key in identities}
 
 
 def canonical_job(raw_job: RawJobStub, *, scraped_at: datetime) -> CanonicalJobSchema:

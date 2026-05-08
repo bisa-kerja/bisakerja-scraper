@@ -25,6 +25,7 @@ This matrix defines the minimum evidence needed before scraper docs, code, or op
 | JobStreet adapter | GraphQL list and detail fixtures parsed without real auth | Missing bearer token is classified as config error and request bodies omit auth/session captures | Contract test result |
 | Kalibrr adapter | Next.js build id is resolved and cached from page data | Stale `buildId` 404 refreshes and retries data request | Unit test result |
 | Raw store | Redacted payload metadata stored | Unsafe header cannot be persisted | Redaction test |
+| Eligibility gate | Every raw row has one eligibility decision and normalize processes only `normalization_eligible` rows | Backend identity lookup failure in execute mode blocks normalize dispatch (fail-closed) | Unit and smoke test result |
 | Normalizer | Canonical job fields, salary ranges, and UTC posted dates produced | Relative date labels do not become fake timestamps; batch output order and item identity must match input | Mapper and unit test result |
 | Quarantine | Malformed raw records are held with safe error metadata | Quarantined records are excluded from sync | Unit or contract test result |
 | Deduplicator | Existing job updates by source identity | Missing identity quarantines and identity collision is surfaced | Dedup test |

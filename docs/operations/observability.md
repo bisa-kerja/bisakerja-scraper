@@ -113,7 +113,13 @@ Error logs should include the category, stage, source platform, external job id 
 | `dedup_ratio` | Source, run | Detect repeated records or unstable identity |
 | `stale_job_count` | Source, age bucket | Detect freshness degradation |
 | `sync_latency_ms` | Stage, batch size | Detect backend DB or writer slowdown |
+| `sync_chunk_latency_ms` | Chunk id, source set, status class | Detect retryable timeout hotspots and adaptive downsizing impact |
+| `sync_chunk_status_class` | Status class | Track `2xx`/`4xx`/`5xx`/transport distribution per run |
 | `raw_records_fetched` | Source, page | Confirm source coverage |
+| `source_pages_attempted` | Source, keyword | Confirm multi-page traversal behavior |
+| `source_pages_succeeded` | Source, keyword | Confirm effective page retrieval success |
+| `source_pages_failed` | Source, keyword | Detect adapter/page-level instability |
+| `source_stop_reason` | Source, keyword | Explain why pagination stopped (`target_reached`, `source_exhausted`, `max_pages_reached`, `rate_limited`, `auth_required`, `parse_error`) |
 | `normalized_records_written` | Source | Confirm mapper output volume |
 | `quarantined_records` | Source, reason | Track invalid identity or unsafe fields |
 | `partial_data_rate` | Source, detail completeness | Track list-only partial records, especially for Glints |

@@ -18,6 +18,7 @@ The persistence module stores raw, staging, and sync-ready records in scraper-ow
 | Area | Rule |
 | --- | --- |
 | Raw storage | Store response bodies and safe metadata for replay |
+| Eligibility audit | Persist one normalize eligibility decision per raw row before AI normalization |
 | Staging storage | Store canonical candidate records after validation |
 | Sync preparation | Build idempotent upsert batches |
 | Transactions | Keep related company/job/requirement writes consistent |
@@ -42,6 +43,9 @@ Required behavior:
 - Raw and normalized writes for one job share a transaction boundary.
 - If the normalized write fails after raw storage starts, the raw insert is rolled back with the same transaction.
 - Payload hashes are deterministic JSON SHA-256 values so replay checks can detect source payload changes.
+- Normalize stage writes eligibility decision rows (`normalization_eligible` or skip reason) before dispatching AI normalization.
+- Normalize dispatcher processes only rows with decision `normalization_eligible`.
+- Eligibility decision rows store identity key/hash, payload hash, backend lookup evidence, and local normalized/sync context.
 
 The writer accepts canonical job models only after mapper validation. Source-specific payloads remain in raw storage and are not exposed through normalized output fields.
 
@@ -66,6 +70,7 @@ Track:
 - Transaction latency.
 - Constraint conflict count.
 - Retention cleanup count.
+- Eligibility decision counts by reason.
 
 ## Tests
 
