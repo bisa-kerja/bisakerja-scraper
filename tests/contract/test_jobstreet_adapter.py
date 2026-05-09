@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 
+from cli.pipeline import jobstreet_search_path
 from core.errors import ConfigError, FetchError, ParseError
 from integrations.sources.jobstreet import (
     JOBSTREET_DETAIL_OPERATION,
@@ -112,6 +113,24 @@ async def test_jobstreet_list_adapter_sends_sanitized_graphql_request_shape() ->
     assert "bearer" not in request_json
     assert "cookie" not in request_json
     assert "eventcapture" not in request_json
+
+
+def test_jobstreet_list_query_can_omit_date_range() -> None:
+    body = build_jobstreet_list_request_body(
+        JobStreetListQuery(keywords="developer", page=1, page_size=32, date_range=None)
+    )
+
+    params = body["variables"]["params"]
+    assert params["keywords"] == "developer"
+    assert "dateRange" not in params
+
+
+def test_jobstreet_search_path_can_omit_date_range() -> None:
+    assert jobstreet_search_path(keyword="developer", recency_days=None) == "/id/developer-jobs"
+    assert (
+        jobstreet_search_path(keyword="developer", recency_days=None, page=2)
+        == "/id/developer-jobs?page=2"
+    )
 
 
 def test_jobstreet_missing_bearer_is_config_error() -> None:

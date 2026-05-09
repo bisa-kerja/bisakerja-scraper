@@ -93,6 +93,12 @@ async def test_kalibrr_list_adapter_uses_dynamic_build_id_path() -> None:
     assert http_client.requests[0]["headers"] == {"x-nextjs-data": "1"}
 
 
+def test_kalibrr_list_query_can_omit_freshness_sort() -> None:
+    params = KalibrrListQuery(category="te", keyword="developer", offset=0, sort=None).to_params()
+
+    assert params == {"param": ["te", "developer"], "offset": 0}
+
+
 def test_kalibrr_embedded_detail_keeps_html_metadata() -> None:
     result = parse_kalibrr_list_payload(load_fixture("tests/fixtures/raw/kalibrr/sample.json"))
     detail = parse_kalibrr_detail_payload(result.raw_jobs[0].raw_payload)

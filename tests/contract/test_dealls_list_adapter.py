@@ -90,6 +90,22 @@ async def test_dealls_list_adapter_sends_expected_query_params() -> None:
     ]
 
 
+def test_dealls_list_query_can_omit_latest_filters() -> None:
+    params = DeallsListQuery(
+        page=1,
+        limit=10,
+        search="developer",
+        sort_param=None,
+        sort_by=None,
+        status=None,
+        published=None,
+        boost_the_boosted_job=None,
+        external_platform_apply_url_set=None,
+    ).to_params()
+
+    assert params == {"page": 1, "limit": 10, "search": "developer"}
+
+
 def test_parse_dealls_list_payload_classifies_missing_docs() -> None:
     with pytest.raises(ParseError) as exc_info:
         parse_dealls_list_payload({"data": {"page": 1}})

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from core.errors import FetchError, NormalizeError
 from integrations.sources.mapper_utils import SourceMapperResult
-from jobs.pipeline import PipelineConfig, PipelineOrchestrator
+from jobs.pipeline import PipelineConfig, PipelineOrchestrator, order_fetched_raw_jobs
 from modules.eligibility import EligibilityResolver
 from modules.jobs import AINormalizationBatchItemResult, AINormalizationBatchPromptInput
 from modules.jobs.schemas import (
@@ -463,6 +463,54 @@ async def test_scrape_stage_tracks_pagination_metadata_and_source_report() -> No
         assert source_result.stop_reason == "target_reached"
         assert source_result.deduped_count == 4
         assert source_result.total_available == 120
+
+
+def test_native_recency_mode_preserves_source_order() -> None:
+    source = FakeSource("dealls", [])
+    source.recency_mode = "native"
+    older = RawJobStub(
+        source_platform="dealls",
+        external_id="older",
+        source_url="https://example.test/older",
+        raw_payload={"id": "older"},
+        source_timestamp=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    newer = RawJobStub(
+        source_platform="dealls",
+        external_id="newer",
+        source_url="https://example.test/newer",
+        raw_payload={"id": "newer"},
+        source_timestamp=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+
+    assert [job.external_id for job in order_fetched_raw_jobs(source, [older, newer])] == [
+        "older",
+        "newer",
+    ]
+
+
+def test_latest_recency_mode_sorts_by_source_timestamp() -> None:
+    source = FakeSource("dealls", [])
+    source.recency_mode = "latest"
+    older = RawJobStub(
+        source_platform="dealls",
+        external_id="older",
+        source_url="https://example.test/older",
+        raw_payload={"id": "older"},
+        source_timestamp=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    newer = RawJobStub(
+        source_platform="dealls",
+        external_id="newer",
+        source_url="https://example.test/newer",
+        raw_payload={"id": "newer"},
+        source_timestamp=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+
+    assert [job.external_id for job in order_fetched_raw_jobs(source, [older, newer])] == [
+        "newer",
+        "older",
+    ]
 
 
 @dataclass

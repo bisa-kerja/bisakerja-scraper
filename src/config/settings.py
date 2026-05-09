@@ -27,6 +27,7 @@ class LogLevel(StrEnum):
 
 class ScraperRecencyMode(StrEnum):
     LATEST = "latest"
+    NATIVE = "native"
 
 
 class Settings(BaseSettings):

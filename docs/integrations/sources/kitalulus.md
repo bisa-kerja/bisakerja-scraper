@@ -31,6 +31,11 @@ Kitalulus is a supported GraphQL source based on captured list and detail respon
 | Pagination | Use `hasNextPage`, `page`, and configured limit |
 | Enablement | Live execute requires `KITALULUS_ENABLED=true`; dry-run fixture validation remains available when disabled |
 
+Runtime ordering:
+
+- `SCRAPER_RECENCY_MODE=latest`: sends `sortBy=updatedAt`.
+- `SCRAPER_RECENCY_MODE=native`: omits `sortBy` and keeps platform default ordering; pagination, keyword, and empty filter buckets still apply.
+
 ## Field Mapping
 
 | Source field | Normalized field | Rule |

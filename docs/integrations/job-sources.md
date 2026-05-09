@@ -113,6 +113,11 @@ Source page-size controls:
 - `KALIBRR_PAGE_SIZE`
 - `KITALULUS_PAGE_SIZE`
 
+Ordering control:
+
+- `SCRAPER_RECENCY_MODE=latest` keeps current newest-first behavior.
+- `SCRAPER_RECENCY_MODE=native` omits scraper-added latest sort/filter parameters and preserves platform response order.
+
 Each source report should expose `pagesAttempted`, `pagesSucceeded`, `pagesFailed`, `stopReason`, and `dedupedCount`.
 
 ## Source Pages

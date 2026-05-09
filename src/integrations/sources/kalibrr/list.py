@@ -28,7 +28,7 @@ KALIBRR_DEFAULT_HEADERS = {
 class KalibrrListQuery:
     category: str = "te"
     keyword: str = "developer"
-    sort: str = "Freshness"
+    sort: str | None = "Freshness"
     offset: int = 0
 
     def path_template(self) -> str:
@@ -39,11 +39,13 @@ class KalibrrListQuery:
         )
 
     def to_params(self) -> dict[str, Any]:
-        return {
-            "sort": self.sort,
+        params: dict[str, Any] = {
             "param": [self.category, self.keyword],
             "offset": self.offset,
         }
+        if self.sort is not None:
+            params["sort"] = self.sort
+        return params
 
 
 class RawSourceJob(BaseModel):

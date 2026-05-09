@@ -77,9 +77,22 @@ class KitalulusListQuery:
     keyword: str = "developer"
     page: int = 1
     limit: int = 30
-    sort: str = "updatedAt"
+    sort: str | None = "updatedAt"
 
     def to_variables(self) -> dict[str, Any]:
+        filters = [
+            {"key": "jobSpecializations", "value": []},
+            {"key": "companyIndustries", "value": []},
+            {"key": "educationLevels", "value": []},
+            {"key": "gender", "value": []},
+            {"key": "salary", "value": []},
+            {"key": "types", "value": []},
+            {"key": "jobLevels", "value": []},
+            {"key": "locationSites", "value": []},
+            {"key": "workExperience", "value": []},
+        ]
+        if self.sort is not None:
+            filters.insert(0, {"key": "sortBy", "value": [self.sort]})
         return {
             "keyword": self.keyword,
             "tag": "",
@@ -88,18 +101,7 @@ class KitalulusListQuery:
             "userMaxEducation": "",
             "userJobSpecializationRoleIds": [],
             "pagination": {"page": self.page, "limit": self.limit},
-            "filters": [
-                {"key": "sortBy", "value": [self.sort]},
-                {"key": "jobSpecializations", "value": []},
-                {"key": "companyIndustries", "value": []},
-                {"key": "educationLevels", "value": []},
-                {"key": "gender", "value": []},
-                {"key": "salary", "value": []},
-                {"key": "types", "value": []},
-                {"key": "jobLevels", "value": []},
-                {"key": "locationSites", "value": []},
-                {"key": "workExperience", "value": []},
-            ],
+            "filters": filters,
         }
 
 

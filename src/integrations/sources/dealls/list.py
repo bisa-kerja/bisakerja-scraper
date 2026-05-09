@@ -26,24 +26,30 @@ class DeallsListQuery:
     page: int = 1
     limit: int = DEALLS_MAX_PAGE_SIZE
     search: str | None = None
-    sort_param: str = "publishedAt"
-    sort_by: str = "desc"
-    status: str = "active"
-    published: bool = True
-    boost_the_boosted_job: bool = True
-    external_platform_apply_url_set: str = "null"
+    sort_param: str | None = "publishedAt"
+    sort_by: str | None = "desc"
+    status: str | None = "active"
+    published: bool | None = True
+    boost_the_boosted_job: bool | None = True
+    external_platform_apply_url_set: str | None = "null"
 
     def to_params(self) -> dict[str, str | int | bool]:
         params: dict[str, str | int | bool] = {
             "page": self.page,
             "limit": self.limit,
-            "sortParam": self.sort_param,
-            "sortBy": self.sort_by,
-            "status": self.status,
-            "published": self.published,
-            "boostTheBoostedJob": self.boost_the_boosted_job,
-            "externalPlatformApplyUrlSet": self.external_platform_apply_url_set,
         }
+        if self.sort_param is not None:
+            params["sortParam"] = self.sort_param
+        if self.sort_by is not None:
+            params["sortBy"] = self.sort_by
+        if self.status is not None:
+            params["status"] = self.status
+        if self.published is not None:
+            params["published"] = self.published
+        if self.boost_the_boosted_job is not None:
+            params["boostTheBoostedJob"] = self.boost_the_boosted_job
+        if self.external_platform_apply_url_set is not None:
+            params["externalPlatformApplyUrlSet"] = self.external_platform_apply_url_set
         if self.search:
             params["search"] = self.search
         return params

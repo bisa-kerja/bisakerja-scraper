@@ -122,17 +122,18 @@ class GlintsListQuery:
     page_size: int = 30
     search_term: str | None = None
     country_code: str = "ID"
-    sort_by: str = "LATEST"
+    sort_by: str | None = "LATEST"
     include_external_jobs: bool = True
 
     def to_variables_data(self) -> dict[str, Any]:
         data: dict[str, Any] = {
             "CountryCode": self.country_code,
-            "sortBy": self.sort_by,
             "includeExternalJobs": self.include_external_jobs,
             "pageSize": self.page_size,
             "page": self.page,
         }
+        if self.sort_by is not None:
+            data["sortBy"] = self.sort_by
         if self.search_term:
             data["SearchTerm"] = self.search_term
         return data

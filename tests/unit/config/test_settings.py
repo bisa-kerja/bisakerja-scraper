@@ -259,6 +259,12 @@ def test_scraper_recency_days_rejects_invalid_values() -> None:
         Settings(**env, _env_file=None)
 
 
+def test_scraper_recency_mode_accepts_native_source_order() -> None:
+    settings = Settings(**valid_env(SCRAPER_RECENCY_MODE="native"), _env_file=None)
+
+    assert settings.scraper_recency_mode == "native"
+
+
 def test_env_example_is_valid() -> None:
     env_example = Path(__file__).parents[3] / ".env.example"
 

@@ -107,6 +107,16 @@ def test_glints_request_body_matches_fixture_shape() -> None:
     assert "traceInfo" not in request_body["query"]
 
 
+def test_glints_request_body_can_omit_latest_sort() -> None:
+    request_body = build_glints_list_request_body(
+        GlintsListQuery(search_term="developer", page=1, page_size=30, sort_by=None)
+    )
+
+    data = request_body["variables"]["data"]
+    assert data["SearchTerm"] == "developer"
+    assert "sortBy" not in data
+
+
 def test_glints_detail_fallback_keeps_job_valid_with_list_provenance() -> None:
     result = parse_glints_list_payload(load_fixture("tests/fixtures/raw/glints/sample.json"))
 

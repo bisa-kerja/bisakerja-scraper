@@ -270,7 +270,7 @@ class PipelineOrchestrator:
 
         try:
             stage_events.append(f"{source.source_platform}:scrape")
-            fetched = sorted_by_source_timestamp(list(await source.fetch_raw_jobs()))
+            fetched = order_fetched_raw_jobs(source, list(await source.fetch_raw_jobs()))
             result.counts.fetched = len(fetched)
             update_source_timestamp_bounds(result, fetched)
             update_source_pagination_report(result, source)
@@ -314,7 +314,7 @@ class PipelineOrchestrator:
         result = source_pipeline_result_from(source)
         try:
             stage_events.append(f"{source.source_platform}:scrape")
-            fetched = sorted_by_source_timestamp(list(await source.fetch_raw_jobs()))
+            fetched = order_fetched_raw_jobs(source, list(await source.fetch_raw_jobs()))
             result.counts.fetched = len(fetched)
             update_source_timestamp_bounds(result, fetched)
             update_source_pagination_report(result, source)
@@ -1130,6 +1130,12 @@ def sorted_by_source_timestamp(raw_jobs: list[Any]) -> list[Any]:
         key=lambda raw_job: source_timestamp_sort_key(getattr(raw_job, "source_timestamp", None)),
         reverse=True,
     )
+
+
+def order_fetched_raw_jobs(source: PipelineSource, raw_jobs: list[Any]) -> list[Any]:
+    if getattr(source, "recency_mode", None) == "native":
+        return raw_jobs
+    return sorted_by_source_timestamp(raw_jobs)
 
 
 def source_timestamp_sort_key(value: Any) -> datetime:

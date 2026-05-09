@@ -192,6 +192,8 @@ Important groups:
 
 Do not commit real secrets, cookies, bearer tokens, source sessions, or database credentials.
 
+`SCRAPER_RECENCY_MODE=latest` is the default and requests newest-first source params where supported. Set `SCRAPER_RECENCY_MODE=native` to omit scraper-added latest sort/filter params and keep each platform's returned order.
+
 ## Available Commands
 
 | Command                                             | Purpose                                    |

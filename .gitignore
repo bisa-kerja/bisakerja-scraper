@@ -9,5 +9,6 @@
 .ruff_cache/
 __pycache__/
 *.py[cod]
+artifacts/
 
 .DS_Store

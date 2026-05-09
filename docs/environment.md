@@ -90,7 +90,7 @@ Rules:
 | `SCRAPER_MAX_PAGES_PER_KEYWORD` | Yes | Positive integer page cap per keyword |
 | `SCRAPER_TARGET_TOTAL_JOBS_PER_RUN` | Yes | Positive integer target cap for one pipeline run |
 | `SCRAPER_DETAIL_FETCH_CONCURRENCY` | Yes | Positive integer bounded detail-fetch concurrency |
-| `SCRAPER_RECENCY_MODE` | Yes | `latest` |
+| `SCRAPER_RECENCY_MODE` | Yes | `latest` or `native`; default examples use `latest` |
 | `SCRAPER_RECENCY_DAYS` | Yes | Positive integer, maximum `365` |
 
 Keyword rules:
@@ -103,7 +103,7 @@ Keyword rules:
 
 The scraper fans out scrape work by `source x keyword`. The per-keyword limit applies to every fan-out item, not to the whole run. Total rows can exceed `100` when multiple sources and keywords run together. Job deduplication still uses `sourcePlatform + externalJobId`; the search keyword is audit metadata and must not become part of job identity.
 
-Latest mode requests newest listings first when a source supports it. If a source only supports sorting, the scraper reads newest-first pages and stops locally by limit or recency threshold.
+Latest mode requests newest listings first when a source supports it and locally sorts fetched rows by source timestamp before persistence. Native mode omits the scraper-added latest sort/filter parameters and preserves the platform response order; source keyword and pagination parameters still apply.
 
 ## Backend Sync Variables
 

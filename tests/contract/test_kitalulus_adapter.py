@@ -32,6 +32,15 @@ def test_kitalulus_list_parser_maps_identity_and_request_body() -> None:
     assert result.raw_jobs[0].source_url.endswith("/fullstack-laravel-developer-scpy")
 
 
+def test_kitalulus_list_query_can_omit_updated_sort() -> None:
+    body = build_kitalulus_list_request_body(
+        KitalulusListQuery(keyword="developer", page=1, limit=1, sort=None)
+    )
+
+    filters = body["variables"]["filters"]
+    assert not any(filter_item["key"] == "sortBy" for filter_item in filters)
+
+
 def test_kitalulus_detail_parser_maps_slug() -> None:
     body = build_kitalulus_detail_request_body("fullstack-laravel-developer-scpy")
     assert body["operationName"] == "VacancyBySlug"

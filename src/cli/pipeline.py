@@ -3814,10 +3814,11 @@ def build_live_dealls_source(
                 pages_attempted += 1
                 try:
                     list_result = await adapter.fetch_page(
-                        DeallsListQuery(
+                        dealls_query_for_mode(
                             page=page,
                             limit=page_size,
                             search=keyword,
+                            recency_mode=recency_mode,
                         )
                     )
                 except (FetchError, ParseError) as exc:
@@ -3895,14 +3896,112 @@ def origin_base_url(configured_url: str) -> str:
     return configured_url
 
 
-def jobstreet_search_path(*, keyword: str, recency_days: int, page: int = 1) -> str:
+def jobstreet_search_path(
+    *,
+    keyword: str,
+    recency_days: int | None,
+    page: int = 1,
+) -> str:
     clean_keyword = keyword.strip()
-    page_param = f"&page={page}" if page > 1 else ""
+    query_parts: list[str] = []
+    if recency_days is not None:
+        query_parts.append(f"daterange={recency_days}")
+    if page > 1:
+        query_parts.append(f"page={page}")
     if "/" in clean_keyword:
         encoded_keyword = quote(clean_keyword, safe="")
-        return f"/id/jobs?keywords={encoded_keyword}&daterange={recency_days}{page_param}"
+        query_parts.insert(0, f"keywords={encoded_keyword}")
+        return f"/id/jobs?{'&'.join(query_parts)}"
     slug = quote(clean_keyword.replace(" ", "-"), safe="")
-    return f"/id/{slug}-jobs?daterange={recency_days}{page_param}"
+    query_string = f"?{'&'.join(query_parts)}" if query_parts else ""
+    return f"/id/{slug}-jobs{query_string}"
+
+
+def uses_native_source_order(recency_mode: str) -> bool:
+    return recency_mode == "native"
+
+
+def dealls_query_for_mode(
+    *,
+    page: int,
+    limit: int,
+    search: str,
+    recency_mode: str,
+) -> DeallsListQuery:
+    if uses_native_source_order(recency_mode):
+        return DeallsListQuery(
+            page=page,
+            limit=limit,
+            search=search,
+            sort_param=None,
+            sort_by=None,
+            status=None,
+            published=None,
+            boost_the_boosted_job=None,
+            external_platform_apply_url_set=None,
+        )
+    return DeallsListQuery(page=page, limit=limit, search=search)
+
+
+def glints_query_for_mode(
+    *,
+    page: int,
+    page_size: int,
+    search_term: str,
+    country_code: str,
+    recency_mode: str,
+) -> GlintsListQuery:
+    return GlintsListQuery(
+        page=page,
+        page_size=page_size,
+        search_term=search_term,
+        country_code=country_code,
+        sort_by=None if uses_native_source_order(recency_mode) else "LATEST",
+    )
+
+
+def jobstreet_query_for_mode(
+    *,
+    keywords: str,
+    page: int,
+    page_size: int,
+    recency_days: int,
+    recency_mode: str,
+) -> JobStreetListQuery:
+    return JobStreetListQuery(
+        keywords=keywords,
+        page=page,
+        page_size=page_size,
+        date_range=None if uses_native_source_order(recency_mode) else recency_days,
+    )
+
+
+def kalibrr_query_for_mode(
+    *,
+    keyword: str,
+    offset: int,
+    recency_mode: str,
+) -> KalibrrListQuery:
+    return KalibrrListQuery(
+        keyword=keyword,
+        offset=offset,
+        sort=None if uses_native_source_order(recency_mode) else "Freshness",
+    )
+
+
+def kitalulus_query_for_mode(
+    *,
+    keyword: str,
+    page: int,
+    limit: int,
+    recency_mode: str,
+) -> KitalulusListQuery:
+    return KitalulusListQuery(
+        keyword=keyword,
+        page=page,
+        limit=limit,
+        sort=None if uses_native_source_order(recency_mode) else "updatedAt",
+    )
 
 
 def jobstreet_payload_from_search_page(html: str) -> dict[str, Any]:
@@ -3982,11 +4081,12 @@ def build_live_glints_source(
                 pages_attempted += 1
                 try:
                     result = await adapter.fetch_page(
-                        GlintsListQuery(
+                        glints_query_for_mode(
                             page=page,
                             page_size=page_size,
                             search_term=keyword,
                             country_code=settings.glints_country_code,
+                            recency_mode=recency_mode,
                         )
                     )
                 except (FetchError, ParseError) as exc:
@@ -4120,7 +4220,9 @@ def build_live_jobstreet_source(
                         "GET",
                         jobstreet_search_path(
                             keyword=keyword,
-                            recency_days=recency_days,
+                            recency_days=(
+                                None if uses_native_source_order(recency_mode) else recency_days
+                            ),
                             page=page,
                         ),
                         headers={"accept": "text/html"},
@@ -4128,11 +4230,12 @@ def build_live_jobstreet_source(
                     payload = jobstreet_payload_from_search_page(html)
                     list_result = parse_jobstreet_list_payload(
                         payload,
-                        query=JobStreetListQuery(
+                        query=jobstreet_query_for_mode(
                             keywords=keyword,
                             page=page,
                             page_size=page_size,
-                            date_range=recency_days,
+                            recency_days=recency_days,
+                            recency_mode=recency_mode,
                         ),
                     )
                 except (FetchError, ParseError) as exc:
@@ -4246,9 +4349,10 @@ def build_live_kalibrr_source(
                 pages_attempted += 1
                 try:
                     result = await adapter.fetch_page(
-                        KalibrrListQuery(
+                        kalibrr_query_for_mode(
                             keyword=keyword,
                             offset=offset,
+                            recency_mode=recency_mode,
                         )
                     )
                 except (FetchError, ParseError) as exc:
@@ -4343,10 +4447,11 @@ def build_live_kitalulus_source(
                 pages_attempted += 1
                 try:
                     list_result = await adapter.fetch_page(
-                        KitalulusListQuery(
+                        kitalulus_query_for_mode(
                             keyword=keyword,
                             page=page,
                             limit=page_size,
+                            recency_mode=recency_mode,
                         )
                     )
                 except (FetchError, ParseError) as exc:
