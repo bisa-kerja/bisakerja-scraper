@@ -140,7 +140,7 @@ Wizard guard rules:
 - When `BACKEND_SYNC_ENABLED=false`, sync and notification handoff use recording clients (no outbound backend API mutation).
 - When `BACKEND_SYNC_ENABLED=true`, sync and notification handoff use real backend API clients with `BACKEND_SYNC_BASE_URL` and `BACKEND_SYNC_SERVICE_TOKEN`.
 - Live backend mode calls `POST /api/v1/internal/scraper/jobs` and `POST /api/v1/internal/notification-events`; `BACKEND_SYNC_SERVICE_TOKEN` must match Backend API `SCRAPER_API_SERVICE_TOKEN`.
-- Large runs are split into backend-safe chunks: sync uses `BACKEND_SYNC_BATCH_SIZE` with a maximum of `100` jobs per request, and notification handoff uses candidate chunks with a maximum of `1000` candidates per request.
+- Large runs are split into backend-safe chunks: sync uses `BACKEND_SYNC_BATCH_SIZE` with a maximum of `25` jobs per request, and notification handoff uses candidate chunks with a maximum of `1000` candidates per request.
 
 Recommended controlled local execute sequence:
 

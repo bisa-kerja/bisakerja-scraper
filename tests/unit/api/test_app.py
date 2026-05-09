@@ -100,7 +100,7 @@ def valid_env(**overrides: object) -> dict[str, object]:
         "SCRAPER_RECENCY_MODE": "latest",
         "SCRAPER_RECENCY_DAYS": "7",
         "BACKEND_SYNC_TIMEOUT_SECONDS": "20",
-        "BACKEND_SYNC_BATCH_SIZE": "100",
+        "BACKEND_SYNC_BATCH_SIZE": "25",
         "FRESHNESS_STALE_AFTER_HOURS": "72",
         "FRESHNESS_EXPIRED_AFTER_HOURS": "336",
         "AI_ENRICHMENT_ENABLED": "false",

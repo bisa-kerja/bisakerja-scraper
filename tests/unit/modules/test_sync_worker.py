@@ -245,8 +245,8 @@ async def test_sync_worker_sends_large_candidate_set_in_backend_safe_chunks() ->
         assert sync_result.attempted == 205
         assert sync_result.sent == 205
         assert sync_result.failed == 0
-        assert sync_result.chunks_attempted == 3
-        assert client.batch_sizes == [100, 100, 5]
+        assert sync_result.chunks_attempted == 9
+        assert client.batch_sizes == [25, 25, 25, 25, 25, 25, 25, 25, 5]
         assert len(client.external_ids) == 205
 
 

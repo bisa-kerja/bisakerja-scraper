@@ -43,7 +43,7 @@ def valid_env(**overrides: object) -> dict[str, object]:
         "SCRAPER_RECENCY_MODE": "latest",
         "SCRAPER_RECENCY_DAYS": "7",
         "BACKEND_SYNC_TIMEOUT_SECONDS": "20",
-        "BACKEND_SYNC_BATCH_SIZE": "100",
+        "BACKEND_SYNC_BATCH_SIZE": "25",
         "FRESHNESS_STALE_AFTER_HOURS": "72",
         "FRESHNESS_EXPIRED_AFTER_HOURS": "336",
         "AI_ENRICHMENT_ENABLED": "false",
@@ -135,7 +135,7 @@ def test_backend_sync_requires_target_and_token() -> None:
 
 
 def test_backend_sync_batch_size_matches_backend_endpoint_limit() -> None:
-    env = valid_env(BACKEND_SYNC_BATCH_SIZE="101")
+    env = valid_env(BACKEND_SYNC_BATCH_SIZE="26")
 
     with pytest.raises(ValidationError, match="BACKEND_SYNC_BATCH_SIZE"):
         Settings(**env, _env_file=None)

@@ -112,11 +112,11 @@ Latest mode requests newest listings first when a source supports it and locally
 | `BACKEND_SYNC_BASE_URL` | Yes when sync is enabled | Backend API base URL; scraper appends `/api/v1/internal/scraper/jobs` and `/api/v1/internal/notification-events` |
 | `BACKEND_SYNC_SERVICE_TOKEN` | Yes when sync is enabled | Internal service credential from secret storage; must match Backend API `SCRAPER_API_SERVICE_TOKEN` |
 | `BACKEND_SYNC_TIMEOUT_SECONDS` | Yes | Positive sync request timeout |
-| `BACKEND_SYNC_BATCH_SIZE` | Yes | Positive batch size, maximum `100` to match Backend API internal sync limit |
+| `BACKEND_SYNC_BATCH_SIZE` | Yes | Positive batch size, maximum `25` for safer backend transaction runtime |
 | `FRESHNESS_STALE_AFTER_HOURS` | Yes | Positive threshold for stale listings |
 | `FRESHNESS_EXPIRED_AFTER_HOURS` | Yes | Positive threshold greater than stale threshold |
 
-Backend sync can process large candidate sets such as `1000`-`2000` normalized jobs in one stage run. The scraper splits outbound sync calls into repeated `BACKEND_SYNC_BATCH_SIZE` chunks, so no single request exceeds the Backend API `100` job limit. Notification handoff is also chunked before calling the Backend API candidate endpoint.
+Backend sync can process large candidate sets such as `1000`-`2000` normalized jobs in one stage run. The scraper splits outbound sync calls into repeated `BACKEND_SYNC_BATCH_SIZE` chunks, so no single request exceeds `25` jobs. Notification handoff is also chunked before calling the Backend API candidate endpoint.
 
 ## AI Provider Variables
 

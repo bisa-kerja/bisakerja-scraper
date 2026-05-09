@@ -4652,16 +4652,16 @@ def backend_sync_mode(settings: Settings, *, execute: bool) -> dict[str, Any]:
 
 
 def backend_sync_batch_guard(settings: Settings) -> dict[str, Any]:
-    if settings.backend_sync_batch_size > 100:
+    if settings.backend_sync_batch_size > 25:
         return {
             "status": "fail",
             "batchSize": settings.backend_sync_batch_size,
-            "reason": "BACKEND_SYNC_BATCH_SIZE must be less than or equal to 100",
+            "reason": "BACKEND_SYNC_BATCH_SIZE must be less than or equal to 25",
         }
     return {
         "status": "ok",
         "batchSize": settings.backend_sync_batch_size,
-        "maxAllowed": 100,
+        "maxAllowed": 25,
     }
 
 

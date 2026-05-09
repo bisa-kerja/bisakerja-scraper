@@ -145,7 +145,7 @@ Sync triage rules:
 - `404` on the configured sync path indicates a missing or wrong Backend API endpoint and is recorded as `backend_endpoint_not_found` so it can be retried after config or backend routing is fixed.
 - `429` and `5xx` responses may be retried within the configured limit.
 - Sync runs are chunked; a failed chunk should not mark later chunks failed.
-- Large sync runs should show multiple backend requests with chunk sizes at or below `BACKEND_SYNC_BATCH_SIZE` and never above `100`.
+- Large sync runs should show multiple backend requests with chunk sizes at or below `BACKEND_SYNC_BATCH_SIZE` and never above `25`.
 - Repeating the same payload should reuse the same sync event.
 - Resume should process only pending events and retryable failed events.
 - `dead-letter` rows require operator review before replay.

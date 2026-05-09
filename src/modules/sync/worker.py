@@ -18,6 +18,7 @@ SYNC_ELIGIBLE_STATUSES = {
     CanonicalJobStatus.STALE.value,
     CanonicalJobStatus.EXPIRED.value,
 }
+BACKEND_SYNC_MAX_BATCH_SIZE = 25
 
 
 @dataclass(frozen=True)
@@ -74,7 +75,7 @@ class BackendSyncWorker:
         )
         if min_batch_size <= 0:
             raise ValueError("min batch size must be greater than zero")
-        chunk_size = min(max(batch_size or limit, 1), 100)
+        chunk_size = min(max(batch_size or limit, 1), BACKEND_SYNC_MAX_BATCH_SIZE)
         sent = 0
         failed = 0
         chunks_attempted = 0
