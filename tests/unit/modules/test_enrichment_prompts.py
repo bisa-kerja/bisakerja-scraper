@@ -31,3 +31,20 @@ def test_enrichment_prompt_uses_only_safe_job_fields() -> None:
     assert "Authorization" not in combined
     assert "Bearer" not in combined
     assert "token" not in combined.casefold()
+
+
+def test_enrichment_prompt_can_target_english_output() -> None:
+    job = EnrichmentJobInput(
+        title="Backend Engineer",
+        description="Build APIs with Python.",
+        requirements="3 years experience.",
+        company="Bisakerja",
+        source="dealls",
+    )
+
+    messages = build_enrichment_messages(job, output_language="english")
+    combined = "\n".join(message["content"] for message in messages)
+
+    assert "Output language: English" in combined
+    assert "natural English" in combined
+    assert "Do not output Indonesian paraphrases" in combined

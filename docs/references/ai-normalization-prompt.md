@@ -23,6 +23,8 @@ Each normalization request includes:
   - `endpointType`: `list` or `detail`.
   - `rawPayloadSubset`: minimal source payload fragment used as evidence.
 - `targetSchema`: canonical output contract name.
+- `outputLanguage`: generated output language from `AI_OUTPUT_LANGUAGE`; allowed values are `indonesian` and `english`.
+- `outputLanguagePolicy`: field-level language rules for generated text, source term preservation, and no-disclaimer behavior.
 - `targetJsonSchema`: JSON schema generated from `CanonicalJobSchema`.
 - `batchOutputJsonSchema`: JSON schema generated from `AINormalizationBatchOutput`.
 - `sourceContext`: detail capability and effective endpoint mode (`list`, `list+detail`, `list+embedded-detail`).
@@ -52,8 +54,8 @@ The normalization system prompt enforces:
 - Unknown values remain `null`.
 - Glints list data stays partial when detail fields are absent and must use transparent source-limited summary text.
 - Prompt instruction language is English.
-- Generated/paraphrased prose output language is Indonesian for consistent downstream UX.
-- English paraphrase is disallowed unless verbatim source text is intentionally preserved.
+- Generated/paraphrased prose output language follows `AI_OUTPUT_LANGUAGE`.
+- Cross-language paraphrase is disallowed unless verbatim source text is intentionally preserved.
 - Process/disclaimer meta text is disallowed in display fields (for example rewrite/translation notices).
 - `external_apply_url` falls back to `source_url` when unavailable.
 - When salary numeric evidence exists (`minAmount`/`maxAmount`), `salary.display` must not be placeholder text.
@@ -76,12 +78,12 @@ The normalization system prompt enforces:
 
 Expected content structure is explicit so output stays consistent across sources.
 
-| Field | Target shape | Minimum expectation |
-| --- | --- | --- |
-| `description` | Safe display HTML (`<p>`, `<ul>/<ol>`, `<li>`, `<strong>`, `<em>`, `<br>`) | Menyebut fokus peran/tanggung jawab utama dan konteks eksekusi kerja bila evidence tersedia |
-| `requirement_summary` | Ringkasan singkat safe display HTML, gaya profesional Bahasa Indonesia | Tidak boleh diawali label tetap seperti `Kualifikasi utama:`; pertahankan poin pengalaman + kompetensi inti |
-| `requirements` | Teks requirement plain text untuk ekstraksi lanjutan | Factual, tanpa HTML mentah, tanpa duplikasi kalimat, tidak mengada-ada |
-| `skills` | Daftar skill spesifik berbasis evidence | Dedupe case-insensitive, utamakan teknologi/domain eksplisit, pecah skill komposit jadi item atomic, hindari skill terlalu abstrak tanpa evidence |
+| Field                 | Target shape                                                               | Minimum expectation                                                                                                                               |
+| --------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `description`         | Safe display HTML (`<p>`, `<ul>/<ol>`, `<li>`, `<strong>`, `<em>`, `<br>`) | Mentions role focus/main responsibilities and execution context when evidence exists, using `AI_OUTPUT_LANGUAGE`                                  |
+| `requirement_summary` | Short safe-display summary in professional style                           | Must not start with fixed labels such as `Kualifikasi utama:`; keep experience and core competency points in `AI_OUTPUT_LANGUAGE`                 |
+| `requirements`        | Plain text requirement body for downstream extraction                      | Factual, no raw HTML, no duplicate sentences, no unsupported claims, generated in `AI_OUTPUT_LANGUAGE`                                            |
+| `skills`              | Evidence-based specific skill list                                         | Dedupe case-insensitive, keep technology/tool names source-faithful, split composite skills into atomic items, avoid abstract low-evidence skills |
 
 All four fields must avoid emoji, decorative icons, and noisy visual symbols.
 

@@ -72,6 +72,7 @@ class PipelineConfig:
     allow_partial: bool = True
     ai_normalization_batch_size: int = 5
     ai_normalization_inter_batch_delay_ms: int = 0
+    ai_output_language: str = "indonesian"
     progress_hook: ProgressHook | None = None
 
     def __post_init__(self) -> None:
@@ -81,6 +82,10 @@ class PipelineConfig:
             raise ValueError("ai_normalization_batch_size must be greater than zero")
         if self.ai_normalization_inter_batch_delay_ms < 0:
             raise ValueError("ai_normalization_inter_batch_delay_ms must be zero or greater")
+        language = self.ai_output_language.strip().casefold()
+        if language not in {"indonesian", "english"}:
+            raise ValueError("ai_output_language must be indonesian or english")
+        object.__setattr__(self, "ai_output_language", language)
 
 
 @dataclass
@@ -492,6 +497,7 @@ class PipelineOrchestrator:
                 raw_job,
                 source_platform=source.source_platform,
                 external_id=raw_job.external_id,
+                output_language=self.config.ai_output_language,
             )
             if prompt_input is None:
                 self._upsert_normalized_job_with_retry(mapped.job, raw_job_id=raw_job.id)
@@ -528,7 +534,10 @@ class PipelineOrchestrator:
         started = time.perf_counter()
         try:
             batch_results = await normalize_jobs(
-                AINormalizationBatchPromptInput(items=prompt_items)
+                AINormalizationBatchPromptInput(
+                    items=prompt_items,
+                    output_language=self.config.ai_output_language,
+                )
             )
         except Exception as exc:  # noqa: BLE001
             for item_id in [item.item_id for item in prompt_items]:
@@ -803,6 +812,7 @@ class PipelineOrchestrator:
             raw_job,
             source_platform=source.source_platform,
             external_id=external_id,
+            output_language=self.config.ai_output_language,
         )
         if prompt_input is None:
             return mapped
@@ -925,6 +935,7 @@ def prompt_input_from_raw_job(
     *,
     source_platform: str,
     external_id: str | None,
+    output_language: str = "indonesian",
 ) -> AINormalizationPromptInput | None:
     raw_payload = getattr(raw_job, "raw_payload", None)
     if not isinstance(raw_payload, dict) or not raw_payload:
@@ -946,6 +957,7 @@ def prompt_input_from_raw_job(
         source_platform=source_platform_enum(source_platform, external_id=external_id),
         endpoint_type=endpoint_type_from_payload(raw_payload),
         raw_payload_subset=payload_subset,
+        output_language=output_language,
     )
 
 

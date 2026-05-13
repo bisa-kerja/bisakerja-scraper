@@ -3252,6 +3252,7 @@ class ManualPipelineRunner:
                 ai_normalization_inter_batch_delay_ms=(
                     self.settings.openai_normalization_inter_batch_delay_ms
                 ),
+                ai_output_language=self.settings.ai_output_language.value,
                 progress_hook=self.emit_progress if self.execute else None,
             ),
             correlation_id_factory=lambda: "manual-pipeline",
@@ -4837,6 +4838,7 @@ def build_ai_normalization_client(
         timeout_seconds=settings.openai_timeout_seconds,
         max_retries=settings.openai_max_retries,
         model_rotator=model_rotator,
+        output_language=settings.ai_output_language.value,
     )
 
 
@@ -4863,6 +4865,7 @@ def build_ai_enrichment_client(
         timeout_seconds=settings.openai_timeout_seconds,
         max_retries=settings.openai_max_retries,
         model_rotator=model_rotator,
+        output_language=settings.ai_output_language.value,
     )
 
 

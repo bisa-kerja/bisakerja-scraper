@@ -30,6 +30,11 @@ class ScraperRecencyMode(StrEnum):
     NATIVE = "native"
 
 
+class AIOutputLanguage(StrEnum):
+    INDONESIAN = "indonesian"
+    ENGLISH = "english"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -157,6 +162,7 @@ class Settings(BaseSettings):
         ge=0,
         le=60000,
     )
+    ai_output_language: AIOutputLanguage = Field(validation_alias="AI_OUTPUT_LANGUAGE")
 
     dealls_enabled: bool = Field(validation_alias="DEALLS_ENABLED")
     dealls_base_url: NonEmptyStr = Field(validation_alias="DEALLS_BASE_URL")

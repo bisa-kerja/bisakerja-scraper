@@ -109,6 +109,8 @@ def test_prompt_contract_includes_schema_and_strict_rules() -> None:
     payload = json.loads(messages[1]["content"])
     assert payload["sourcePlatform"] == "dealls"
     assert payload["endpointType"] == "detail"
+    assert payload["outputLanguage"] == "indonesian"
+    assert payload["outputLanguagePolicy"]["name"] == "Indonesian"
     assert payload["targetSchema"] == "CanonicalJobSchema"
     assert "targetJsonSchema" in payload
     assert "rawPayloadSubset" in payload
@@ -215,6 +217,32 @@ def test_prompt_contract_includes_schema_and_strict_rules() -> None:
         "status": "ACTIVE",
         "externalApplyUrlFallback": "sourceUrl",
     }
+
+
+def test_prompt_contract_can_target_english_output() -> None:
+    prompt_input = AINormalizationPromptInput(
+        source_platform=SourcePlatform.DEALLS,
+        endpoint_type=NormalizationEndpointType.DETAIL,
+        raw_payload_subset={"id": "job-1", "title": "Backend Engineer"},
+        output_language="english",
+    )
+
+    messages = build_ai_normalization_messages(prompt_input)
+    assert "generated prose must be English" in messages[0]["content"]
+    assert "plain factual English text" in messages[0]["content"]
+
+    payload = json.loads(messages[1]["content"])
+    assert payload["outputLanguage"] == "english"
+    assert payload["outputLanguagePolicy"]["name"] == "English"
+    assert payload["completionPolicy"]["languagePolicy"]["outputLanguage"] == "English"
+    assert (
+        payload["completionPolicy"]["contentStructurePolicy"]["description"]["goal"]
+        == "safe display HTML role overview in natural English"
+    )
+    assert (
+        "The Backend Engineer role focuses"
+        in payload["normalizationOutputExamples"]["detailRecordExample"]["description"]
+    )
 
 
 def test_repair_prompt_only_targets_format_errors() -> None:

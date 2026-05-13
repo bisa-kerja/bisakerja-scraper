@@ -169,7 +169,20 @@ def build_source_limited_summary(
     company: Any,
     location: Any,
     source_platform: Any,
+    output_language: str = "indonesian",
 ) -> str:
+    language = (output_language or "indonesian").strip().casefold()
+    if language == "english":
+        title_value = as_clean_text(title) or "Unknown position"
+        company_value = as_clean_text(company) or "unknown company"
+        location_value = as_clean_text(location) or "location unavailable"
+        source_value = as_clean_text(source_platform) or "source"
+        return (
+            f"{title_value} at {company_value} ({location_value}). "
+            f"This summary is based on {source_value} listing-level data; "
+            "full details are unavailable."
+        )
+
     title_value = as_clean_text(title) or "Posisi tidak diketahui"
     company_value = as_clean_text(company) or "perusahaan tidak diketahui"
     location_value = as_clean_text(location) or "lokasi tidak tersedia"

@@ -235,7 +235,7 @@ Execute mode behavior:
 - `--execute` always uses configured source endpoints and configured scraper database.
 - Enrichment stage with `AI_ENRICHMENT_ENABLED=true` uses OpenAI structured output and persists AI request logs.
 - Enrichment stage with `AI_ENRICHMENT_ENABLED=false` still persists enrichment staging rows from normalized source fields (no outbound AI call).
-- Normalize stage uses serial AI batch normalization with per-item partial handling. Batch size and fixed delay are controlled by `OPENAI_NORMALIZATION_BATCH_SIZE` and `OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS`.
+- Normalize stage uses serial AI batch normalization with per-item partial handling. Batch size and fixed delay are controlled by `OPENAI_NORMALIZATION_BATCH_SIZE` and `OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS`; generated AI prose language is controlled by `AI_OUTPUT_LANGUAGE` (`indonesian` or `english`).
 - `--execute` with `BACKEND_SYNC_ENABLED=false` keeps backend sync/handoff local (recording clients).
 - `--execute` with `BACKEND_SYNC_ENABLED=true` sends sync payloads to Backend API and sends notification handoff payloads to Backend API. Sync batches are capped at `100` jobs to match the Backend API internal endpoint.
 - A run can sync `1000`-`2000` total jobs when multiple source/keyword fan-out items produce that many rows; the scraper will send multiple backend requests instead of dropping overflow rows.

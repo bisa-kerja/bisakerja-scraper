@@ -3,7 +3,21 @@ from __future__ import annotations
 from modules.enrichment.schemas import EnrichmentJobInput
 
 
-def build_enrichment_messages(job: EnrichmentJobInput) -> list[dict[str, str]]:
+def build_enrichment_messages(
+    job: EnrichmentJobInput,
+    *,
+    output_language: str = "indonesian",
+) -> list[dict[str, str]]:
+    language = _normalize_output_language(output_language)
+    language_name = "English" if language == "english" else "Bahasa Indonesia"
+    natural_language = "natural English" if language == "english" else "natural Bahasa Indonesia"
+    source_language_rule = (
+        "Do not output Indonesian paraphrases unless text is copied verbatim from source evidence."
+        if language == "english"
+        else (
+            "Do not output English paraphrases unless text is copied verbatim from source evidence."
+        )
+    )
     return [
         {
             "role": "system",
@@ -28,23 +42,26 @@ def build_enrichment_messages(job: EnrichmentJobInput) -> list[dict[str, str]]:
                 "Requirements must be atomic, concise, and typed as "
                 "SKILL, EXPERIENCE, EDUCATION, or OTHER. "
                 "When evidence is weak, lower confidence instead of guessing. "
-                "Language rule: write requirements and warnings in natural Bahasa Indonesia. "
+                f"Language rule: write requirements and warnings in {natural_language}. "
+                f"Output language must be {language_name}. "
                 "Output style rule: no emoji, no decorative symbols, no noisy icons. "
                 "Output structure rule: requirement value should be one clear statement, "
                 "not mixed multi-topic paragraph. "
-                "Do not output English paraphrases unless text is copied "
-                "verbatim from source evidence. "
+                f"{source_language_rule} "
                 "Return schema-compliant structured output only."
             ),
         },
         {
             "role": "user",
-            "content": build_user_prompt(job),
+            "content": build_user_prompt(job, output_language=language),
         },
     ]
 
 
-def build_user_prompt(job: EnrichmentJobInput) -> str:
+def build_user_prompt(job: EnrichmentJobInput, *, output_language: str = "indonesian") -> str:
+    language = _normalize_output_language(output_language)
+    language_name = "English" if language == "english" else "Bahasa Indonesia"
+    natural_language = "natural English" if language == "english" else "natural Bahasa Indonesia"
     description = job.description or ""
     requirements = job.requirements or ""
     return "\n".join(
@@ -52,6 +69,7 @@ def build_user_prompt(job: EnrichmentJobInput) -> str:
             f"Title: {job.title}",
             f"Company: {job.company}",
             f"Source: {job.source}",
+            f"Output language: {language_name}",
             "Task:",
             "- Extract at least one requirement when requirement/description evidence exists.",
             "- Extract at least one skill when explicit skill evidence exists.",
@@ -64,7 +82,7 @@ def build_user_prompt(job: EnrichmentJobInput) -> str:
                 "- If requirement sentences contain explicit technologies/tools, "
                 "also emit them as skill items."
             ),
-            "- Requirement values and warnings must be written in natural Bahasa Indonesia.",
+            f"- Requirement values and warnings must be written in {natural_language}.",
             "- Keep each requirement focused on one qualification or competency only.",
             "- Do not include emoji, icons, or decorative symbols in values.",
             "- Keep technology names and proper nouns as in source text.",
@@ -75,3 +93,10 @@ def build_user_prompt(job: EnrichmentJobInput) -> str:
             requirements,
         ]
     ).strip()
+
+
+def _normalize_output_language(value: str) -> str:
+    language = (value or "indonesian").strip().casefold()
+    if language not in {"indonesian", "english"}:
+        raise ValueError("output_language must be indonesian or english")
+    return language

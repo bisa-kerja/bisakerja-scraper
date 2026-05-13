@@ -131,6 +131,7 @@ Backend sync can process large candidate sets such as `1000`-`2000` normalized j
 | `OPENAI_BATCH_SIZE` | Yes | Positive batch size; baseline is `10` jobs |
 | `OPENAI_NORMALIZATION_BATCH_SIZE` | Yes | Positive batch size for AI normalization requests; baseline is `5` jobs |
 | `OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS` | Yes | Fixed delay in milliseconds between normalization batch requests; baseline is `1000` |
+| `AI_OUTPUT_LANGUAGE` | Yes | Output language for AI-generated job text; allowed values are `indonesian` and `english` |
 
 AI enrichment uses an OpenAI-compatible client boundary. The base URL supports the official OpenAI API and compatible providers that expose the same request shape. Logs must not include API keys. If the base URL contains tenant, account, or deployment-specific identifiers, treat it as sensitive operational metadata and redact it from logs.
 
@@ -146,7 +147,9 @@ Normalize stage in execute mode can also use the same OpenAI-compatible provider
 
 Normalization requests are executed serially in fixed-size batches. The service always applies `OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS` between batches, regardless of rate-limit response state.
 
-Only safe normalized job fields may be sent to the provider: title, clean description, clean requirements, company name, and source platform. Raw source payloads, source request headers, bearer tokens, cookies, session ids, visitor ids, device ids, backend service credentials, and database URLs must never be included in AI requests.
+`AI_OUTPUT_LANGUAGE` controls generated or paraphrased human-readable AI output in normalization and enrichment prompts, including `description`, `requirements`, requirement summary guidance, warnings, and generated presentation labels. Technology names, product names, company names, locations, and direct source quotes stay source-faithful. The default example value is `indonesian`; use `english` when downstream job descriptions and requirements must be generated in English.
+
+Only safe normalized job fields may be sent to the enrichment provider: title, clean description, clean requirements, company name, and source platform. AI normalization may send sanitized raw evidence needed for mapping, but must not include source request headers, bearer tokens, cookies, session ids, visitor ids, device ids, backend service credentials, API keys, or database URLs.
 
 Baseline schedule:
 

@@ -96,6 +96,7 @@ def valid_env(**overrides: object) -> dict[str, object]:
         "OPENAI_BATCH_SIZE": "10",
         "OPENAI_NORMALIZATION_BATCH_SIZE": "5",
         "OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS": "1000",
+        "AI_OUTPUT_LANGUAGE": "indonesian",
         "DEALLS_ENABLED": "true",
         "DEALLS_BASE_URL": "https://dealls.com",
         "DEALLS_RATE_LIMIT_PER_MINUTE": "30",

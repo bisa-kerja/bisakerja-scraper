@@ -129,6 +129,7 @@ class OpenAIEnrichmentClient:
         max_retries: int,
         parser: ChatCompletionsParser | None = None,
         model_rotator: OpenAIModelRotator | None = None,
+        output_language: str = "indonesian",
     ) -> None:
         self._model_rotator = model_rotator or OpenAIModelRotator((model,))
         self.model = self._model_rotator.models[0]
@@ -137,6 +138,7 @@ class OpenAIEnrichmentClient:
         self.base_url = base_url
         self.timeout_seconds = timeout_seconds
         self.max_retries = max_retries
+        self.output_language = output_language
         self._metrics_lock = Lock()
         self._metrics_by_model: dict[str, dict[str, int]] = {}
         self._metrics_by_request_type: dict[str, dict[str, int]] = {}
@@ -155,7 +157,7 @@ class OpenAIEnrichmentClient:
         try:
             response = await self._parser.parse(
                 model=selected_model,
-                messages=build_enrichment_messages(job),
+                messages=build_enrichment_messages(job, output_language=self.output_language),
                 response_format=EnrichmentOutput,
                 temperature=0,
             )
@@ -245,6 +247,7 @@ class OpenAINormalizationClient:
         max_retries: int,
         parser: ChatCompletionsParser | None = None,
         model_rotator: OpenAIModelRotator | None = None,
+        output_language: str = "indonesian",
     ) -> None:
         self._model_rotator = model_rotator or OpenAIModelRotator((model,))
         self.model = self._model_rotator.models[0]
@@ -253,6 +256,7 @@ class OpenAINormalizationClient:
         self.base_url = base_url
         self.timeout_seconds = timeout_seconds
         self.max_retries = max_retries
+        self.output_language = output_language
         self._metrics_lock = Lock()
         self._metrics_by_model: dict[str, dict[str, int]] = {}
         self._metrics_by_request_type: dict[str, dict[str, int]] = {}

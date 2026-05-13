@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from config.settings import AppEnvironment, Settings
+from config.settings import AIOutputLanguage, AppEnvironment, Settings
 
 SETTINGS_ENV_KEYS = {
     field.validation_alias
@@ -52,6 +52,7 @@ def valid_env(**overrides: object) -> dict[str, object]:
         "OPENAI_BATCH_SIZE": "10",
         "OPENAI_NORMALIZATION_BATCH_SIZE": "5",
         "OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS": "1000",
+        "AI_OUTPUT_LANGUAGE": "indonesian",
         "DEALLS_ENABLED": "true",
         "DEALLS_BASE_URL": "https://dealls.com",
         "DEALLS_RATE_LIMIT_PER_MINUTE": "30",
@@ -91,6 +92,7 @@ def test_settings_load_required_values() -> None:
     assert settings.cors_origins is None
     assert settings.openai_normalization_batch_size == 5
     assert settings.openai_normalization_inter_batch_delay_ms == 1000
+    assert settings.ai_output_language is AIOutputLanguage.INDONESIAN
     assert settings.scraper_max_items_per_source_run == 2000
     assert settings.scraper_max_pages_per_keyword == 50
     assert settings.scraper_target_total_jobs_per_run == 1000
@@ -215,6 +217,19 @@ def test_openai_model_rejects_empty_csv_entries() -> None:
     )
 
     with pytest.raises(ValidationError, match="OPENAI_MODEL"):
+        Settings(**env, _env_file=None)
+
+
+def test_ai_output_language_accepts_english() -> None:
+    settings = Settings(**valid_env(AI_OUTPUT_LANGUAGE="english"), _env_file=None)
+
+    assert settings.ai_output_language is AIOutputLanguage.ENGLISH
+
+
+def test_ai_output_language_rejects_unknown_value() -> None:
+    env = valid_env(AI_OUTPUT_LANGUAGE="spanish")
+
+    with pytest.raises(ValidationError, match="AI_OUTPUT_LANGUAGE"):
         Settings(**env, _env_file=None)
 
 
