@@ -220,9 +220,9 @@ Content expectation for consistency:
 
 | Field | Expectation |
 | --- | --- |
-| `description` | Bahasa Indonesia, informatif, dan tidak berupa satu kalimat generik |
-| `requirementSummary` (downstream `jobListing.requirementSummary`) | Ringkasan kualifikasi inti yang mudah dibaca user |
-| `requirements` | Teks requirement faktual, bersih, dan siap diparsing |
+| `description` | Human-readable prose that follows `AI_OUTPUT_LANGUAGE` (default `english`), informative, and not a vague one-liner |
+| `requirementSummary` (downstream `jobListing.requirementSummary`) | Readable summary of core qualifications, consistent with `AI_OUTPUT_LANGUAGE` |
+| `requirements` | Factual, clean requirement text ready for downstream parsing |
 | `skills` | Skill spesifik berbasis evidence dan tanpa duplikasi |
 
 Output fields:
@@ -232,10 +232,10 @@ Output fields:
 | `skills[].name` | Skill name supported by input text |
 | `skills[].confidence` | Number from `0` to `1` |
 | `requirements[].type` | `SKILL`, `EXPERIENCE`, `EDUCATION`, or `OTHER` |
-| `requirements[].value` | Requirement text supported by input text and written in natural Bahasa Indonesia for generated/paraphrased content |
+| `requirements[].value` | Requirement text supported by input text and written in natural language per `AI_OUTPUT_LANGUAGE` |
 | `requirements[].confidence` | Number from `0` to `1` |
 | `confidence` | Overall confidence from `0` to `1` |
-| `warnings[]` | Safe notes about ambiguity or missing evidence, written in Bahasa Indonesia |
+| `warnings[]` | Safe notes about ambiguity or missing evidence, written per `AI_OUTPUT_LANGUAGE` |
 
 Invalid output handling:
 

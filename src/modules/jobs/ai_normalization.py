@@ -136,7 +136,7 @@ _SUPPORTED_OUTPUT_LANGUAGES = {"indonesian", "english"}
 
 def _normalize_output_language(value: Any) -> str:
     if value is None:
-        return "indonesian"
+        return "english"
     if isinstance(value, StrEnum):
         value = value.value
     if not isinstance(value, str):
@@ -164,6 +164,34 @@ def _language_policy(output_language: str) -> dict[str, Any]:
     display_name = _language_display_name(language)
     native_name = _language_native_name(language)
     natural_name = _natural_language_name(language)
+    preserve_as_source = [
+        "technology names",
+        "tools",
+        "frameworks",
+        "company names",
+        "product names",
+        "location names",
+    ]
+    if language == "english":
+        strict_rules = [
+            "write generated or paraphrased human-readable content in English",
+            "translate non-English source evidence into natural English before output",
+            (
+                "do not output Indonesian function words in generated prose "
+                "(for example: dan, untuk, dengan, dari, yang, minimal, pengalaman)"
+            ),
+            "never mix English and Indonesian inside one generated sentence",
+            "do not add translation or rewrite disclaimers",
+            "preserve source language only for non-translatable proper nouns and acronyms",
+        ]
+    else:
+        preserve_as_source.append("direct quotes copied from source evidence")
+        strict_rules = [
+            f"write generated or paraphrased human-readable content in {display_name}",
+            "never mix languages inside one generated sentence unless preserving a source term",
+            "do not add translation or rewrite disclaimers",
+            "keep direct source quotations verbatim only when needed as evidence",
+        ]
     return {
         "code": language,
         "name": display_name,
@@ -180,21 +208,8 @@ def _language_policy(output_language: str) -> dict[str, Any]:
             "warnings",
             "fallback summaries",
         ],
-        "preserveAsSource": [
-            "technology names",
-            "tools",
-            "frameworks",
-            "company names",
-            "product names",
-            "location names",
-            "direct quotes copied from source evidence",
-        ],
-        "strictRules": [
-            f"write generated or paraphrased human-readable content in {display_name}",
-            "never mix languages inside one generated sentence unless preserving a source term",
-            "do not add translation or rewrite disclaimers",
-            "keep direct source quotations verbatim only when needed as evidence",
-        ],
+        "preserveAsSource": preserve_as_source,
+        "strictRules": strict_rules,
     }
 
 
@@ -211,7 +226,7 @@ class AINormalizationPromptInput(BaseModel):
     raw_payload_subset: dict[str, Any] = Field(serialization_alias="rawPayloadSubset")
     target_schema: str = Field(default="CanonicalJobSchema", serialization_alias="targetSchema")
     output_language: str = Field(
-        default="indonesian",
+        default="english",
         validation_alias="outputLanguage",
         serialization_alias="outputLanguage",
     )
@@ -262,7 +277,7 @@ class AINormalizationBatchPromptInput(BaseModel):
     items: list[AINormalizationBatchPromptItem] = Field(min_length=1, max_length=50)
     target_schema: str = Field(default="CanonicalJobSchema", serialization_alias="targetSchema")
     output_language: str = Field(
-        default="indonesian",
+        default="english",
         validation_alias="outputLanguage",
         serialization_alias="outputLanguage",
     )
@@ -823,7 +838,7 @@ def _build_description_from_evidence(
     evidence_description: str | None,
     evidence_requirements: str | None,
     evidence_skills: list[str],
-    output_language: str = "indonesian",
+    output_language: str = "english",
 ) -> str | None:
     if evidence_description:
         return evidence_description
@@ -994,8 +1009,9 @@ def _build_ai_normalization_system_prompt(output_language: str) -> str:
     native_name = _language_native_name(language)
     natural_name = _natural_language_name(language)
     source_preservation = (
-        "Avoid non-English paraphrase unless direct verbatim source evidence is intentionally "
-        "preserved."
+        "Translate non-English source evidence into English."
+        " Preserve source language only for non-translatable proper nouns, acronyms, "
+        "or legal entity names."
         if language == "english"
         else "Avoid English paraphrase unless direct verbatim source evidence is intentionally "
         "preserved."
@@ -1031,20 +1047,25 @@ Rules:
 11. Prefer explicit defaults aligned with backendSchemaContext default policy.
 12. Keep unknown values null instead of placeholders such as '-', 'N/A', or 'unknown text'.
 13. Instruction language in this prompt is English.
-14. Generated or normalized human-readable output must be concise {natural_name}.
-15. When requirement or skill evidence exists in source data,
+14. Required output language for this run is {language_name}.
+    Use {language_name} only for generated/paraphrased human-readable fields.
+    For English mode, never emit Indonesian function words
+    such as: dan, untuk, dengan, dari, yang, minimal, pengalaman.
+15. Generated or normalized human-readable output must be concise {natural_name}.
+16. When requirement or skill evidence exists in source data,
     avoid empty requirements/skills output.
-16. Keep generated requirement text factual, short, and ready for downstream requirement extraction.
-17. Keep generated/paraphrased human-readable fields in {language_name}.
+17. Keep generated requirement text factual, short, and ready for downstream requirement extraction.
+18. Keep generated/paraphrased human-readable fields in {language_name}.
     {source_preservation}
-18. salary.display consistency rule:
+    Never produce mixed-language phrases in generated output.
+19. salary.display consistency rule:
     when salary min/max values are present, salary display must not be placeholder text.
-19. Description writing standard:
+20. Description writing standard:
     - write concise, useful, and professional {language_name} prose;
     - when detail.description is missing but detail.responsibilities exists (common in Dealls),
       build description from responsibilities without hallucination;
     - avoid one-line vague text; include role focus and execution context when evidence allows.
-20. Final quality check before output:
+21. Final quality check before output:
     - if evidence exists for requirements, requirements must not be empty;
     - if evidence exists for skills, skills must not be empty;
     - generated prose must be {native_name};
@@ -1052,17 +1073,17 @@ Rules:
     - avoid icons, emoji, and decorative symbols in human-readable fields.
     - never include meta process statements such as
       {meta_example}
-21. Field-specific output standards:
+22. Field-specific output standards:
     - description: safe display HTML with 2-5 short {language_name} paragraphs
       or paragraph+list when evidence supports it;
     - requirement_summary display (derived downstream): do not use fixed label prefixes;
     - requirements: plain factual {language_name} text for downstream atomic extraction;
     - skills: specific technology/domain terms only, deduplicated, no generic filler.
       Split composite entries (for example "HTML, CSS, PHP") into atomic skill items.
-22. Minimum coverage rule for sync completeness:
+23. Minimum coverage rule for sync completeness:
     - produce at least one requirement and one skill when role evidence exists
       even if detail payload is sparse.
-23. Requirement extraction rule:
+24. Requirement extraction rule:
     - write requirements as atomic statements ready for typed downstream rows;
     - separate education, experience, skill/tool, and responsibility evidence;
     - never include benefit or compensation noise such as THR, tunjangan,
@@ -1070,7 +1091,7 @@ Rules:
 """
 
 
-AI_NORMALIZATION_SYSTEM_PROMPT = _build_ai_normalization_system_prompt("indonesian")
+AI_NORMALIZATION_SYSTEM_PROMPT = _build_ai_normalization_system_prompt("english")
 
 
 def _build_ai_normalization_batch_system_prompt(output_language: str) -> str:
@@ -1090,28 +1111,32 @@ Rules:
 8. Output JSON only. No prose, markdown, comments, code fences, or extra keys.
 9. Instruction language is English, while generated/paraphrased prose output
    must be {language_name}.
-10. When evidence for requirements or skills exists, do not return both as empty.
-11. When salary min/max are present, avoid placeholder salary display text.
-12. For Dealls-like payloads, use responsibilities as description evidence
+10. Required output language for this run is {language_name}.
+    Do not output generated/paraphrased prose in other languages.
+    For English mode, never emit Indonesian function words
+    such as: dan, untuk, dengan, dari, yang, minimal, pengalaman.
+11. When evidence for requirements or skills exists, do not return both as empty.
+12. When salary min/max are present, avoid placeholder salary display text.
+13. For Dealls-like payloads, use responsibilities as description evidence
     when description is missing.
-13. Avoid icons, emoji, and decorative symbols in human-readable fields.
-14. Description output should be sanitized semantic display HTML.
+14. Avoid icons, emoji, and decorative symbols in human-readable fields.
+15. Description output should be sanitized semantic display HTML.
     Requirements output should stay concise plain text in {language_name}.
-15. Keep skills specific and deduplicated; avoid generic filler skills.
+16. Keep skills specific and deduplicated; avoid generic filler skills.
     Split composite skills into atomic items.
-16. Keep minimum one requirement and one skill when role evidence is present.
-17. Requirements must be atomic, typed-ready statements for SKILL, EXPERIENCE,
+17. Keep minimum one requirement and one skill when role evidence is present.
+18. Requirements must be atomic, typed-ready statements for SKILL, EXPERIENCE,
     EDUCATION, RESPONSIBILITY, or OTHER downstream rows.
-18. Exclude benefit and compensation noise from requirements, including THR,
+19. Exclude benefit and compensation noise from requirements, including THR,
     tunjangan, benefit, fasilitas, bonus, cuti, BPJS, and gaji pokok.
-19. Never include meta process statements in description/requirements fields
+20. Never include meta process statements in description/requirements fields
     (for example "deskripsi disusun ulang" style disclaimers).
-19. For Glints list-only records, keep requirements conservative and transparent
+21. For Glints list-only records, keep requirements conservative and transparent
     because official detail text is unavailable.
 """
 
 
-AI_NORMALIZATION_BATCH_SYSTEM_PROMPT = _build_ai_normalization_batch_system_prompt("indonesian")
+AI_NORMALIZATION_BATCH_SYSTEM_PROMPT = _build_ai_normalization_batch_system_prompt("english")
 
 
 AI_NORMALIZATION_REPAIR_SYSTEM_PROMPT = """Fix JSON format only.
@@ -1324,6 +1349,24 @@ def _completion_policy(output_language: str) -> dict[str, Any]:
     native_name = _language_native_name(language)
     natural_name = _natural_language_name(language)
     policy = deepcopy(COMPLETION_POLICY)
+    if language == "english":
+        language_notes = [
+            "translate Indonesian or mixed-language evidence into natural English prose",
+            (
+                "never output Indonesian function words in generated prose "
+                "(for example: dan, untuk, dengan, dari, yang, minimal, pengalaman)"
+            ),
+            "keep source-native proper nouns, acronyms, and technology names only",
+            "never mix English and Indonesian in one generated sentence",
+            "do not include rewrite or translation disclaimers",
+        ]
+    else:
+        language_notes = [
+            "keep source-native proper nouns and technology names",
+            "if text is copied verbatim from source evidence, preserve source language",
+            f"do not paraphrase generated prose outside {language_name}",
+            "do not include rewrite or translation disclaimers",
+        ]
     policy["languagePolicy"] = {
         "instructionLanguage": "English",
         "outputLanguage": language_name,
@@ -1335,12 +1378,7 @@ def _completion_policy(output_language: str) -> dict[str, Any]:
             "presentation_labels_generated",
             "warnings_generated",
         ],
-        "notes": [
-            "keep source-native proper nouns and technology names",
-            "if text is copied verbatim from source evidence, preserve source language",
-            f"do not paraphrase generated prose outside {language_name}",
-            "do not include rewrite or translation disclaimers",
-        ],
+        "notes": language_notes,
     }
     content_policy = policy["contentStructurePolicy"]
     content_policy["description"]["goal"] = f"safe display HTML role overview in {natural_name}"
@@ -1359,6 +1397,10 @@ def _completion_policy(output_language: str) -> dict[str, Any]:
     content_policy["cleanPresentation"]["languageRule"] = (
         f"description, requirementSummary, requirements, and warnings must use {language_name}"
     )
+    if language == "english":
+        policy["salaryPresentationPolicy"]["allowedPlaceholdersOnlyWhenNoNumericEvidence"] = [
+            "Not specified"
+        ]
     policy["finalQualityChecklist"] = [
         (
             f"generated prose in {native_name}"
@@ -1728,6 +1770,10 @@ def _normalization_output_examples(output_language: str) -> dict[str, Any]:
         "Has relevant experience in software development, can collaborate well, "
         "and understands good coding practices."
     )
+    examples["listRecordExample"]["salary"]["display"] = "IDR 8,000,000 - 10,000,000 / month"
+    examples["listRecordExample"]["presentation"]["salary_label"] = (
+        "IDR 8,000,000 - 10,000,000 / month"
+    )
     examples["detailRecordExample"]["description"] = (
         "<p>The Backend Engineer role focuses on developing and maintaining APIs, "
         "data pipelines, and backend service reliability.</p>"
@@ -1736,5 +1782,9 @@ def _normalization_output_examples(output_language: str) -> dict[str, Any]:
     examples["detailRecordExample"]["requirements"] = (
         "Has at least 3 years of backend experience, understands Python and SQL, "
         "and has knowledge of cloud services."
+    )
+    examples["detailRecordExample"]["salary"]["display"] = "IDR 12,000,000 - 18,000,000 / month"
+    examples["detailRecordExample"]["presentation"]["salary_label"] = (
+        "IDR 12,000,000 - 18,000,000 / month"
     )
     return examples

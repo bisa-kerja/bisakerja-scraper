@@ -129,7 +129,7 @@ class OpenAIEnrichmentClient:
         max_retries: int,
         parser: ChatCompletionsParser | None = None,
         model_rotator: OpenAIModelRotator | None = None,
-        output_language: str = "indonesian",
+        output_language: str = "english",
     ) -> None:
         self._model_rotator = model_rotator or OpenAIModelRotator((model,))
         self.model = self._model_rotator.models[0]
@@ -247,7 +247,7 @@ class OpenAINormalizationClient:
         max_retries: int,
         parser: ChatCompletionsParser | None = None,
         model_rotator: OpenAIModelRotator | None = None,
-        output_language: str = "indonesian",
+        output_language: str = "english",
     ) -> None:
         self._model_rotator = model_rotator or OpenAIModelRotator((model,))
         self.model = self._model_rotator.models[0]

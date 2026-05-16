@@ -6,13 +6,15 @@ from modules.enrichment.schemas import EnrichmentJobInput
 def build_enrichment_messages(
     job: EnrichmentJobInput,
     *,
-    output_language: str = "indonesian",
+    output_language: str = "english",
 ) -> list[dict[str, str]]:
     language = _normalize_output_language(output_language)
     language_name = "English" if language == "english" else "Bahasa Indonesia"
     natural_language = "natural English" if language == "english" else "natural Bahasa Indonesia"
     source_language_rule = (
-        "Do not output Indonesian paraphrases unless text is copied verbatim from source evidence."
+        "Translate Indonesian or mixed-language source evidence into natural English output. "
+        "Do not output Indonesian words in generated/paraphrased text except "
+        "non-translatable proper nouns, acronyms, and legal entity names."
         if language == "english"
         else (
             "Do not output English paraphrases unless text is copied verbatim from source evidence."
@@ -42,6 +44,10 @@ def build_enrichment_messages(
                 "Requirements must be atomic, concise, and typed as "
                 "SKILL, EXPERIENCE, EDUCATION, or OTHER. "
                 "When evidence is weak, lower confidence instead of guessing. "
+                "Mandatory language instruction: write generated/paraphrased content "
+                f"in {language_name} only. "
+                "English strictness rule: never emit Indonesian function words "
+                "such as dan, untuk, dengan, dari, yang, minimal, pengalaman. "
                 f"Language rule: write requirements and warnings in {natural_language}. "
                 f"Output language must be {language_name}. "
                 "Output style rule: no emoji, no decorative symbols, no noisy icons. "
@@ -58,7 +64,7 @@ def build_enrichment_messages(
     ]
 
 
-def build_user_prompt(job: EnrichmentJobInput, *, output_language: str = "indonesian") -> str:
+def build_user_prompt(job: EnrichmentJobInput, *, output_language: str = "english") -> str:
     language = _normalize_output_language(output_language)
     language_name = "English" if language == "english" else "Bahasa Indonesia"
     natural_language = "natural English" if language == "english" else "natural Bahasa Indonesia"
@@ -70,6 +76,15 @@ def build_user_prompt(job: EnrichmentJobInput, *, output_language: str = "indone
             f"Company: {job.company}",
             f"Source: {job.source}",
             f"Output language: {language_name}",
+            f"Important: output generated/paraphrased text in {language_name} only.",
+            (
+                "- If source evidence is Indonesian or mixed-language, translate it into "
+                "clear English before writing requirement values."
+            ),
+            (
+                "- Never use Indonesian function words in generated text "
+                "(for example: dan, untuk, dengan, dari, yang, minimal, pengalaman)."
+            ),
             "Task:",
             "- Extract at least one requirement when requirement/description evidence exists.",
             "- Extract at least one skill when explicit skill evidence exists.",
@@ -96,7 +111,7 @@ def build_user_prompt(job: EnrichmentJobInput, *, output_language: str = "indone
 
 
 def _normalize_output_language(value: str) -> str:
-    language = (value or "indonesian").strip().casefold()
+    language = (value or "english").strip().casefold()
     if language not in {"indonesian", "english"}:
         raise ValueError("output_language must be indonesian or english")
     return language

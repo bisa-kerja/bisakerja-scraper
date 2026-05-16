@@ -74,7 +74,7 @@ Skill rows must be evidence-based. Backend sync may derive technical skills from
 - `jobListing.salaryCurrency` defaults to `IDR` when salary currency is missing.
 - `jobListing.salaryPeriod` is inferred from salary display text and defaults to `MONTHLY` when absent.
 - `jobListing.salaryDisplay` is rebuilt from numeric salary values when `salaryMin` or `salaryMax` exists, so display text stays deterministic and consistent.
-- `jobListing.salaryDisplay` defaults to `Tidak dicantumkan` when salary evidence is missing or effectively zero-only placeholders.
+- `jobListing.salaryDisplay` defaults to `Not specified` when salary evidence is missing or effectively zero-only placeholders.
 - `jobListing.status` defaults to `ACTIVE` for unknown canonical status.
 - `jobListing.lastSeenAt` is always filled from normalized row freshness timestamp aligned to the latest raw scrape timestamp.
 - `jobListing.sourcePostedAt` and `jobListing.sourceUpdatedAt` remain `null` when source timestamps are unavailable.
@@ -84,7 +84,7 @@ Skill rows must be evidence-based. Backend sync may derive technical skills from
 - `jobListing.experienceLevel` uses deterministic inference and falls back to `ENTRY_LEVEL`.
 - `jobListing.province` and `jobListing.city` are resolved from source evidence and open-world location parsing; no static city whitelist is used.
 - Placeholder text (`-`, `N/A`, empty string) is rejected for `description`, `requirementSummary`, and display fields.
-- `jobListing.requirementSummary` must not start with fixed label prefixes such as `Kualifikasi utama:`.
+- `jobListing.requirementSummary` must not start with fixed label prefixes such as `Kualifikasi utama:` or `Requirements:`.
 
 ## Validation Gates
 

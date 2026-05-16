@@ -72,7 +72,7 @@ class PipelineConfig:
     allow_partial: bool = True
     ai_normalization_batch_size: int = 5
     ai_normalization_inter_batch_delay_ms: int = 0
-    ai_output_language: str = "indonesian"
+    ai_output_language: str = "english"
     progress_hook: ProgressHook | None = None
 
     def __post_init__(self) -> None:
@@ -935,7 +935,7 @@ def prompt_input_from_raw_job(
     *,
     source_platform: str,
     external_id: str | None,
-    output_language: str = "indonesian",
+    output_language: str = "english",
 ) -> AINormalizationPromptInput | None:
     raw_payload = getattr(raw_job, "raw_payload", None)
     if not isinstance(raw_payload, dict) or not raw_payload:

@@ -115,7 +115,7 @@ def test_backend_payload_falls_back_to_normalized_requirement_when_staging_missi
         assert payload["requirements"] == [
             {
                 "type": "EXPERIENCE",
-                "value": "Minimal 2 tahun pengalaman backend",
+                "value": "minimum 2 years of experience backend",
                 "priority": None,
                 "confidence": None,
                 "source": "normalized",
@@ -145,28 +145,28 @@ def test_backend_payload_splits_classifies_and_filters_requirement_noise() -> No
         assert payload["requirements"] == [
             {
                 "type": "EDUCATION",
-                "value": "Minimal S1 Teknik Informatika",
+                "value": "minimum S1 Teknik Informatika",
                 "priority": None,
                 "confidence": None,
                 "source": "normalized",
             },
             {
                 "type": "EXPERIENCE",
-                "value": "Minimal 2 tahun pengalaman backend",
+                "value": "minimum 2 years of experience backend",
                 "priority": None,
                 "confidence": None,
                 "source": "normalized",
             },
             {
                 "type": "SKILL",
-                "value": "Menguasai Python dan SQL",
+                "value": "proficient in Python and SQL",
                 "priority": None,
                 "confidence": None,
                 "source": "normalized",
             },
             {
                 "type": "RESPONSIBILITY",
-                "value": "Mengembangkan API internal",
+                "value": "developing API internal",
                 "priority": None,
                 "confidence": None,
                 "source": "normalized",
@@ -198,7 +198,7 @@ def test_backend_payload_strips_emoji_and_decorative_symbols_from_text_fields() 
         assert "•" not in (listing["requirementSummary"] or "")
 
 
-def test_backend_payload_normalizes_requirement_summary_language_to_indonesian() -> None:
+def test_backend_payload_normalizes_requirement_summary_language_to_english() -> None:
     with session_scope() as session:
         repository = JobPersistenceRepository(session)
         job = canonical_job().model_copy(
@@ -215,7 +215,7 @@ def test_backend_payload_normalizes_requirement_summary_language_to_indonesian()
         summary = payload["jobListing"]["requirementSummary"]
         assert summary is not None
         assert not summary.startswith("Kualifikasi utama:")
-        assert "minimal 2 tahun" in summary.casefold()
+        assert "minimum 2 years" in summary.casefold()
         assert "<ul>" in summary or "<p>" in summary
 
 
@@ -241,7 +241,7 @@ def test_backend_payload_removes_meta_description_disclaimer_phrase() -> None:
         lowered = description.casefold()
         assert "deskripsi peran ini disusun ulang" not in lowered
         assert "backend engineer" in lowered
-        assert "minimal 2 tahun pengalaman backend" in lowered
+        assert "minimum 2 years of experience backend" in lowered
 
 
 def test_backend_payload_splits_composite_staged_skills_into_atomic_items() -> None:
@@ -336,7 +336,7 @@ def test_backend_payload_rebuilds_salary_display_when_numeric_salary_exists() ->
         saved = session.scalar(select(NormalizedJob).where(NormalizedJob.external_id == "job-1"))
         assert saved is not None
         payload = build_backend_job_payload(saved).model_dump(mode="json", by_alias=True)
-        assert payload["jobListing"]["salaryDisplay"] == "Rp 3.000.000 per bulan"
+        assert payload["jobListing"]["salaryDisplay"] == "IDR 3,000,000 / month"
 
 
 def test_backend_payload_treats_zero_salary_as_missing() -> None:
@@ -360,7 +360,7 @@ def test_backend_payload_treats_zero_salary_as_missing() -> None:
         payload = build_backend_job_payload(saved).model_dump(mode="json", by_alias=True)
         assert payload["jobListing"]["salaryMin"] is None
         assert payload["jobListing"]["salaryMax"] is None
-        assert payload["jobListing"]["salaryDisplay"] == "Tidak dicantumkan"
+        assert payload["jobListing"]["salaryDisplay"] == "Not specified"
 
 
 def test_backend_payload_enforces_minimum_relation_fallbacks() -> None:

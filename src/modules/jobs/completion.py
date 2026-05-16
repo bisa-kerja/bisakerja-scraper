@@ -169,9 +169,9 @@ def build_source_limited_summary(
     company: Any,
     location: Any,
     source_platform: Any,
-    output_language: str = "indonesian",
+    output_language: str = "english",
 ) -> str:
-    language = (output_language or "indonesian").strip().casefold()
+    language = (output_language or "english").strip().casefold()
     if language == "english":
         title_value = as_clean_text(title) or "Unknown position"
         company_value = as_clean_text(company) or "unknown company"

@@ -23,7 +23,7 @@ Each normalization request includes:
   - `endpointType`: `list` or `detail`.
   - `rawPayloadSubset`: minimal source payload fragment used as evidence.
 - `targetSchema`: canonical output contract name.
-- `outputLanguage`: generated output language from `AI_OUTPUT_LANGUAGE`; allowed values are `indonesian` and `english`.
+- `outputLanguage`: generated output language from `AI_OUTPUT_LANGUAGE`; allowed values are `indonesian` and `english` (default runtime example: `english`).
 - `outputLanguagePolicy`: field-level language rules for generated text, source term preservation, and no-disclaimer behavior.
 - `targetJsonSchema`: JSON schema generated from `CanonicalJobSchema`.
 - `batchOutputJsonSchema`: JSON schema generated from `AINormalizationBatchOutput`.
@@ -55,7 +55,8 @@ The normalization system prompt enforces:
 - Glints list data stays partial when detail fields are absent and must use transparent source-limited summary text.
 - Prompt instruction language is English.
 - Generated/paraphrased prose output language follows `AI_OUTPUT_LANGUAGE`.
-- Cross-language paraphrase is disallowed unless verbatim source text is intentionally preserved.
+- In `english` mode, generated/paraphrased prose must be English-only; mixed-language output is disallowed.
+- In `english` mode, non-English evidence should be translated to natural English, while proper nouns/acronyms can stay source-faithful.
 - Process/disclaimer meta text is disallowed in display fields (for example rewrite/translation notices).
 - `external_apply_url` falls back to `source_url` when unavailable.
 - When salary numeric evidence exists (`minAmount`/`maxAmount`), `salary.display` must not be placeholder text.
@@ -81,7 +82,7 @@ Expected content structure is explicit so output stays consistent across sources
 | Field                 | Target shape                                                               | Minimum expectation                                                                                                                               |
 | --------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `description`         | Safe display HTML (`<p>`, `<ul>/<ol>`, `<li>`, `<strong>`, `<em>`, `<br>`) | Mentions role focus/main responsibilities and execution context when evidence exists, using `AI_OUTPUT_LANGUAGE`                                  |
-| `requirement_summary` | Short safe-display summary in professional style                           | Must not start with fixed labels such as `Kualifikasi utama:`; keep experience and core competency points in `AI_OUTPUT_LANGUAGE`                 |
+| `requirement_summary` | Short safe-display summary in professional style                           | Must not start with fixed labels such as `Kualifikasi utama:` or `Requirements:`; keep experience and core competency points in `AI_OUTPUT_LANGUAGE`                 |
 | `requirements`        | Plain text requirement body for downstream extraction                      | Factual, no raw HTML, no duplicate sentences, no unsupported claims, generated in `AI_OUTPUT_LANGUAGE`                                            |
 | `skills`              | Evidence-based specific skill list                                         | Dedupe case-insensitive, keep technology/tool names source-faithful, split composite skills into atomic items, avoid abstract low-evidence skills |
 
@@ -99,8 +100,8 @@ AI output is accepted only when:
 4. Default normalization pass succeeds:
    - `external_apply_url` fallback is resolved.
    - salary values are normalized using shared salary parser.
-   - `description` dikonversi ke sanitized semantic display HTML.
-   - `requirements` tetap plain text untuk ekstraksi requirement terstruktur.
+  - `description` is converted to sanitized semantic display HTML.
+  - `requirements` stays plain text for structured requirement extraction.
    - work type defaults to `onsite` when unknown.
    - employment type defaults to `full_time` when unknown.
    - experience level uses deterministic inference and safe fallback.

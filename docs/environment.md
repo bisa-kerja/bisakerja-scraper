@@ -147,7 +147,7 @@ Normalize stage in execute mode can also use the same OpenAI-compatible provider
 
 Normalization requests are executed serially in fixed-size batches. The service always applies `OPENAI_NORMALIZATION_INTER_BATCH_DELAY_MS` between batches, regardless of rate-limit response state.
 
-`AI_OUTPUT_LANGUAGE` controls generated or paraphrased human-readable AI output in normalization and enrichment prompts, including `description`, `requirements`, requirement summary guidance, warnings, and generated presentation labels. Technology names, product names, company names, locations, and direct source quotes stay source-faithful. The default example value is `indonesian`; use `english` when downstream job descriptions and requirements must be generated in English.
+`AI_OUTPUT_LANGUAGE` controls generated or paraphrased human-readable AI output in normalization and enrichment prompts, including `description`, `requirements`, requirement summary guidance, warnings, and generated presentation labels. Technology names, product names, company names, locations, and direct source quotes stay source-faithful. The default example value is `english`; use `indonesian` when downstream job descriptions and requirements must be generated in Bahasa Indonesia.
 
 Only safe normalized job fields may be sent to the enrichment provider: title, clean description, clean requirements, company name, and source platform. AI normalization may send sanitized raw evidence needed for mapping, but must not include source request headers, bearer tokens, cookies, session ids, visitor ids, device ids, backend service credentials, API keys, or database URLs.
 

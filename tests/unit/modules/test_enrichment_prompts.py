@@ -15,7 +15,9 @@ def test_enrichment_prompt_uses_only_safe_job_fields() -> None:
 
     assert "Backend Engineer" in combined
     assert "Build APIs with Python." in combined
-    assert "bahasa indonesia" in combined.casefold()
+    assert "output language: english" in combined.casefold()
+    assert "output generated/paraphrased text in english only" in combined.casefold()
+    assert "never use indonesian function words" in combined.casefold()
     assert "if evidence exists, do not return empty output" in combined.casefold()
     assert (
         "if requirement evidence exists, return at least one requirement item"
@@ -47,4 +49,5 @@ def test_enrichment_prompt_can_target_english_output() -> None:
 
     assert "Output language: English" in combined
     assert "natural English" in combined
-    assert "Do not output Indonesian paraphrases" in combined
+    assert "Translate Indonesian or mixed-language source evidence" in combined
+    assert "never emit Indonesian function words" in combined

@@ -65,5 +65,5 @@ def test_source_limited_summary_is_transparent() -> None:
         source_platform="glints",
     )
 
-    assert "level listing" in summary
+    assert "listing-level" in summary
     assert "Full Stack Developer" in summary

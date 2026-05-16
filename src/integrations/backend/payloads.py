@@ -36,7 +36,10 @@ REQUIREMENT_NOISE_PATTERN = re.compile(
 )
 REQUIREMENT_SPLIT_PATTERN = re.compile(r"(?:\n+|(?:^|\s)[\-*]\s+|(?<=[.;:])\s+|(?<=\.)\s+)")
 EXPERIENCE_REQUIREMENT_PATTERN = re.compile(
-    r"\b(minimal|min\.?|pengalaman|tahun|fresh graduate|freshgrad|junior|senior|lead)\b",
+    (
+        r"\b(minimal|min\.?|minimum|pengalaman|experience|tahun|years|"
+        r"fresh graduate|freshgrad|junior|senior|lead)\b"
+    ),
     re.IGNORECASE,
 )
 EDUCATION_REQUIREMENT_PATTERN = re.compile(
@@ -47,7 +50,9 @@ EDUCATION_REQUIREMENT_PATTERN = re.compile(
 RESPONSIBILITY_REQUIREMENT_PATTERN = re.compile(
     r"\b("
     r"bertanggung jawab|mengembangkan|mengelola|membangun|melakukan|membuat|"
-    r"memelihara|berkoordinasi|menjaga|mengoptimalkan|menyusun"
+    r"memelihara|berkoordinasi|menjaga|mengoptimalkan|menyusun|"
+    r"responsible for|developing|managing|building|performing|creating|"
+    r"maintaining|coordinating|optimizing|drafting"
     r")\b",
     re.IGNORECASE,
 )
@@ -75,29 +80,61 @@ INDONESIAN_MARKERS = {
     "indonesia",
 }
 REQUIREMENT_REPLACEMENTS: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"\bbachelor[’']?s?\s+degree\b", re.IGNORECASE), "gelar sarjana"),
+    (re.compile(r"\bgelar sarjana\b", re.IGNORECASE), "bachelor's degree"),
+    (re.compile(r"\bsarjana\b", re.IGNORECASE), "bachelor's degree"),
     (re.compile(r"\bdiploma\b", re.IGNORECASE), "diploma"),
-    (re.compile(r"\bminimum of\b", re.IGNORECASE), "minimal"),
-    (re.compile(r"\bpreferably\b", re.IGNORECASE), "lebih disukai"),
-    (re.compile(r"\bstrong interest\b", re.IGNORECASE), "minat kuat"),
+    (re.compile(r"\bminimum of\b", re.IGNORECASE), "minimum"),
+    (re.compile(r"\bminimal\b", re.IGNORECASE), "minimum"),
+    (re.compile(r"\bpreferably\b", re.IGNORECASE), "preferred"),
+    (re.compile(r"\blebih disukai\b", re.IGNORECASE), "preferred"),
+    (re.compile(r"\bstrong interest\b", re.IGNORECASE), "strong interest"),
+    (re.compile(r"\bminat kuat\b", re.IGNORECASE), "strong interest"),
     (
         re.compile(r"\bstrong communication skills?\b", re.IGNORECASE),
-        "kemampuan komunikasi yang kuat",
+        "strong communication skills",
     ),
-    (re.compile(r"\bbackground in\b", re.IGNORECASE), "latar belakang di"),
-    (re.compile(r"\brelated field\b", re.IGNORECASE), "bidang terkait"),
-    (re.compile(r"\bfresh graduates?\b", re.IGNORECASE), "lulusan baru"),
-    (re.compile(r"\bcandidates?\b", re.IGNORECASE), "kandidat"),
-    (re.compile(r"\byears? of experience\b", re.IGNORECASE), "tahun pengalaman"),
-    (re.compile(r"\bexperience in\b", re.IGNORECASE), "pengalaman dalam"),
-    (re.compile(r"\bexperience\s*:\s*", re.IGNORECASE), "Pengalaman: "),
-    (re.compile(r"\bcategory\s*:\s*", re.IGNORECASE), "Kategori: "),
-    (re.compile(r"\bskills?\s*:\s*", re.IGNORECASE), "Keahlian: "),
-    (re.compile(r"\bminimum\s+(\d+)\s+years?\b", re.IGNORECASE), r"minimal \1 tahun"),
-    (re.compile(r"\bup to\s+(\d+)\s+years?\b", re.IGNORECASE), r"hingga \1 tahun"),
-    (re.compile(r"\b(\d+)\s*-\s*(\d+)\s+years?\b", re.IGNORECASE), r"\1-\2 tahun"),
-    (re.compile(r"\byears?\b", re.IGNORECASE), "tahun"),
-    (re.compile(r"\band\b", re.IGNORECASE), "dan"),
+    (re.compile(r"\blatar belakang di\b", re.IGNORECASE), "background in"),
+    (re.compile(r"\bbidang terkait\b", re.IGNORECASE), "related field"),
+    (re.compile(r"\bfresh graduates?\b", re.IGNORECASE), "fresh graduates"),
+    (re.compile(r"\blulusan baru\b", re.IGNORECASE), "fresh graduates"),
+    (re.compile(r"\bcandidates?\b", re.IGNORECASE), "candidates"),
+    (re.compile(r"\bkandidat\b", re.IGNORECASE), "candidates"),
+    (re.compile(r"\byears? of experience\b", re.IGNORECASE), "years of experience"),
+    (re.compile(r"\btahun pengalaman\b", re.IGNORECASE), "years of experience"),
+    (re.compile(r"\bexperience in\b", re.IGNORECASE), "experience in"),
+    (re.compile(r"\bpengalaman dalam\b", re.IGNORECASE), "experience in"),
+    (re.compile(r"\bpengalaman\b", re.IGNORECASE), "experience"),
+    (re.compile(r"\bmenguasai\b", re.IGNORECASE), "proficient in"),
+    (re.compile(r"\bmahir\b", re.IGNORECASE), "proficient in"),
+    (re.compile(r"\bmampu\b", re.IGNORECASE), "able to"),
+    (re.compile(r"\bbertanggung jawab\b", re.IGNORECASE), "responsible for"),
+    (re.compile(r"\bpendidikan\b", re.IGNORECASE), "education"),
+    (re.compile(r"\bmengembangkan\b", re.IGNORECASE), "developing"),
+    (re.compile(r"\bmengelola\b", re.IGNORECASE), "managing"),
+    (re.compile(r"\bmembangun\b", re.IGNORECASE), "building"),
+    (re.compile(r"\bmelakukan\b", re.IGNORECASE), "performing"),
+    (re.compile(r"\bmembuat\b", re.IGNORECASE), "creating"),
+    (re.compile(r"\bmemelihara\b", re.IGNORECASE), "maintaining"),
+    (re.compile(r"\bberkoordinasi\b", re.IGNORECASE), "coordinating"),
+    (re.compile(r"\bmenjaga\b", re.IGNORECASE), "maintaining"),
+    (re.compile(r"\bmengoptimalkan\b", re.IGNORECASE), "optimizing"),
+    (re.compile(r"\bmenyusun\b", re.IGNORECASE), "drafting"),
+    (re.compile(r"\bexperience\s*:\s*", re.IGNORECASE), "Experience: "),
+    (re.compile(r"\bkategori\s*:\s*", re.IGNORECASE), "Category: "),
+    (re.compile(r"\bcategory\s*:\s*", re.IGNORECASE), "Category: "),
+    (re.compile(r"\bkeahlian\s*:\s*", re.IGNORECASE), "Skills: "),
+    (re.compile(r"\bskills?\s*:\s*", re.IGNORECASE), "Skills: "),
+    (re.compile(r"\bminimal\s+(\d+)\s+tahun\b", re.IGNORECASE), r"minimum \1 years"),
+    (re.compile(r"\bminimum\s+(\d+)\s+years?\b", re.IGNORECASE), r"minimum \1 years"),
+    (re.compile(r"\bhingga\s+(\d+)\s+tahun\b", re.IGNORECASE), r"up to \1 years"),
+    (re.compile(r"\bup to\s+(\d+)\s+years?\b", re.IGNORECASE), r"up to \1 years"),
+    (re.compile(r"\b(\d+)\s*-\s*(\d+)\s+tahun\b", re.IGNORECASE), r"\1-\2 years"),
+    (re.compile(r"\b(\d+)\s*-\s*(\d+)\s+years?\b", re.IGNORECASE), r"\1-\2 years"),
+    (re.compile(r"\btahun\b", re.IGNORECASE), "years"),
+    (re.compile(r"\bdan\b", re.IGNORECASE), "and"),
+    (re.compile(r"\bdengan\b", re.IGNORECASE), "with"),
+    (re.compile(r"\buntuk\b", re.IGNORECASE), "for"),
+    (re.compile(r"\byang\b", re.IGNORECASE), "that"),
 )
 TECH_SKILL_PATTERN = re.compile(
     r"\b("
@@ -117,44 +154,45 @@ ROLE_BASED_SKILL_FALLBACKS: tuple[tuple[re.Pattern[str], str], ...] = (
             r"\b(engineer|developer|programmer|software|backend|frontend|full stack)\b",
             re.IGNORECASE,
         ),
-        "Pemrograman",
+        "Programming",
     ),
     (
         re.compile(
             r"\b(sales|business development|account executive|telemarketing)\b",
             re.IGNORECASE,
         ),
-        "Negosiasi",
+        "Negotiation",
     ),
     (
         re.compile(r"\b(marketing|brand|content|social media|seo|sem)\b", re.IGNORECASE),
-        "Pemasaran Digital",
+        "Digital Marketing",
     ),
     (
         re.compile(r"\b(customer service|customer support|helpdesk|call center)\b", re.IGNORECASE),
-        "Pelayanan Pelanggan",
+        "Customer Service",
     ),
     (
         re.compile(r"\b(finance|accounting|akuntan|tax|auditor)\b", re.IGNORECASE),
-        "Analisis Keuangan",
+        "Financial Analysis",
     ),
     (
         re.compile(r"\b(hr|recruiter|talent acquisition|people)\b", re.IGNORECASE),
-        "Komunikasi Interpersonal",
+        "Interpersonal Communication",
     ),
     (
         re.compile(r"\b(operation|logistic|warehouse|supply chain)\b", re.IGNORECASE),
-        "Manajemen Operasional",
+        "Operations Management",
     ),
     (
         re.compile(r"\b(product manager|product owner|project manager)\b", re.IGNORECASE),
-        "Manajemen Proyek",
+        "Project Management",
     ),
 )
 LOW_SIGNAL_REQUIREMENT_PHRASES = {
     "mempunyai kesempatan jenjang karir",
     "kesempatan jenjang karir",
     "the most integrated agrochemical company",
+    "career growth opportunities",
 }
 LOW_SIGNAL_REQUIREMENT_SUBSTRINGS = {
     "perusahaan ini adalah",
@@ -597,7 +635,7 @@ def build_backend_job_payload(job: NormalizedJob) -> BackendJobPayload:
             period=salary_period,
         )
     if salary_display is None:
-        salary_display = "Tidak dicantumkan"
+        salary_display = "Not specified"
 
     try:
         return BackendJobPayload(
@@ -841,7 +879,7 @@ def derive_generic_requirement(job: NormalizedJob) -> str:
             return candidate_items[0]
 
     title = optional_text(payload.get("title")) or job.title
-    return f"Memiliki kompetensi inti yang relevan untuk posisi {title}."
+    return f"Has core competencies relevant to the {title} role."
 
 
 def split_requirement_text(value: str) -> list[str]:
@@ -935,12 +973,12 @@ def derive_fallback_skills(job: NormalizedJob) -> list[str]:
 
     joined = " ".join(text for text in texts if text).strip()
     if not joined:
-        return ["Komunikasi Efektif"]
+        return ["Effective Communication"]
 
     for pattern, fallback in ROLE_BASED_SKILL_FALLBACKS:
         if pattern.search(joined):
             return [fallback]
-    return ["Komunikasi Efektif"]
+    return ["Effective Communication"]
 
 
 def derive_tech_skills_from_texts(texts: list[str]) -> list[str]:
@@ -1150,7 +1188,7 @@ def improve_requirement_summary(value: str | None, *, skills: list[str]) -> str 
         return ensure_display_html(bullet_text)
 
     if skills:
-        return ensure_display_html(f"Menguasai {', '.join(skills[:6])}.")
+        return ensure_display_html(f"Proficient in {', '.join(skills[:6])}.")
     return None
 
 
@@ -1168,25 +1206,23 @@ def improve_description(
     if text is not None:
         if source_platform.casefold() == "glints" and "level listing" in text.casefold():
             return ensure_display_html(text)
-        if looks_like_indonesian(text) and not should_rewrite_description(text):
+        if not looks_like_indonesian(text) and not should_rewrite_description(text):
             return ensure_display_html(text)
 
-    company_text = company_name or "perusahaan terkait"
-    location_text = f" di {location_display}" if location_display else ""
+    company_text = company_name or "the related company"
+    location_text = f" in {location_display}" if location_display else ""
     overview = (
-        f"Posisi {title} di {company_text}{location_text} berfokus pada kontribusi inti sesuai "
-        "kebutuhan operasional tim."
+        f"The {title} role at {company_text}{location_text} focuses on core contributions "
+        "based on available operational evidence."
     )
     details: list[str] = [overview]
 
     if requirement_summary:
         compact_summary = strip_requirement_summary_prefix(requirement_summary)
         if compact_summary:
-            details.append(
-                f"Kandidat ideal diharapkan memenuhi kualifikasi berikut: {compact_summary}"
-            )
+            details.append(f"Ideal candidates are expected to meet: {compact_summary}")
     elif skills:
-        details.append(f"Kompetensi utama yang dibutuhkan mencakup {', '.join(skills[:8])}.")
+        details.append(f"Core required competencies include {', '.join(skills[:8])}.")
     return ensure_display_html(" ".join(details))
 
 
@@ -1224,7 +1260,11 @@ def strip_requirement_summary_prefix(value: str) -> str:
     text = normalize_text_block(value)
     if text is None:
         return ""
-    normalized = re.sub(r"^(Kualifikasi utama|Kualifikasi|Persyaratan)\s*:\s*", "", text)
+    normalized = re.sub(
+        r"^(Kualifikasi utama|Kualifikasi|Persyaratan|Requirements?|Qualifications?)\s*:\s*",
+        "",
+        text,
+    )
     return normalized.strip()
 
 
@@ -1282,9 +1322,13 @@ def build_salary_display_fallback(
         if low == high:
             amount_text = format_salary_amount(low, currency)
         else:
-            amount_text = (
-                f"{format_salary_amount(low, currency)} - {format_salary_amount(high, currency)}"
-            )
+            if currency == "IDR":
+                amount_text = f"IDR {low:,} - {high:,}"
+            else:
+                amount_text = (
+                    f"{format_salary_amount(low, currency)} - "
+                    f"{format_salary_amount(high, currency)}"
+                )
     else:
         single = low if low is not None else high
         if single is None:
@@ -1299,15 +1343,15 @@ def build_salary_display_fallback(
 
 def format_salary_amount(value: int, currency: str) -> str:
     if currency == "IDR":
-        return f"Rp {value:,}".replace(",", ".")
+        return f"IDR {value:,}"
     return f"{currency} {value:,}"
 
 
 def period_suffix(period: PrismaSalaryPeriod | None) -> str:
     if period is PrismaSalaryPeriod.MONTHLY:
-        return "per bulan"
+        return "/ month"
     if period is PrismaSalaryPeriod.YEARLY:
-        return "per tahun"
+        return "/ year"
     return ""
 
 

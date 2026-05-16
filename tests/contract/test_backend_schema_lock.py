@@ -222,9 +222,9 @@ def test_backend_payload_contract_applies_completion_defaults_for_high_value_fie
     assert listing["city"] == "South Jakarta"
     assert listing["salaryCurrency"] == "IDR"
     assert listing["salaryPeriod"] == "MONTHLY"
-    assert listing["salaryDisplay"] == "Tidak dicantumkan"
+    assert listing["salaryDisplay"] == "Not specified"
     assert listing["externalApplyUrl"] == listing["sourceUrl"]
-    assert "level listing" in listing["description"]
+    assert "listing-level" in listing["description"]
 
 
 def test_backend_payload_contract_builds_salary_display_from_numeric_salary() -> None:
@@ -237,7 +237,7 @@ def test_backend_payload_contract_builds_salary_display_from_numeric_salary() ->
                 "max_amount": 7500000,
                 "currency": "IDR",
                 "period": "monthly",
-                "display": "Tidak dicantumkan",
+                "display": "Not specified",
             },
         },
     )
@@ -246,7 +246,7 @@ def test_backend_payload_contract_builds_salary_display_from_numeric_salary() ->
     listing = payload["jobListing"]
     assert listing["salaryMin"] == 6000000
     assert listing["salaryMax"] == 7500000
-    assert listing["salaryDisplay"] == "Rp 6.000.000 - Rp 7.500.000 per bulan"
+    assert listing["salaryDisplay"] == "IDR 6,000,000 - 7,500,000 / month"
 
 
 def mapped_jobs_from_fixtures() -> list[Any]:

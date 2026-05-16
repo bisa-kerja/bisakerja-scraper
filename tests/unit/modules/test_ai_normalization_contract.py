@@ -89,7 +89,7 @@ def test_glints_list_contract_builds_source_limited_summary_when_detail_unavaila
 
     normalized = validate_ai_normalization_output(bad_output, prompt_input=prompt_input)
     assert normalized.description is not None
-    assert "level listing" in normalized.description
+    assert "listing-level" in normalized.description
 
 
 def test_prompt_contract_includes_schema_and_strict_rules() -> None:
@@ -105,12 +105,14 @@ def test_prompt_contract_includes_schema_and_strict_rules() -> None:
     assert "strict job data normalizer" in messages[0]["content"].lower()
     assert "output json only" in messages[0]["content"].lower()
     assert "backendschemacontext" in messages[0]["content"].lower()
+    assert "Required output language for this run is English" in messages[0]["content"]
+    assert "never emit Indonesian function words" in messages[0]["content"]
 
     payload = json.loads(messages[1]["content"])
     assert payload["sourcePlatform"] == "dealls"
     assert payload["endpointType"] == "detail"
-    assert payload["outputLanguage"] == "indonesian"
-    assert payload["outputLanguagePolicy"]["name"] == "Indonesian"
+    assert payload["outputLanguage"] == "english"
+    assert payload["outputLanguagePolicy"]["name"] == "English"
     assert payload["targetSchema"] == "CanonicalJobSchema"
     assert "targetJsonSchema" in payload
     assert "rawPayloadSubset" in payload
@@ -127,8 +129,12 @@ def test_prompt_contract_includes_schema_and_strict_rules() -> None:
         == "Indonesia when evidence indicates Indonesian geography"
     )
     assert payload["completionPolicy"]["languagePolicy"]["instructionLanguage"] == "English"
-    assert payload["completionPolicy"]["languagePolicy"]["outputLanguage"] == "Indonesian"
-    assert payload["completionPolicy"]["languagePolicy"]["generatedProse"] == "Indonesian"
+    assert payload["completionPolicy"]["languagePolicy"]["outputLanguage"] == "English"
+    assert payload["completionPolicy"]["languagePolicy"]["generatedProse"] == "English"
+    assert (
+        "translate Indonesian or mixed-language evidence into natural English prose"
+        in payload["completionPolicy"]["languagePolicy"]["notes"]
+    )
     assert (
         payload["completionPolicy"]["completenessPolicy"]["preferFactualCoverageOverNulls"] is True
     )
@@ -162,8 +168,11 @@ def test_prompt_contract_includes_schema_and_strict_rules() -> None:
     assert "contentStructurePolicy" in payload["completionPolicy"]
     assert (
         payload["completionPolicy"]["contentStructurePolicy"]["description"]["goal"]
-        == "safe display HTML role overview in natural Indonesian"
+        == "safe display HTML role overview in natural English"
     )
+    assert payload["completionPolicy"]["salaryPresentationPolicy"][
+        "allowedPlaceholdersOnlyWhenNoNumericEvidence"
+    ] == ["Not specified"]
     assert payload["completionPolicy"]["contentStructurePolicy"]["safeDisplayHtmlTags"] == [
         "p",
         "ul",
@@ -230,6 +239,8 @@ def test_prompt_contract_can_target_english_output() -> None:
     messages = build_ai_normalization_messages(prompt_input)
     assert "generated prose must be English" in messages[0]["content"]
     assert "plain factual English text" in messages[0]["content"]
+    assert "Required output language for this run is English" in messages[0]["content"]
+    assert "never emit Indonesian function words" in messages[0]["content"]
 
     payload = json.loads(messages[1]["content"])
     assert payload["outputLanguage"] == "english"
@@ -242,6 +253,10 @@ def test_prompt_contract_can_target_english_output() -> None:
     assert (
         "The Backend Engineer role focuses"
         in payload["normalizationOutputExamples"]["detailRecordExample"]["description"]
+    )
+    assert (
+        payload["normalizationOutputExamples"]["detailRecordExample"]["salary"]["display"]
+        == "IDR 12,000,000 - 18,000,000 / month"
     )
 
 
