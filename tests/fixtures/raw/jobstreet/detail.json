@@ -1,0 +1,95 @@
+{
+  "data": {
+    "jobDetails": {
+      "__typename": "JobDetails",
+      "job": {
+        "__typename": "Job",
+        "id": "91788065",
+        "title": "PROGRAMMER / DEVELEPOR MADYA",
+        "abstract": "- Gaji pokok dan tunjangan tetap\n- Uang dinas\n- Lingkungan kerja yang nyaman",
+        "content": "<p><strong>PROGRAMMER /DEVELOPER MADYA</strong></p><ul><li><p>Minimal 10 tahun pengalaman</p></li></ul>",
+        "status": "Active",
+        "isExpired": false,
+        "listedAt": {
+          "__typename": "SeekDateTime",
+          "label": "3 hari yang lalu",
+          "dateTimeUtc": "2026-04-28T08:15:06.755Z"
+        },
+        "expiresAt": {
+          "__typename": "SeekDateTime",
+          "dateTimeUtc": "2026-05-28T13:59:59.999Z"
+        },
+        "salary": null,
+        "shareLink": "https://id.jobstreet.com/id/job/91788065?tracking=<redacted>",
+        "workTypes": {
+          "__typename": "JobWorkTypes",
+          "label": "Full time"
+        },
+        "advertiser": {
+          "__typename": "Advertiser",
+          "id": "61163142",
+          "name": "PT Gamma Persada Sinergi",
+          "isVerified": true
+        },
+        "location": {
+          "__typename": "LocationInfo",
+          "label": "Jakarta Selatan, Jakarta Raya"
+        },
+        "classifications": [
+          {
+            "__typename": "ClassificationInfo",
+            "label": "Developer/Programmer (Teknologi Informasi & Komunikasi)"
+          }
+        ],
+        "products": {
+          "__typename": "JobProducts",
+          "branding": {
+            "__typename": "JobProductBranding",
+            "logo": {
+              "__typename": "JobProductBrandingImage",
+              "url": "https://image-service-cdn.seek.com.au/redacted"
+            }
+          },
+          "bullets": null
+        }
+      },
+      "companyProfile": {
+        "__typename": "CompanyProfile",
+        "id": "168557159051559",
+        "name": "Gamma Persada",
+        "companyNameSlug": "gamma-persada-168557159051559",
+        "branding": {
+          "__typename": "Branding",
+          "logo": "https://image-service-cdn.seek.com.au/redacted"
+        },
+        "overview": {
+          "__typename": "Overview",
+          "description": {
+            "__typename": "Description",
+            "paragraphs": [
+              "Gamma Persada Group adalah perusahaan distribusi teknologi informasi."
+            ]
+          },
+          "industry": "Computer Software & Networking",
+          "website": null
+        }
+      },
+      "workArrangements": {
+        "__typename": "JobDetailsWorkArrangements",
+        "arrangements": [
+          {
+            "__typename": "JobDetailsWorkArrangement",
+            "type": "ONSITE",
+            "label": "Kantor"
+          }
+        ],
+        "label": ""
+      },
+      "insights": [
+        {
+          "__typename": "ApplicantCount"
+        }
+      ]
+    }
+  }
+}

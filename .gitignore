@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+.venv/
+.tmp/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+artifacts/
+
+.DS_Store
+tasks/

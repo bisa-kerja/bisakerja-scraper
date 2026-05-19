@@ -6,7 +6,7 @@ reviewers:
   - platform-docs-maintainer
   - backend-owner
 doc_status: draft
-last_reviewed: 2026-05-01
+last_reviewed: 2026-05-02
 ---
 
 # Documentation Release Checklist
@@ -30,7 +30,7 @@ Use this checklist before treating scraper docs as release-ready or before publi
 
 | Check | Expected result | Status |
 | --- | --- | --- |
-| Required target files | Phase target files exist | Pass by local validation |
+| Required target files | Release-scope files exist | Pass by local validation |
 | Metadata | Active or draft pages have required frontmatter | Pass by local validation |
 | Link integrity | Local markdown links resolve | Pass by local validation |
 | Secret safety | No raw bearer, cookie, session, visitor, or device tokens | Pass by local validation |
@@ -44,7 +44,10 @@ Use this checklist before treating scraper docs as release-ready or before publi
 
 | Date | Check | Result |
 | --- | --- | --- |
-| 2026-05-01 | Phase 16-19 target files, required metadata, local links, secret-pattern scan | Pass: 63 docs checked |
+| 2026-05-01 | Release-scope files, required metadata, local links, secret-pattern scan | Pass: 63 docs checked |
+| 2026-05-02 | Release readiness checker for docs, fixtures, raw captures, and env example | Pass: automated local validation |
+| 2026-05-02 | Scraper validation suite | Pass: format, lint, unit, contract, integration, smoke, full tests, and smoke CLI |
+| 2026-05-02 | Full fixture pipeline | Pass: offline raw fixture flow through normalize, enrich staging, sync chunking, and notification handoff |
 
 ## Root Context Alignment
 
@@ -61,12 +64,13 @@ Use this checklist before treating scraper docs as release-ready or before publi
 
 Release-ready means:
 
-- No missing phase target files.
+- No missing release-scope files.
 - No active or draft doc without required metadata.
 - No broken local docs links.
 - No suspected raw secret in docs.
 - No unresolved scope conflict with Backend API or central docs.
 - No generated reference presented as hand-authored truth.
+- Sync chunking, resume, and notification handoff have passing offline verification.
 - Any known gap has owner and next action.
 
 ## Gap And Backlog
@@ -76,6 +80,7 @@ Release-ready means:
 | Generated route and OpenAPI artifacts are not committed yet | Consumers cannot inspect machine-derived route/schema docs from this repo | `data-ingestion-owner` | Generate after FastAPI routes are implementation-stable |
 | Sync readiness artifact is not generated yet | Central sync cannot use a committed machine-readable readiness report | `platform-docs-maintainer` | Add generated readiness report when sync tooling exists |
 | Most docs remain `draft` | Pages are reference-derived, not fully implementation-verified | `data-ingestion-owner` | Promote page status after implementation and owner review |
+| PostgreSQL-specific CI coverage is not enabled yet | SQLite integration checks do not cover every PostgreSQL-specific behavior | `data-ingestion-owner` | Add a dedicated non-production PostgreSQL job when credentials and runtime are available |
 
 ## Related Docs
 
@@ -83,3 +88,5 @@ Release-ready means:
 - [Review Process](../standards/review-process.md)
 - [Documentation Sync](./documentation-sync.md)
 - [Verification Matrix](./verification-matrix.md)
+- [CI Quality Gates](./ci-quality-gates.md)
+- [Release Readiness](./release-readiness.md)

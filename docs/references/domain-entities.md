@@ -62,6 +62,32 @@ The scraper does not own those user links.
 | `JobSkill` | Job-to-skill relation or source/extracted skill | `jobListingId`, `skillId` or skill text |
 | `IngestionRun` | Operational run state | `sourcePlatform`, `stage`, `status`, timestamps, counts |
 
+## Canonical Job Schema
+
+The canonical job schema is the service-internal validation contract between source mappers, persistence, enrichment, and sync.
+
+| Object | Required fields | Nullable fields |
+| --- | --- | --- |
+| Source metadata | `platform`, `externalJobId`, `sourceUrl`, `scrapedAt` | `sourceSlug`, `externalApplyUrl`, `rawPayloadHash`, `sourceUpdatedAt` |
+| Company | `name` | `logoUrl`, `industry`, `sourceCompanyId`, `sourceSlug` |
+| Location | none | `display`, `city`, `region`, `country`, `isRemote` |
+| Salary | none | `minAmount`, `maxAmount`, `currency`, `period`, `display` |
+| Job | `source`, `title`, `company`, `lastSeenAt` | `salary`, `description`, `requirements`, `postedAt` |
+
+Canonical enums normalize source-specific labels into stable values for status, work type, employment type, source platform, and salary period. Unknown source labels should not create new enum values without contract review; preserve them in presentation metadata instead.
+
+## Persistence Mapping
+
+| Domain entity | Local table |
+| --- | --- |
+| `IngestionRun` | `scrape_runs` |
+| `ScrapedJobRaw` | `raw_jobs` |
+| Normalize eligibility audit | `normalization_eligibility_decisions` |
+| Canonical job candidate | `normalized_jobs` |
+| Sync handoff attempt | `sync_events` |
+
+The local table names are implementation details for the scraper service. API consumers should use documented response contracts and must not depend on table shape.
+
 ## Source Identity
 
 | Source | Entity identity rule |
@@ -83,4 +109,3 @@ The scraper does not own those user links.
 ## Ownership Rule
 
 Scraper-owned entities provide the job catalog. Backend-owned entities provide user-specific state. Any change that mixes those responsibilities needs an explicit design review.
-

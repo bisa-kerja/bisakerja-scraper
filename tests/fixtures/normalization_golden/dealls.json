@@ -1,0 +1,118 @@
+{
+  "sourcePlatform": "dealls",
+  "scenarios": [
+    {
+      "name": "list-minimal",
+      "endpointType": "list",
+      "rawPayloadSubset": {
+        "id": "69f30ce4b9f8ed001233b47c",
+        "role": "Academy Project Development Officer",
+        "publishedAt": "2026-04-30T08:03:48.066Z",
+        "employmentTypes": [
+          "fullTime"
+        ],
+        "workplaceType": "onSite",
+        "company": {
+          "id": "66bc147e2b215400120ef657",
+          "name": "BINUS Group",
+          "slug": "binus-group"
+        },
+        "city": {
+          "name": "Jakarta Barat"
+        },
+        "country": {
+          "name": "Indonesia"
+        }
+      },
+      "aiOutput": {
+        "source": {
+          "platform": "dealls",
+          "external_job_id": "69f30ce4b9f8ed001233b47c",
+          "source_slug": "academy-project-development-officer",
+          "source_url": "https://dealls.com/jobs/academy-project-development-officer",
+          "external_apply_url": null,
+          "scraped_at": "2026-05-01T01:00:00+00:00",
+          "source_updated_at": "2026-04-30T08:03:48.066Z"
+        },
+        "title": "Academy Project Development Officer",
+        "company": {
+          "name": "BINUS Group",
+          "source_company_id": "66bc147e2b215400120ef657",
+          "source_slug": "binus-group"
+        },
+        "location": {
+          "display": "Jakarta Barat, Indonesia",
+          "city": "Jakarta Barat",
+          "country": "Indonesia"
+        },
+        "salary": null,
+        "employment_types": [
+          "full_time"
+        ],
+        "work_type": "onsite",
+        "skills": [
+          "Project Management"
+        ],
+        "posted_at": "2026-04-30T08:03:48.066Z",
+        "last_seen_at": "2026-05-01T01:00:00+00:00",
+        "status": "active"
+      }
+    },
+    {
+      "name": "detail-html-and-salary",
+      "endpointType": "detail",
+      "rawPayloadSubset": {
+        "id": "69f076da6ab1470012b80d07",
+        "description": null,
+        "responsibilities": "<p>Build and maintain frontend dashboards for business operations</p>",
+        "requirements": "<p>Minimum 3 years of experience as Frontend Engineer</p>",
+        "salaryRange": {
+          "start": 5000000,
+          "end": 9000000
+        },
+        "employmentTypes": [
+          "contract"
+        ],
+        "workplaceType": "onSite",
+        "publishedAt": "2026-04-28T08:59:06.089Z"
+      },
+      "aiOutput": {
+        "source": {
+          "platform": "dealls",
+          "external_job_id": "69f076da6ab1470012b80d07",
+          "source_slug": "frontend-developer-23",
+          "source_url": "https://dealls.com/jobs/frontend-developer-23",
+          "external_apply_url": "https://dealls.com/jobs/frontend-developer-23",
+          "scraped_at": "2026-05-01T01:00:00+00:00",
+          "source_updated_at": "2026-04-28T08:59:06.089Z"
+        },
+        "title": "Frontend Developer",
+        "company": {
+          "name": "PT Bumi Amartha Teknologi Mandiri"
+        },
+        "location": {
+          "display": "Jakarta, Indonesia",
+          "city": "Jakarta",
+          "country": "Indonesia"
+        },
+        "salary": {
+          "min_amount": 5000000,
+          "max_amount": 9000000,
+          "currency": null,
+          "period": null,
+          "display": "Rp 5.000.000 - Rp 9.000.000 per month"
+        },
+        "employment_types": [
+          "contract"
+        ],
+        "work_type": "onsite",
+        "description": "<p>Build and maintain frontend dashboards for business operations</p>",
+        "requirements": "<p>Minimum 3 years of experience as Frontend Engineer</p>",
+        "skills": [],
+        "posted_at": "2026-04-28T08:59:06.089Z",
+        "last_seen_at": "2026-05-01T01:00:00+00:00",
+        "status": "active"
+      }
+    }
+  ]
+}

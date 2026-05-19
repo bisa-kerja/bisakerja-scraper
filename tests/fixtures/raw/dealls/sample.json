@@ -1,0 +1,205 @@
+{
+  "code": 200,
+  "data": {
+    "docs": [
+      {
+        "applicantPrioritySlots": 8,
+        "applied": false,
+        "author": {
+          "email": "dea.chikita@binus.edu",
+          "id": "6710c3a028b3e40011234e91",
+          "name": "Dea Brenda Chikita"
+        },
+        "authorId": "6710c37269f77f0014ea7eca",
+        "boosted": false,
+        "candidatePreference": {
+          "lastEducations": [
+            5,
+            6
+          ],
+          "major": null,
+          "minimumGpa": null,
+          "skillIds": [
+            "622b0e91be54556586724903"
+          ],
+          "university": null
+        },
+        "categoryId": null,
+        "categorySlug": null,
+        "city": {
+          "id": 156,
+          "name": "Jakarta Barat"
+        },
+        "company": {
+          "createdAt": "2024-08-14T02:20:46.984Z",
+          "id": "66bc147e2b215400120ef657",
+          "insight": {
+            "benefits": [
+              "competitiveSalary",
+              "bonusSystem"
+            ],
+            "fundingAmount": null,
+            "fundingStage": null,
+            "workingPolicies": [
+              "onSite"
+            ]
+          },
+          "logoUrl": "https://cdn.sejutacita.id/66bc13c48fca2d0013f5b647/JobPortalCompanyLogo/da28d3e7-261e-43f8-b8cd-6bcf7427f0ff.jpeg",
+          "name": "BINUS Group",
+          "rank": "A",
+          "sector": "Education Administration Programs",
+          "slug": "binus-group",
+          "trialStartedAt": "2024-08-14T17:00:00.000Z",
+          "verified": true
+        },
+        "companyId": "66bc147e2b215400120ef657",
+        "country": {
+          "id": 102,
+          "name": "Indonesia"
+        },
+        "createdAt": "2026-04-30T08:03:48.084Z",
+        "deletedAt": null,
+        "eligibleToApply": true,
+        "employmentTypes": [
+          "fullTime"
+        ],
+        "externalPlatformApplyUrl": null,
+        "higherSalary": null,
+        "id": "69f30ce4b9f8ed001233b47c",
+        "jobRoleCategoryId": "6934fd532622eadf60779985",
+        "jobRoleCategorySlug": "strategy-and-project-management",
+        "jobRoleId": "69393fafffb8a421e1efbbab",
+        "jobRoleSubCategoryId": "69393faeffb8a421e1efbba9",
+        "lastActivelyHiringAt": "2026-04-30T11:04:13.361Z",
+        "latestUpdatedAt": "2026-04-30T08:03:48.076Z",
+        "publishedAt": "2026-04-30T08:03:48.066Z",
+        "qCompanyRank": null,
+        "role": "Academy Project Development Officer",
+        "salaryRange": null,
+        "salaryType": "paid",
+        "saved": false,
+        "skills": [
+          {
+            "id": "622b0e91be54556586724903",
+            "name": "Project Management"
+          }
+        ],
+        "slug": "academy-project-development-officer",
+        "stats": {
+          "nonCuratedCount": 19,
+          "viewCount": 38
+        },
+        "status": "active",
+        "thereAreStillFewApplicants": false,
+        "updatedAt": "2026-04-30T08:03:48.860Z",
+        "updatedAtByEmployer": "2026-04-30T08:03:48.066Z",
+        "urgentlyNeeded": false,
+        "waitListed": false,
+        "workplaceType": "onSite"
+      },
+      {
+        "applicantPrioritySlots": 8,
+        "applied": false,
+        "author": {
+          "email": "ssdmnx@atomicmail.io",
+          "id": "6948f4bf3e63ce001147856c",
+          "name": "Atomic Mail"
+        },
+        "authorId": "6948f4790cf17f0013a30bce",
+        "boosted": false,
+        "candidatePreference": {
+          "lastEducations": [
+            5
+          ],
+          "major": null,
+          "minimumGpa": null,
+          "skillIds": [
+            "622b0e91be545565867248f7",
+            "67f4a6a78ea92db8368a5bf6"
+          ],
+          "university": null
+        },
+        "categoryId": null,
+        "categorySlug": null,
+        "city": {
+          "id": 156,
+          "name": "Jakarta Barat"
+        },
+        "company": {
+          "createdAt": "2025-12-22T07:35:27.134Z",
+          "id": "6948f4bf3e63ce0011478568",
+          "insight": {
+            "benefits": [
+              "competitiveSalary",
+              "dentalInsurance"
+            ],
+            "fundingAmount": null,
+            "fundingStage": null,
+            "workingPolicies": [
+              "flexible",
+              "onSite"
+            ]
+          },
+          "logoUrl": "https://cdn.sejutacita.id/6948f4790cf17f0013a30bce/JobPortalCompanyLogo/809b7f98-93cb-4aa0-bdd1-cd348dd1e6de.png",
+          "name": "PT Atomic mail",
+          "rank": null,
+          "sector": "Edukasi",
+          "slug": "pt-atomic-mail",
+          "trialStartedAt": "2025-12-21T17:00:00.000Z",
+          "verified": false
+        },
+        "companyId": "6948f4bf3e63ce0011478568",
+        "country": {
+          "id": 102,
+          "name": "Indonesia"
+        },
+        "createdAt": "2026-04-29T07:12:19.084Z",
+        "deletedAt": null,
+        "eligibleToApply": true,
+        "employmentTypes": [
+          "fullTime"
+        ],
+        "externalPlatformApplyUrl": null,
+        "higherSalary": null,
+        "id": "69f1af539986a7001286aea2",
+        "jobRoleCategoryId": "6934fd0b2622eadf60779984",
+        "jobRoleCategorySlug": "business-sales-and-commercial",
+        "jobRoleId": "6244131979e467a6fb495dc0",
+        "jobRoleSubCategoryId": "69393fb2ffb8a421e1efbbb8",
+        "lastActivelyHiringAt": "2026-04-30T14:11:19.114Z",
+        "latestUpdatedAt": "2026-04-30T09:53:16.475Z",
+        "publishedAt": "2026-04-29T07:12:19.071Z",
+        "qCompanyRank": null,
+        "role": "Business Development",
+        "salaryRange": null,
+        "salaryType": "paid",
+        "saved": false,
+        "skills": [
+          {
+            "id": "622b0e91be545565867248f7",
+            "name": "Market Research"
+          },
+          {
+            "id": "67f4a6a78ea92db8368a5bf6",
+            "name": "Strategic Partnerships"
+          }
+        ],
+        "slug": "business-development-249",
+        "stats": {
+          "nonCuratedCount": 29,
+          "viewCount": 207
+        },
+        "status": "active",
+        "thereAreStillFewApplicants": true,
+        "updatedAt": "2026-04-30T09:53:16.513Z",
+        "updatedAtByEmployer": "2026-04-30T09:53:16.475Z",
+        "urgentlyNeeded": false,
+        "waitListed": false,
+        "workplaceType": "onSite"
+      }
+    ],
+    "page": 1,
+    "totalDocs": 122,
+    "totalPages": 7
+  }
+}

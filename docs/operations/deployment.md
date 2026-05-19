@@ -5,8 +5,8 @@ owner: data-ingestion-owner
 reviewers:
   - platform-docs-maintainer
   - backend-owner
-doc_status: draft
-last_reviewed: 2026-05-01
+doc_status: active
+last_reviewed: 2026-05-02
 ---
 
 # Scraper Deployment Operations
@@ -28,11 +28,11 @@ This page defines deployment expectations for the scraper service. Exact hosting
 Baseline daily flow:
 
 ```text
-01:00 scrape
-  -> 01:30 normalize
-  -> 02:00 enrich
-  -> 03:00 sync
-  -> 05:00-06:00 notify handoff
+00:00 scrape
+  -> 02:00 normalize
+  -> 04:00 enrich
+  -> 06:00 sync
+  -> 08:00 notify handoff
 ```
 
 ## Artifact Assumptions
@@ -43,6 +43,96 @@ Baseline daily flow:
 - Raw fixture files are sanitized before packaging or publishing.
 - Scheduler and worker version match the scraper app version.
 - Production deploy never points at local or test DB values.
+
+## Container Runtime
+
+The service image is built from the repository `Dockerfile`. The runtime image uses the official Python slim base, installs locked dependencies with `uv`, runs as a non-root `scraper` user, exposes the configured HTTP port, and defines a Docker healthcheck against `/health/live`.
+
+Build the image:
+
+```bash
+docker build -t bisakerja-scraper:local .
+```
+
+Run the API with an explicit env file:
+
+```bash
+docker run --rm --env-file .env -p 3003:3003 bisakerja-scraper:local
+```
+
+Run the published image through Compose:
+
+```bash
+APP_IMAGE=ghcr.io/bisa-kerja/bisakerja-scraper:develop \
+RUNTIME_ENV_FILE=.env.production \
+docker compose --env-file .env.production up -d
+```
+
+Render deployment config from the example env file without resolving service env files:
+
+```bash
+RUNTIME_ENV_FILE=.env.production.example docker compose --env-file .env.production.example config --no-env-resolution
+```
+
+Run smoke checks before deploying an image:
+
+```bash
+PYTHONPATH=src uv run python -m cli.smoke config --env-file .env.example
+PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.example
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
+uv run python scripts/deploy/db_preflight.py --env-file .env.production.example
+```
+
+The example env file uses placeholder database hosts, so the preflight command should fail safely with redacted output. On a real deployment target, the same preflight runs from container environment variables and must pass before migration.
+
+Container rules:
+
+- Provide all secrets through environment variables or a secret manager, never through image build arguments.
+- Keep `.env`, raw capture files, local caches, and reference-only directories out of the image build context.
+- Do not run the runtime process as root.
+- Use `/health/live` for process health and `/health/ready` for database readiness.
+- Run migrations before starting a deployment that depends on schema changes.
+
+## GitHub Deployment Workflow
+
+The active deployment workflow lives at `.github/workflows/deploy.yml`. It deploys `develop` automatically to the staging environment and supports manual dispatch for `develop` or `main`.
+
+Workflow behavior:
+
+| Stage | Expected result |
+| --- | --- |
+| Build image | Docker image is built from committed source and `uv.lock` |
+| Publish image | GHCR receives branch tag and immutable SHA tag |
+| Validate secrets | Deployment stops before SSH if required secrets are missing |
+| Write env file | VPS receives `.env.production` from GitHub environment secret |
+| Sync checkout | Remote repository is reset to the exact build commit SHA only when clean |
+| Pull image | Compose pulls the immutable GHCR SHA tag from the same build run |
+| DB preflight | Container verifies database env and lightweight connectivity with redacted output |
+| Migrate | `alembic upgrade head` runs before app startup |
+| Start app | Compose starts the `app` service and waits for health |
+| Verify | `/health/live` and `/health/ready` pass on localhost with bounded retry during startup |
+| Diagnose failure | Compose status and recent app logs are collected |
+
+Required GitHub environment secrets:
+
+| Secret | Purpose |
+| --- | --- |
+| `DEPLOY_VPS_HOST` | VPS host |
+| `DEPLOY_VPS_PORT` | SSH port |
+| `DEPLOY_VPS_USERNAME` | SSH user |
+| `DEPLOY_VPS_KEY` | Private SSH key |
+| `DEPLOY_REMOTE_PATH` | Existing remote repository path |
+| `DEPLOY_ENV_FILE` | Full runtime env payload written to `.env.production` |
+| `GHCR_READ_PACKAGES_TOKEN` | Token used by the VPS to pull GHCR image |
+| `GH_USERNAME` | GHCR username for remote login |
+
+Remote prerequisites:
+
+- `DEPLOY_REMOTE_PATH` is a clean git checkout of this repository.
+- The deploy user can run `docker compose`.
+- `git`, `docker`, Docker Compose, and `curl` are installed.
+- Runtime `APP_ENV` matches the workflow target, currently `staging`.
+- Runtime `PORT` defaults to `3003` for aaPanel reverse proxy deployment; optional `APP_PORT` is the host port.
 
 ## Normal Deploy Runbook
 
@@ -87,7 +177,8 @@ Use hotfix only when production freshness or sync is materially degraded.
 
 | Check | Expected result |
 | --- | --- |
-| App liveness | Process responds or worker heartbeat exists |
+| App liveness | `/health/live` responds without requiring database connectivity |
+| App readiness | `/health/ready` confirms the scraper database accepts a lightweight query |
 | Scheduler state | Next run time is visible |
 | Source health | Each source reports safe status without exposing credentials |
 | Fixture pipeline | One sanitized fixture batch normalizes successfully |
@@ -95,6 +186,46 @@ Use hotfix only when production freshness or sync is materially degraded.
 | Log redaction | No token/cookie/session strings appear |
 | First production run | Counts are plausible and failures are isolated |
 | Freshness | `lastSeenAt` and stale counts match policy |
+
+## Production Read-Only Verification Checklist
+
+Run these checks on the deployment host after `docker compose up -d --wait`:
+
+```bash
+curl --fail http://127.0.0.1:${APP_PORT:-3003}/health/live
+curl --fail http://127.0.0.1:${APP_PORT:-3003}/health/ready
+docker compose -f docker-compose.yml --env-file .env.production ps
+docker compose -f docker-compose.yml --env-file .env.production port app 3003
+docker compose -f docker-compose.yml --env-file .env.production ps scheduler
+docker compose -f docker-compose.yml --env-file .env.production logs --tail=50 scheduler
+git -C "${DEPLOY_REMOTE_PATH:-.}" rev-parse HEAD
+```
+
+Expected evidence:
+
+- `/health/live` returns HTTP `200`.
+- `/health/ready` returns HTTP `200`.
+- Compose port shows `127.0.0.1:3003->3003/tcp` for `app`.
+- `scheduler` container state is `Up` and healthy.
+- `git rev-parse HEAD` matches deployed immutable SHA tag (`sha-<commit>`).
+- Scheduler logs show latest scheduled stage status and run id without secret values.
+
+## Reverse Proxy Empty Reply Troubleshooting
+
+If public domain checks return `Empty reply from server` while local container health is `200`, use this sequence:
+
+1. Confirm app container is serving on host port `3003`:
+   - `docker compose -f docker-compose.yml --env-file .env.production port app 3003`
+2. Confirm reverse proxy target points to `127.0.0.1:3003` (aaPanel or equivalent).
+3. Confirm current runtime env still sets `PORT=3003` and `APP_PORT=3003`.
+4. Recreate services with current config:
+   - `docker compose -f docker-compose.yml --env-file .env.production up -d --force-recreate app scheduler`
+5. Re-check local health:
+   - `curl --fail http://127.0.0.1:3003/health/live`
+   - `curl --fail http://127.0.0.1:3003/health/ready`
+6. Reload reverse proxy after container health is confirmed.
+
+Do not publish internal service tokens, cookies, or full source request headers in troubleshooting evidence.
 
 ## Recovery Rules
 
@@ -105,6 +236,36 @@ Use hotfix only when production freshness or sync is materially degraded.
 - Re-run sync from staging when main DB handoff failed.
 - Rotate exposed source credentials if logs or artifacts leaked real values.
 
+## Database Connection Failures
+
+If deploy logs show `password authentication failed for user 'neondb_owner'`, treat the runtime database secret as invalid or stale. Correct the database URL in the deployment secret source, redeploy the env file, then rerun migration and readiness checks.
+
+Neon logs can also include IPv6 `Network is unreachable` attempts. When IPv4 attempts fail with password authentication errors in the same trace, fix credentials first; do not treat IPv6 reachability as the primary blocker.
+
+Safe validation sequence:
+
+```bash
+python scripts/deploy/db_preflight.py --from-env
+uv run alembic upgrade head
+PYTHONPATH=src uv run python -m cli.smoke health --env-file .env.production
+curl --fail http://127.0.0.1:${APP_PORT:-3003}/health/ready
+```
+
+Neon compatibility notes for runtime and deploy checks:
+
+- Pooled hostnames (`-pooler...neon.tech`) and direct hostnames (`...neon.tech`) are both supported.
+- If `sslmode` is missing, scraper runtime and deploy preflight normalize Neon URLs to `sslmode=require`.
+- For async readiness/runtime checks, `channel_binding` is removed from the URL because asyncpg does not consume libpq channel-binding parameters.
+- For sync preflight/migration checks, `channel_binding` is preserved.
+
+Never paste full database URLs, passwords, or deployment env payloads into docs, tickets, or logs.
+
+The deployment preflight runs inside the application container before migrations. It verifies required environment variables, opens a lightweight database connection, and prints a compact JSON result with password-redacted URLs. Authentication failures stop deployment before Alembic starts. If the same trace includes IPv6 `Network is unreachable` and IPv4 password failures, rotate or redeploy the database credential first.
+
+## Scheduler Runtime
+
+The scraper registers separate daily jobs for scrape, normalize, enrich, and sync. Each job uses the configured cron value, a stable scheduler id, coalescing for missed executions, and a single concurrent instance. Manual triggers share the same guard so operators cannot start a second stage while another stage is still active.
+
 ## Related Docs
 
 - [Deployment Overview](./deployment-overview.md)
@@ -112,4 +273,3 @@ Use hotfix only when production freshness or sync is materially degraded.
 - [Observability](./observability.md)
 - [Failure Scenarios](./failure-scenarios.md)
 - [Environment Configuration](../environment.md)
-

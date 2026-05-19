@@ -1,0 +1,61 @@
+{
+  "sourcePlatform": "kalibrr",
+  "scenarios": [
+    {
+      "name": "list-with-embedded-detail-html",
+      "endpointType": "list",
+      "rawPayloadSubset": {
+        "id": 265196,
+        "name": "Head of Commercial Strategy & Marketing",
+        "slug": "head-of-commercial-strategy-marketing",
+        "activationDate": "2026-05-01T03:51:58.260489+00:00",
+        "tenure": "Full time",
+        "isHybrid": false,
+        "isWorkFromHome": false,
+        "companyName": "Simbadda Group",
+        "googleLocation": {
+          "addressComponents": {
+            "city": "North Jakarta",
+            "region": "DKI Jakarta",
+            "country": "Indonesia"
+          }
+        },
+        "description": "<p><strong>Revenue Ownership</strong></p><ul><li>Take full ownership of revenue targets.</li></ul>",
+        "qualifications": "<ul><li>Bachelor's degree in Business.</li></ul>"
+      },
+      "aiOutput": {
+        "source": {
+          "platform": "kalibrr",
+          "external_job_id": "265196",
+          "source_slug": "head-of-commercial-strategy-marketing",
+          "source_url": "https://www.kalibrr.id/id-ID/job-board/te/developer/265196",
+          "external_apply_url": null,
+          "scraped_at": "2026-05-01T01:00:00+00:00",
+          "source_updated_at": "2026-05-01T03:51:58.260489+00:00"
+        },
+        "title": "Head of Commercial Strategy & Marketing",
+        "company": {
+          "name": "Simbadda Group",
+          "source_slug": "simbadda-group"
+        },
+        "location": {
+          "display": null,
+          "city": "North Jakarta",
+          "region": "DKI Jakarta",
+          "country": "Indonesia"
+        },
+        "salary": null,
+        "employment_types": [
+          "full_time"
+        ],
+        "work_type": "onsite",
+        "description": "<p><strong>Revenue Ownership</strong></p><ul><li>Take full ownership of revenue targets.</li></ul>",
+        "requirements": "<ul><li>Bachelor's degree in Business.</li></ul>",
+        "skills": [],
+        "posted_at": "2026-05-01T03:51:58.260489+00:00",
+        "last_seen_at": "2026-05-01T01:00:00+00:00",
+        "status": "active"
+      }
+    }
+  ]
+}

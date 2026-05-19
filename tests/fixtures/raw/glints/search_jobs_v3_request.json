@@ -1,0 +1,14 @@
+{
+  "operationName": "searchJobsV3",
+  "variables": {
+    "data": {
+      "SearchTerm": "developer",
+      "CountryCode": "ID",
+      "sortBy": "LATEST",
+      "includeExternalJobs": true,
+      "pageSize": 30,
+      "page": 1
+    }
+  },
+  "query": "query searchJobsV3($data: JobSearchConditionInput!) { searchJobsV3(data: $data) { jobsInPage { id title workArrangementOption status createdAt updatedAt shouldShowSalary type company { id name brandName logo status industry { id name __typename } __typename } country { code name __typename } salaries { id salaryType salaryMode maxAmount minAmount CurrencyCode __typename } location { id name administrativeLevelName formattedName level slug parents { id name administrativeLevelName formattedName level slug CountryCode: countryCode parents { level formattedName slug __typename } __typename } __typename } minYearsOfExperience maxYearsOfExperience source jobSource hierarchicalJobCategory { id level name parents { id level name __typename } __typename } skills { skill { id name __typename } mustHave __typename } __typename } hasMore __typename } }"
+}

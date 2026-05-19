@@ -48,6 +48,21 @@ Do not preserve token length, cookie fragments, or stable session prefixes.
 - Logs should contain source platform, status code, count, timing, and sanitized error class.
 - Documentation examples must be manually or automatically checked for secret patterns before publishing.
 
+## Fixture Sanitization
+
+Raw captures used for automated tests must be generated through a sanitizer before being committed.
+
+Required sanitizer behavior:
+
+- Redact bearer credentials.
+- Redact `cookie` and `set-cookie` values.
+- Redact CSRF, session, visitor, and device identifiers.
+- Redact sensitive JSON keys recursively.
+- Keep only a small representative sample of arrays.
+- Preserve valid JSON when the source capture contains a JSON response body.
+
+Fixture directories use one folder per source under `tests/fixtures/raw/<source>/`. Generated fixtures are safe for parser and contract tests, but they are not a substitute for protected internal raw captures.
+
 ## Review Checklist
 
 - No bearer token values.
@@ -56,4 +71,3 @@ Do not preserve token length, cookie fragments, or stable session prefixes.
 - No raw user-specific source state.
 - No untrusted HTML shown as executable/rendered content.
 - All example credentials are placeholders.
-

@@ -1,0 +1,55 @@
+name: ${COMPOSE_PROJECT_NAME:-bisakerja-scraper}
+
+services:
+  app:
+    image: ${APP_IMAGE:-ghcr.io/bisa-kerja/bisakerja-scraper:develop}
+    restart: unless-stopped
+    env_file:
+      - path: ${RUNTIME_ENV_FILE:-.env.production}
+        required: false
+    ports:
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-3003}:${PORT:-3003}"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import os, urllib.request; port=os.environ.get('PORT', '3003'); urllib.request.urlopen('http://127.0.0.1:%s/health/live' % port, timeout=3).read()\""
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+  scheduler:
+    image: ${APP_IMAGE:-ghcr.io/bisa-kerja/bisakerja-scraper:develop}
+    restart: unless-stopped
+    env_file:
+      - path: ${RUNTIME_ENV_FILE:-.env.production}
+        required: false
+    command: ["python", "-m", "cli.daemon"]
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import pathlib, sys; cmdline = pathlib.Path('/proc/1/cmdline').read_text(); sys.exit(0 if 'cli.daemon' in cmdline else 1)\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      app:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

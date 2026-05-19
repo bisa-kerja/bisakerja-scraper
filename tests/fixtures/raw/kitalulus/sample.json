@@ -1,0 +1,41 @@
+{
+  "data": {
+    "vacanciesV4": {
+      "hasNextPage": false,
+      "hasPrevPage": false,
+      "elements": 1,
+      "page": 1,
+      "list": [
+        {
+          "id": "InSGT9JJPXt",
+          "slug": "fullstack-laravel-developer-scpy",
+          "code": "J1761967443343",
+          "positionName": "FULLSTACK LARAVEL DEVELOPER",
+          "isHighlighted": false,
+          "educationLevelStr": "Minimal D3/D4",
+          "salaryLowerBound": 0,
+          "salaryUpperBound": 0,
+          "updatedAtStr": "Terakhir diperbarui pada 17 Apr 2026",
+          "genderStr": "Semua jenis kelamin",
+          "maxAge": 40,
+          "minExperience": 1,
+          "typeStr": "Kontrak",
+          "company": {
+            "name": "PT DRW Corpora Indonesia",
+            "code": "JC1706598624927",
+            "logoUrl": "https://img.kitalulus.com/logo.png"
+          },
+          "province": {
+            "name": "DI Yogyakarta"
+          },
+          "city": {
+            "name": "Kabupaten Bantul"
+          },
+          "jobRole": {
+            "displayName": "Database Developer"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,320 @@
+{
+  "data": {
+    "searchJobsV3": {
+      "__typename": "JobSearchResults",
+      "expInfo": "mgtDstExperimentSearchApplication:base_0605,mgtDstExperimentSearchPaidJob:exp_2_1206,mgtDstExpSearchJobsRemoveFuzzyMatch:exo_0704,mgtDstExpJobBoostingForRankingWeight:group1,mgtJobSourceRolloutExp:group1,mgtMobExperimentExploreLocationExpansion:Group1_082011am,mgtMobExperimentJobCardUI:exp_new_1227",
+      "hasMore": true,
+      "jobsInPage": [
+        {
+          "__typename": "Job",
+          "city": null,
+          "citySubDivision": null,
+          "company": {
+            "IndustryId": 150,
+            "__typename": "Company",
+            "brandName": null,
+            "id": "137c60a1-e0de-499a-9c34-a7d10367b489",
+            "industry": {
+              "__typename": "Industry",
+              "id": 150,
+              "name": "Distributor"
+            },
+            "isVIP": false,
+            "logo": "fd0f029a22ce8f712288d937036dcd2d.png",
+            "name": "Cv Lovina",
+            "status": "VERIFIED",
+            "verificationTier": {
+              "__typename": "verificationTier",
+              "type": "LEGAL_DOCUMENTS",
+              "userName": null
+            }
+          },
+          "country": {
+            "__typename": "Country",
+            "code": "ID",
+            "name": "Indonesia"
+          },
+          "createdAt": "2026-05-01T04:41:42.821Z",
+          "educationLevel": "HIGH_SCHOOL",
+          "fraudReportFlag": null,
+          "hierarchicalJobCategory": {
+            "__typename": "HierarchicalJobCategory",
+            "children": null,
+            "id": "b16aede4-ad2c-4639-89d9-4614c19c3481",
+            "level": 3,
+            "name": "Full Stack Developer",
+            "parents": [
+              {
+                "__typename": "JobCategoryChildAndParent",
+                "id": "b298311a-b0e4-4265-8b11-1b17d3ea553e",
+                "level": 2,
+                "name": "Backend Development"
+              },
+              {
+                "__typename": "JobCategoryChildAndParent",
+                "id": "9dd9bc4d-38d5-4b5e-876a-de19bc22da45",
+                "level": 1,
+                "name": "Computer & Software"
+              }
+            ]
+          },
+          "id": "aaed8a7f-de12-479c-8df8-56f26b35bed9",
+          "isApplied": false,
+          "isHot": false,
+          "jobSource": "EMPLOYER",
+          "location": {
+            "__typename": "HierarchicalLocation",
+            "administrativeLevelName": "District",
+            "formattedName": "Semarang Tengah",
+            "id": "ad06c474-f60f-49e2-8941-d69151fc3f3d",
+            "latitude": -6.98056,
+            "level": 4,
+            "longitude": 110.42139,
+            "name": "Semarang Tengah",
+            "parents": [
+              {
+                "CountryCode": "ID",
+                "__typename": "LocationParent",
+                "administrativeLevelName": "City",
+                "formattedName": "Semarang",
+                "id": "a9ff8f92-f835-47a5-b74b-4425bda9e092",
+                "level": 3,
+                "name": "Semarang",
+                "parents": [
+                  {
+                    "__typename": "LocationGrandParent",
+                    "formattedName": "Jawa Tengah",
+                    "level": 2,
+                    "slug": "jawa-tengah"
+                  },
+                  {
+                    "__typename": "LocationGrandParent",
+                    "formattedName": "Indonesia",
+                    "level": 1,
+                    "slug": "indonesia"
+                  }
+                ],
+                "slug": "semarang"
+              },
+              {
+                "CountryCode": "ID",
+                "__typename": "LocationParent",
+                "administrativeLevelName": "Province",
+                "formattedName": "Jawa Tengah",
+                "id": "5247f841-bba1-41ed-9374-13419a1546d9",
+                "level": 2,
+                "name": "Jawa Tengah",
+                "parents": [
+                  {
+                    "__typename": "LocationGrandParent",
+                    "formattedName": "Indonesia",
+                    "level": 1,
+                    "slug": "indonesia"
+                  }
+                ],
+                "slug": "jawa-tengah"
+              }
+            ],
+            "slug": "semarang-tengah"
+          },
+          "maxYearsOfExperience": 3,
+          "minYearsOfExperience": 1,
+          "salaries": [
+            {
+              "CurrencyCode": "IDR",
+              "__typename": "JobSalary",
+              "id": "65357c74-293d-4f97-b181-80905e2c3e5f",
+              "maxAmount": 4000000,
+              "minAmount": 3000000,
+              "salaryMode": "MONTH",
+              "salaryType": "BASIC"
+            }
+          ],
+          "shouldShowSalary": true,
+          "skills": [
+            {
+              "__typename": "Skill",
+              "mustHave": true,
+              "skill": {
+                "__typename": "SkillDetail",
+                "id": "195f74f4-48be-4b9c-86f9-2ebc1031307f",
+                "name": "jQuery"
+              }
+            },
+            {
+              "__typename": "Skill",
+              "mustHave": true,
+              "skill": {
+                "__typename": "SkillDetail",
+                "id": "19f6f9a6-70ca-41be-b6f8-7b8be96e9ea2",
+                "name": "MySQL"
+              }
+            }
+          ],
+          "source": "NATIVE",
+          "status": "OPEN",
+          "title": "Full Stack Developer",
+          "traceInfo": "<redacted>",
+          "type": "FULL_TIME",
+          "updatedAt": "2026-05-01T04:41:44.067Z",
+          "workArrangementOption": "ONSITE"
+        },
+        {
+          "__typename": "Job",
+          "city": null,
+          "citySubDivision": null,
+          "company": {
+            "IndustryId": 96,
+            "__typename": "Company",
+            "brandName": null,
+            "id": "1cb01218-d1de-4e0c-b7a4-cb7865f3baae",
+            "industry": {
+              "__typename": "Industry",
+              "id": 96,
+              "name": "Information Technology and Services"
+            },
+            "isVIP": true,
+            "logo": "3aba5816b8ecfbb79a395592af581035.png",
+            "name": "PT Sigma Global Teknologi",
+            "status": "VERIFIED",
+            "verificationTier": {
+              "__typename": "verificationTier",
+              "type": "LEGAL_DOCUMENTS",
+              "userName": null
+            }
+          },
+          "country": {
+            "__typename": "Country",
+            "code": "ID",
+            "name": "Indonesia"
+          },
+          "createdAt": "2026-03-31T04:02:27.148Z",
+          "educationLevel": "BACHELOR_DEGREE",
+          "fraudReportFlag": null,
+          "hierarchicalJobCategory": {
+            "__typename": "HierarchicalJobCategory",
+            "children": null,
+            "id": "dcf154bc-d6ae-40df-afd7-bf88152235ee",
+            "level": 3,
+            "name": "Backend Developer",
+            "parents": [
+              {
+                "__typename": "JobCategoryChildAndParent",
+                "id": "b298311a-b0e4-4265-8b11-1b17d3ea553e",
+                "level": 2,
+                "name": "Backend Development"
+              },
+              {
+                "__typename": "JobCategoryChildAndParent",
+                "id": "9dd9bc4d-38d5-4b5e-876a-de19bc22da45",
+                "level": 1,
+                "name": "Computer & Software"
+              }
+            ]
+          },
+          "id": "2ba9acfc-1344-45b9-b4b3-8af8e264379a",
+          "isApplied": false,
+          "isHot": false,
+          "jobSource": "EMPLOYER",
+          "location": {
+            "__typename": "HierarchicalLocation",
+            "administrativeLevelName": "District",
+            "formattedName": "Serpong Utara",
+            "id": "81f4c248-3fb7-4de2-9a3a-760c487a3845",
+            "latitude": -6.25417,
+            "level": 4,
+            "longitude": 106.6625,
+            "name": "Serpong Utara",
+            "parents": [
+              {
+                "CountryCode": "ID",
+                "__typename": "LocationParent",
+                "administrativeLevelName": "City",
+                "formattedName": "Tangerang Selatan",
+                "id": "337f8da8-70d8-4916-9733-1cee8e4902e9",
+                "level": 3,
+                "name": "Tangerang Selatan",
+                "parents": [
+                  {
+                    "__typename": "LocationGrandParent",
+                    "formattedName": "Banten",
+                    "level": 2,
+                    "slug": "banten"
+                  },
+                  {
+                    "__typename": "LocationGrandParent",
+                    "formattedName": "Indonesia",
+                    "level": 1,
+                    "slug": "indonesia"
+                  }
+                ],
+                "slug": "tangerang-selatan"
+              },
+              {
+                "CountryCode": "ID",
+                "__typename": "LocationParent",
+                "administrativeLevelName": "Province",
+                "formattedName": "Banten",
+                "id": "82f248c3-3fb3-4600-98fe-4afb47d7558d",
+                "level": 2,
+                "name": "Banten",
+                "parents": [
+                  {
+                    "__typename": "LocationGrandParent",
+                    "formattedName": "Indonesia",
+                    "level": 1,
+                    "slug": "indonesia"
+                  }
+                ],
+                "slug": "banten"
+              }
+            ],
+            "slug": "serpong-utara"
+          },
+          "maxYearsOfExperience": 5,
+          "minYearsOfExperience": 3,
+          "salaries": [
+            {
+              "CurrencyCode": "IDR",
+              "__typename": "JobSalary",
+              "id": "ae1f2f3e-42c1-4e01-b04f-f6100cf542e0",
+              "maxAmount": 14000000,
+              "minAmount": 12000000,
+              "salaryMode": "MONTH",
+              "salaryType": "BASIC"
+            }
+          ],
+          "shouldShowSalary": true,
+          "skills": [
+            {
+              "__typename": "Skill",
+              "mustHave": true,
+              "skill": {
+                "__typename": "SkillDetail",
+                "id": "47528a42-27d7-4986-9120-f0fc1dda5a31",
+                "name": "Spring Boot"
+              }
+            },
+            {
+              "__typename": "Skill",
+              "mustHave": true,
+              "skill": {
+                "__typename": "SkillDetail",
+                "id": "3aaa83db-9dfd-42bb-895e-a93443846ce8",
+                "name": "Java"
+              }
+            }
+          ],
+          "source": "NATIVE",
+          "status": "OPEN",
+          "title": "Software Developer",
+          "traceInfo": "<redacted>",
+          "type": "CONTRACT",
+          "updatedAt": "2026-04-30T18:05:34.063Z",
+          "workArrangementOption": "ONSITE"
+        }
+      ]
+    }
+  },
+  "isAuthenticated": false
+}

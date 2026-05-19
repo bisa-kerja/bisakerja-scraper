@@ -28,16 +28,41 @@ source request
   -> Backend API read
 ```
 
+## Pipeline Orchestration
+
+The scraper pipeline executes source work through the ordered stages `scrape -> eligibility-gate -> normalize -> enrich -> sync -> notify-handoff`.
+
+Orchestration rules:
+
+- Each run gets one `runId` and one correlation id.
+- Source adapters are invoked through an injected source interface so tests can run without external network calls.
+- Fetch runs per source, then raw records are normalized through the source mapper.
+- Scrape, normalize, enrich, sync, and notify handoff can run independently when operators need to resume from durable state.
+- Eligibility gate runs after scrape persistence and before normalize dispatch to prevent duplicate or already-synced identities from re-entering AI normalization.
+- Per-source normalization and enrichment use bounded concurrency.
+- Persistence writes raw and normalized records idempotently before sync handoff.
+- Normalization failures create quarantine records and keep the run partial instead of pretending the payload was completed.
+- Enrichment batch work reads normalized jobs without skill staging rows, processes up to the configured batch size, writes sanitized AI audit metadata, and stores skills/requirements in staging tables.
+- Stage queue jobs can decouple scrape, normalize, enrich, sync, and notify handoff work while preserving retry state and correlation id.
+- The sync stage is a hook for backend handoff; if no sync client is configured, the local pipeline still records persisted output.
+- Partial mode allows one source to fail without stopping other sources.
+- Notification handoff is a boundary stage. The scraper prepares normalized job data; user preference filtering and email delivery remain Backend API or notification-worker concerns.
+
 ## Stage Contracts
 
 | Stage | Input | Output | Owner | Required checks |
 | --- | --- | --- | --- | --- |
 | Fetch | Source config, headers, query params | HTTP response body and safe metadata | Source adapter | Status, pagination, auth/header behavior |
 | Raw capture | Source response | Redacted raw payload record | Scraper persistence | No tokens/cookies/session ids in published artifacts |
+| Eligibility gate | Raw rows from scrape scope, backend identity lookup, local normalized/sync state | One decision per raw row (`normalization_eligible` or explicit skip reason) | Normalizer | Decision coverage, backend lookup evidence, unsynced protection |
 | Normalize | Raw payload | Canonical job/company/location/salary fields | Normalizer | Identity, title, company, source URL/apply URL |
+| Quarantine | Malformed raw record and mapper error | Held record with safe error category and field path | Normalizer | No sync eligibility until normalized successfully |
 | Dedup | Normalized candidate | Unique source-local job row | Deduplicator | `sourcePlatform + externalJobId/slug/id` |
-| Enrich | Safe text fields | Skill/requirement enrichment | Enrichment worker | Batch size, timeout, confidence |
+| Enrich | Safe title, description, requirements text, company, source | Skills, typed requirements, confidence, warnings | Enrichment worker | Batch size, timeout, confidence, schema validity |
+| Enrichment audit | Safe normalized enrichment input | Request hash, provider/model metadata, latency, status, response summary | Enrichment worker | No API key, raw prompt, raw payload, headers, or tokens stored |
+| Queue | Stage payload, correlation id, retry policy | Claimed, completed, failed, or dead-letter stage job | Worker process | Retry limit, idempotent handler, dead-letter visibility |
 | Sync | Validated staging rows | Main DB records | Sync service | FK integrity, upsert idempotency |
+| Notify handoff | Synced normalized jobs and freshness metadata | Backend-owned recommendation and email work | Backend API or notification worker | User preference filtering, delivery retry, frontend-safe fields |
 | Read | Main DB normalized rows | Backend API product response | Backend API | Response envelope, user auth, frontend-safe fields |
 
 ## Source Detail Reality
@@ -72,3 +97,46 @@ A job can become visible in normal search only after it has:
 - `lastSeenAt`.
 - Safe text fields if description or requirements are present.
 
+Normalize dispatch guard:
+
+- Only rows with eligibility decision `normalization_eligible` can enter AI normalization.
+- Rows marked `existing_backend`, `existing_normalized_unsynced`, `existing_normalized_synced`, `duplicate_in_scrape_scope`, `missing_identity`, or `identity_conflict` are skipped and kept as audit evidence.
+
+## AI Enrichment Boundary
+
+AI enrichment receives only safe normalized text:
+
+- Title.
+- Description clean text.
+- Requirements clean text.
+- Company name.
+- Source platform.
+
+It must not receive raw source payloads, source request headers, bearer tokens, cookies, session ids, visitor ids, device ids, or backend service credentials. Invalid structured AI output is treated as enrichment failure and must not block base normalized job sync when the visibility gate is satisfied.
+
+## Queue Boundary
+
+The local queue persists stage jobs in the scraper database. A queued job stores job type, stage payload, correlation id, attempt count, retry limit, availability time, and terminal error metadata.
+
+Queue handlers must be idempotent:
+
+- Scrape handlers upsert raw records by source identity.
+- Normalize handlers upsert normalized jobs by source identity.
+- Enrich handlers upsert skill and requirement staging rows by normalized value/type.
+- Sync handlers reuse payload hashes and sync events.
+- Notify handoff handlers use run/source/job identity for duplicate prevention.
+
+## Backend Sync Boundary
+
+Backend sync resolves or upserts downstream entities in this order:
+
+1. Source platform by stable source slug.
+2. Company by source identity or normalized name fallback.
+3. Job listing by source platform and external job id.
+4. Job skills and requirements from staging rows.
+
+Canonical scraper enum values are converted to backend enum labels before handoff. Client-side `4xx` responses are recorded as rejected payloads and are not retried automatically; `429` and transient `5xx` responses may retry within the configured limit.
+
+## Flow Readiness Reference
+
+Implementation status and remaining gaps are tracked in [Scraper Flow Gap Matrix](../roadmap/scraper-flow-gap-matrix.md).

@@ -69,7 +69,7 @@ Before moving config forward:
 - Required env vars exist and are non-empty.
 - Source credentials are stored outside docs and repo files.
 - DB targets match environment.
-- Schedule windows are explicit.
+- Schedule windows for scrape, normalize, enrich, and sync are explicit.
 - Log redaction is enabled.
 - Health checks pass.
 
@@ -78,4 +78,3 @@ Before moving config forward:
 - [Environment Configuration](../environment.md)
 - [Freshness Module](../modules/freshness.md)
 - [Security](./security.md)
-

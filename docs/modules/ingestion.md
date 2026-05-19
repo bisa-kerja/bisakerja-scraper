@@ -31,6 +31,28 @@ The ingestion module fetches source job payloads through per-platform adapters a
 | `jobstreet` | GraphQL | Bearer/session material comes from secrets only |
 | `kalibrr` | Next.js data | Refresh dynamic `buildId` when data path drifts |
 
+## Scrape Plan
+
+The scrape stage expands configured work into `source x keyword` items. Each item carries:
+
+- Keyword.
+- Requested per-keyword limit.
+- Recency mode and recency days.
+- Source timestamp bounds when the source provides timestamps.
+
+The requested limit applies after latest sorting for that keyword. If a source returns more records than requested in one response, the adapter or pipeline truncates before persistence and records the truncated count.
+
+## Latest Retrieval
+
+| Source | Latest request contract | Canonical timestamp |
+| --- | --- | --- |
+| `dealls` | `sortParam=publishedAt`, `sortBy=desc`, `published=true`, `status=active` | `publishedAt`, fallback `latestUpdatedAt` |
+| `glints` | GraphQL `sortBy=LATEST` | `createdAt`, fallback `updatedAt` |
+| `jobstreet` | GraphQL `dateRange`; `newSince` when a valid value is available | `listingDate.dateTimeUtc`, fallback detail `listedAt.dateTimeUtc` |
+| `kalibrr` | Next.js data query `sort=Freshness` | `activationDate`, fallback `createdAt` or `updatedAt` |
+
+Rows with missing or invalid source timestamps may still be captured, but the run summary must make timestamp coverage visible so operators can distinguish source drift from a clean latest run.
+
 ## Input And Output
 
 | Input | Output |
@@ -47,11 +69,30 @@ The ingestion module fetches source job payloads through per-platform adapters a
 | Payload too large | Reject or truncate only by documented storage policy |
 | Overlapping run | Return conflict or skip according to schedule lock |
 
+## HTTP Client Baseline
+
+All source adapters use a shared async HTTP client contract:
+
+- `httpx.AsyncClient` is used for external requests.
+- Every request uses an explicit timeout.
+- Default source headers include a browser-like user agent and source-specific headers.
+- Retries are bounded and only apply to transport failures, timeouts, `408`, `429`, and transient `5xx` responses.
+- Non-retriable `4xx` responses fail immediately.
+- Source rate limits are isolated by platform so one blocked source does not pause unrelated sources.
+- Retryable failures use capped exponential backoff.
+- Repeated retryable failures open a run-local circuit breaker for the affected source.
+- Response bodies are streamed through a maximum-size guard before JSON decoding.
+- The adapter receives a mockable JSON client interface for fixture-based tests.
+
 ## Observability
 
 Track:
 
 - Source platform.
+- Keyword.
+- Requested per-keyword limit.
+- Recency mode and recency days.
+- Newest and oldest source timestamps.
 - HTTP status class.
 - Fetched page count.
 - Raw record count.
@@ -76,4 +117,3 @@ Never log credentials, cookies, session ids, visitor ids, or raw source payload 
 - [Job Sources](../integrations/job-sources.md)
 - [Raw Payload Contract](../references/raw-payload-contract.md)
 - [Payload Redaction Policy](../standards/payload-redaction-policy.md)
-

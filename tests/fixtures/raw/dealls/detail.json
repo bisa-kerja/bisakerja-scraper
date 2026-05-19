@@ -1,0 +1,29 @@
+{
+  "code": 200,
+  "data": {
+    "result": {
+      "id": "69f076da6ab1470012b80d07",
+      "role": "Frontend Developer",
+      "slug": "frontend-developer-23",
+      "description": null,
+      "responsibilities": "<p>Build and maintain frontend dashboards for business operations</p>",
+      "requirements": "<p>Minimum 3 years of experience as Frontend Engineer</p>",
+      "employmentTypes": ["contract"],
+      "workplaceType": "onSite",
+      "salaryType": "paid",
+      "salaryRange": {
+        "start": 5000000,
+        "end": 9000000
+      },
+      "published": true,
+      "publishedAt": "2026-04-28T08:59:06.089Z",
+      "status": "active",
+      "company": {
+        "id": "682ab7e524e0f100125c182b",
+        "name": "PT Bumi Amartha Teknologi Mandiri",
+        "sector": "Information Technology / IT",
+        "logoUrl": "https://cdn.sejutacita.id/company/logo.jpg"
+      }
+    }
+  }
+}

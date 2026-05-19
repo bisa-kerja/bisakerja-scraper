@@ -28,23 +28,23 @@ Scraper interactions are batch-oriented by default. User-facing reads should not
 ## Primary Flow
 
 ```text
-01:00 scrape
+00:00 scrape
   -> fetch source pages/batches
   -> persist raw captures
 
-01:30 normalize
+02:00 normalize
   -> map company, location, salary, title, description, requirements
   -> deduplicate by source identity
 
-02:00 enrich
+04:00 enrich
   -> batch skill extraction and requirement structuring
   -> write staging outputs
 
-03:00 sync
+06:00 sync
   -> upsert source platforms, companies, job listings, skills, requirements
   -> update status and last seen timestamps
 
-05:00-06:00 notify
+08:00 notify
   -> backend/product notification pipeline reads normalized jobs
 ```
 
@@ -74,4 +74,3 @@ Scraper interactions are batch-oriented by default. User-facing reads should not
 - Backend API does not call Scraper API synchronously to repair job search.
 - Model API does not decide user authorization.
 - Scraper adapters do not write user-owned tables.
-

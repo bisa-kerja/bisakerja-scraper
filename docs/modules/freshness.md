@@ -32,11 +32,17 @@ The freshness module determines whether normalized job records remain active, st
 | Stale beyond retention policy | Candidate for `EXPIRED` |
 | Referenced by bookmark/application | Keep readable even if expired |
 
+Freshness thresholds are configured with `FRESHNESS_STALE_AFTER_HOURS` and `FRESHNESS_EXPIRED_AFTER_HOURS`. The expired threshold must be greater than the stale threshold.
+
 ## Input And Output
 
 | Input | Output |
 | --- | --- |
 | Ingestion run result, source success/failure, last observed jobs | Updated status, source freshness summary, sync metadata |
+
+The sweep is idempotent. Re-running it with the same source, timestamp, and seen identity set must not keep incrementing changed counts after the first update.
+
+When a stale or expired job appears again in a successful source run, the job becomes `ACTIVE` and receives the current `lastSeenAt`.
 
 ## Failure Modes
 
@@ -72,4 +78,3 @@ Track:
 - [Data Flow](../overview/data-flow.md)
 - [Database Design](../database.md)
 - [Ingestion Module](./ingestion.md)
-

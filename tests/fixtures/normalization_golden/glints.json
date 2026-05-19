@@ -1,0 +1,64 @@
+{
+  "sourcePlatform": "glints",
+  "scenarios": [
+    {
+      "name": "list-partial-no-detail",
+      "endpointType": "list",
+      "rawPayloadSubset": {
+        "id": "aaed8a7f-de12-479c-8df8-56f26b35bed9",
+        "title": "Full Stack Developer",
+        "type": "FULL_TIME",
+        "workArrangementOption": "ONSITE",
+        "createdAt": "2026-05-01T04:41:42.821Z",
+        "updatedAt": "2026-05-01T04:41:44.067Z",
+        "company": {
+          "id": "137c60a1-e0de-499a-9c34-a7d10367b489",
+          "name": "Cv Lovina"
+        },
+        "location": {
+          "formattedName": "Semarang Tengah"
+        }
+      },
+      "aiOutput": {
+        "source": {
+          "platform": "glints",
+          "external_job_id": "aaed8a7f-de12-479c-8df8-56f26b35bed9",
+          "source_url": "https://glints.com/id/opportunities/jobs/aaed8a7f-de12-479c-8df8-56f26b35bed9",
+          "external_apply_url": null,
+          "scraped_at": "2026-05-01T01:00:00+00:00",
+          "source_updated_at": "2026-05-01T04:41:44.067Z"
+        },
+        "title": "Full Stack Developer",
+        "company": {
+          "name": "Cv Lovina",
+          "source_company_id": "137c60a1-e0de-499a-9c34-a7d10367b489"
+        },
+        "location": {
+          "display": "Semarang Tengah",
+          "city": "Semarang Tengah",
+          "country": "Indonesia"
+        },
+        "salary": {
+          "min_amount": 3000000,
+          "max_amount": 4000000,
+          "currency": "IDR",
+          "period": "monthly",
+          "display": null
+        },
+        "employment_types": [
+          "full_time"
+        ],
+        "work_type": "onsite",
+        "description": null,
+        "requirements": null,
+        "skills": [
+          "jQuery",
+          "MySQL"
+        ],
+        "posted_at": "2026-05-01T04:41:42.821Z",
+        "last_seen_at": "2026-05-01T01:00:00+00:00",
+        "status": "active"
+      }
+    }
+  ]
+}

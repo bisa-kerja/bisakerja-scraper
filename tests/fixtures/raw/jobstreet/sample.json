@@ -1,0 +1,287 @@
+{
+  "data": {
+    "jobSearchV6": {
+      "__typename": "SearchV6Result",
+      "canonicalCompany": null,
+      "data": [
+        {
+          "__typename": "JobSearchV6Data",
+          "advertiser": {
+            "__typename": "JobSearchV6Advertiser",
+            "description": "PT Kencana Jaya Kreasi Lestari",
+            "id": "60311121"
+          },
+          "branding": {
+            "__typename": "JobSearchV6Branding",
+            "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/f4ace100-2c53-482c-8bb5-0236ba0bd6d2.1/jdpLogo"
+          },
+          "bulletPoints": [
+            "Accelerated Growth",
+            "Technical Ownership"
+          ],
+          "classifications": [
+            {
+              "__typename": "JobSearchV6Classification",
+              "classification": {
+                "__typename": "JobSearchV6ClassificationDetail",
+                "description": "Teknologi Informasi & Komunikasi",
+                "id": "6281"
+              },
+              "subclassification": {
+                "__typename": "JobSearchV6ClassificationDetail",
+                "description": "Developer/Programmer",
+                "id": "6287"
+              }
+            }
+          ],
+          "companyName": "PT Kencana Jaya Kreasi Lestari",
+          "companyProfileStructuredDataId": "3159209",
+          "currencyLabel": null,
+          "displayType": "standard",
+          "employer": {
+            "__typename": "JobSearchV6Employer",
+            "companyUrl": null
+          },
+          "externalReferences": null,
+          "id": "91789576",
+          "isFeatured": false,
+          "listingDate": {
+            "__typename": "SeekDateTime",
+            "dateTimeUtc": "2026-04-28T09:08:34.000Z",
+            "label": "3 hari yang lalu"
+          },
+          "locations": [
+            {
+              "__typename": "JobSearchV6DataLocation",
+              "countryCode": "ID",
+              "label": "Jakarta Barat, Jakarta Raya",
+              "seoHierarchy": [
+                {
+                  "__typename": "JobSearchV6SeoHierarchy",
+                  "contextualName": "Jakarta Barat Jakarta Raya"
+                },
+                {
+                  "__typename": "JobSearchV6SeoHierarchy",
+                  "contextualName": "Jakarta Raya"
+                }
+              ]
+            }
+          ],
+          "roleId": "full-stack-developer",
+          "salaryLabel": "Rp 8.000.000 – Rp 10.000.000 per month",
+          "solMetadata": "<redacted>",
+          "tags": [
+            {
+              "__typename": "JobSearchV6DataTag",
+              "label": "Baru untuk kamu",
+              "type": "NEW"
+            }
+          ],
+          "teaser": "Build full-stack apps (React.js/Node.js), manage AWS infrastructure, design APIs & optimize databases, establish CI/CD, contribute to architecture",
+          "title": "Full Stack Developer (Node.js, React.js, SQL, AWS)",
+          "tracking": "<redacted>",
+          "workArrangements": {
+            "__typename": "JobSearchV6WorkArrangements",
+            "displayText": null
+          },
+          "workTypes": [
+            "Full time"
+          ]
+        },
+        {
+          "__typename": "JobSearchV6Data",
+          "advertiser": {
+            "__typename": "JobSearchV6Advertiser",
+            "description": "PT Indo Taichen Textile Industry",
+            "id": "60890523"
+          },
+          "branding": {
+            "__typename": "JobSearchV6Branding",
+            "serpLogoUrl": "https://bx-branding-gateway.cloud.seek.com.au/d95b7e1f-39a5-4b7e-988d-f44a2dbca205.1/jdpLogo"
+          },
+          "bulletPoints": [
+            "Career Growth Opportunities",
+            "Competitive Compensation and Benefits"
+          ],
+          "classifications": [
+            {
+              "__typename": "JobSearchV6Classification",
+              "classification": {
+                "__typename": "JobSearchV6ClassificationDetail",
+                "description": "Teknologi Informasi & Komunikasi",
+                "id": "6281"
+              },
+              "subclassification": {
+                "__typename": "JobSearchV6ClassificationDetail",
+                "description": "Teknik – Perangkat Lunak",
+                "id": "6290"
+              }
+            }
+          ],
+          "companyName": "Indo Taichen Textile Industry",
+          "companyProfileStructuredDataId": "433670",
+          "currencyLabel": null,
+          "displayType": "standard",
+          "employer": {
+            "__typename": "JobSearchV6Employer",
+            "companyUrl": "https://id.jobstreet.com/companies/indo-taichen-textile-industry-168550801878807"
+          },
+          "externalReferences": null,
+          "id": "91730880",
+          "isFeatured": false,
+          "listingDate": {
+            "__typename": "SeekDateTime",
+            "dateTimeUtc": "2026-04-24T10:37:15.000Z",
+            "label": "6 hari yang lalu"
+          },
+          "locations": [
+            {
+              "__typename": "JobSearchV6DataLocation",
+              "countryCode": "ID",
+              "label": "Tangerang, Banten",
+              "seoHierarchy": [
+                {
+                  "__typename": "JobSearchV6SeoHierarchy",
+                  "contextualName": "Tangerang Banten"
+                },
+                {
+                  "__typename": "JobSearchV6SeoHierarchy",
+                  "contextualName": "Banten"
+                }
+              ]
+            }
+          ],
+          "roleId": "information-technology-programmer",
+          "salaryLabel": "",
+          "solMetadata": "<redacted>",
+          "tags": [
+            {
+              "__typename": "JobSearchV6DataTag",
+              "label": "Baru untuk kamu",
+              "type": "NEW"
+            }
+          ],
+          "teaser": "Join us with our team",
+          "title": "IT PROGRAMMER",
+          "tracking": "<redacted>",
+          "workArrangements": {
+            "__typename": "JobSearchV6WorkArrangements",
+            "displayText": null
+          },
+          "workTypes": [
+            "Full time"
+          ]
+        }
+      ],
+      "facets": null,
+      "gptTargeting": [
+        {
+          "__typename": "GptTargetingStringValue",
+          "key": "locale",
+          "value": "id-ID"
+        },
+        {
+          "__typename": "GptTargetingStringValue",
+          "key": "kw",
+          "value": "developer"
+        }
+      ],
+      "info": {
+        "__typename": "JobSearchV6Info",
+        "experiment": "mordor_973",
+        "newSince": 1777628503,
+        "source": "JobSearch-sm",
+        "timeTaken": 136
+      },
+      "intentSuggestions": null,
+      "isQueryModified": null,
+      "location": null,
+      "searchExecuted": null,
+      "searchParams": {
+        "__typename": "JobSearchV6SearchParams",
+        "advertisergroup": null,
+        "advertiserid": null,
+        "basekeywords": null,
+        "classification": null,
+        "companyid": null,
+        "companyname": null,
+        "companyprofilestructureddataid": null,
+        "companysearch": null,
+        "daterange": "7",
+        "distance": null,
+        "duplicates": null,
+        "encodedurl": null,
+        "engineconfig": null,
+        "eventcapturesessionid": "<redacted>",
+        "eventcaptureuserid": "bf6a28d3-f6fc-4c27-b9d3-c4f07012e53e",
+        "facets": null,
+        "include": "seoData,gptTargeting,relatedSearches",
+        "jobid": null,
+        "keywords": "developer",
+        "locale": "id-ID",
+        "maxlistingdate": null,
+        "minlistingdate": null,
+        "newsince": "1777628503",
+        "page": "2",
+        "pagesize": "32",
+        "queryhints": null,
+        "relatedsearchescount": "12",
+        "salaryrange": null,
+        "salarytype": null,
+        "savedsearchid": null,
+        "sitekey": "ID",
+        "solid": "<redacted>",
+        "sortmode": null,
+        "source": "FE_SERP",
+        "statetoken": "<redacted>",
+        "subclassification": null,
+        "tags": null,
+        "userid": null,
+        "userqueryid": "<redacted>",
+        "usersessionid": "<redacted>",
+        "where": null,
+        "whereid": null,
+        "whereids": null,
+        "workarrangement": null,
+        "worktype": null
+      },
+      "solMetadata": "<redacted>",
+      "sortModes": [
+        {
+          "__typename": "JobSearchV6ResultSortMode",
+          "isActive": true,
+          "name": "Relevansi",
+          "value": "KeywordRelevance"
+        },
+        {
+          "__typename": "JobSearchV6ResultSortMode",
+          "isActive": false,
+          "name": "Tanggal",
+          "value": "ListedDate"
+        }
+      ],
+      "suggestions": {
+        "__typename": "JobSearchV6Suggestions",
+        "asyncPillsToken": "<redacted>",
+        "company": null,
+        "location": null,
+        "pills": null,
+        "relatedSearches": [
+          {
+            "__typename": "JobSearchV6RelatedSearches",
+            "keywords": "web developer",
+            "totalJobs": 180
+          },
+          {
+            "__typename": "JobSearchV6RelatedSearches",
+            "keywords": "programmer",
+            "totalJobs": 213
+          }
+        ],
+        "showSABFilter": true
+      },
+      "totalCount": 578,
+      "userQueryId": "<redacted>"
+    }
+  }
+}
