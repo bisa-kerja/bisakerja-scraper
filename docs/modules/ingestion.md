@@ -30,6 +30,7 @@ The ingestion module fetches source job payloads through per-platform adapters a
 | `glints` | GraphQL | Detail endpoint not captured; use list-first mapping |
 | `jobstreet` | GraphQL | Bearer/session material comes from secrets only |
 | `kalibrr` | Next.js data | Refresh dynamic `buildId` when data path drifts |
+| `kitalulus` | GraphQL | Detail fetch uses slug; benefits must not become requirements |
 
 ## Scrape Plan
 
@@ -50,6 +51,7 @@ The requested limit applies after latest sorting for that keyword. If a source r
 | `glints` | GraphQL `sortBy=LATEST` | `createdAt`, fallback `updatedAt` |
 | `jobstreet` | GraphQL `dateRange`; `newSince` when a valid value is available | `listingDate.dateTimeUtc`, fallback detail `listedAt.dateTimeUtc` |
 | `kalibrr` | Next.js data query `sort=Freshness` | `activationDate`, fallback `createdAt` or `updatedAt` |
+| `kitalulus` | GraphQL list sort by `updated_at` in latest mode | `updatedAt`, display fallback `updatedAtStr` |
 
 Rows with missing or invalid source timestamps may still be captured, but the run summary must make timestamp coverage visible so operators can distinguish source drift from a clean latest run.
 

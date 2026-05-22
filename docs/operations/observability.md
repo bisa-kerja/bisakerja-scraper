@@ -83,7 +83,7 @@ The redaction processor must treat key names containing credentials, tokens, coo
 | `sourceRunId` | Per-source run id |
 | `requestId` | Internal API request id if available |
 | `stage` | `scrape`, `normalize`, `enrich`, `sync`, `notify-handoff`, or `freshness` |
-| `sourcePlatform` | `dealls`, `glints`, `jobstreet`, `kalibrr`, or `all` |
+| `sourcePlatform` | `dealls`, `glints`, `jobstreet`, `kalibrr`, `kitalulus`, or `all` |
 | `status` | `started`, `succeeded`, `partial`, `failed`, or `skipped` |
 | `durationMs` | Stage duration |
 | `errorCategory` | Safe failure category |

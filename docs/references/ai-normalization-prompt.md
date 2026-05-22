@@ -19,7 +19,7 @@ Each normalization request includes:
 
 - `inputItems[]`: batch items with:
   - `itemId`: stable per-item identifier.
-  - `sourcePlatform`: source slug (`dealls`, `glints`, `jobstreet`, `kalibrr`).
+  - `sourcePlatform`: source slug (`dealls`, `glints`, `jobstreet`, `kalibrr`, `kitalulus`).
   - `endpointType`: `list` or `detail`.
   - `rawPayloadSubset`: minimal source payload fragment used as evidence.
 - `targetSchema`: canonical output contract name.
@@ -118,8 +118,8 @@ Rejected output raises `AINormalizationContractError`.
 Batch response uses per-item partial handling:
 
 - one item error must not fail the full batch response shape.
-- when `ai_normalization_fail_open=true`, failed items fall back to mapper output.
-- when `ai_normalization_fail_open=false`, failed items are quarantined.
+- failed items are quarantined with safe error metadata.
+- successful items in same batch may still persist.
 
 Supported batch error codes:
 
@@ -138,8 +138,8 @@ Supported batch error codes:
   - retry attempts may continue on the next model in order.
 - Success path: AI per-item result replaces baseline mapper result.
 - Failure path:
-  - fail-open mode persists mapper fallback.
-  - fail-closed mode quarantines only failed items.
+  - failed items are quarantined.
+  - successful items in same batch still persist.
 
 ## Format Repair Policy
 

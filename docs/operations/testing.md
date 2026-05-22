@@ -44,6 +44,7 @@ Fixture inputs should come from sanitized raw captures:
 | `raw-response-glints.txt` | GraphQL list mapper and missing detail fallback |
 | `raw-response-jobstreet.txt` | GraphQL list/detail-ready fields and auth-free fixture |
 | `raw-response-kalibrr.txt` | Next.js data mapper and dynamic `buildId` assumptions |
+| `raw-response-kitalulus.txt` | GraphQL list/detail mapping, HTML description handling, and benefit filtering |
 
 Rules:
 
@@ -147,6 +148,7 @@ PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source glints
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source jobstreet
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source kalibrr
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source kitalulus
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape
 PYTHONPATH=src uv run python -m cli.pipeline preflight --stage full --source all --dry-run --env-file .env.example
 PYTHONPATH=src uv run python -m cli.pipeline wizard --dry-run --source dealls --stage scrape --limit 1 --env-file .env.example --yes
@@ -225,7 +227,7 @@ The scraper test suite covers:
 - Database uniqueness for source platform plus external job identity.
 - Alembic upgrade and downgrade on an isolated test database.
 - Raw fixture sanitization and secret-pattern scanning.
-- Source adapter contract parsing for Dealls, Glints, JobStreet, and Kalibrr.
+- Source adapter contract parsing for Dealls, Glints, JobStreet, Kalibrr, and Kitalulus.
 - Source fixture coverage reporting across list, detail or fallback, mapper, malformed, and sanitization paths.
 - Source HTTP retry classifier, per-source rate limiter isolation, capped backoff, and circuit breaker behavior.
 - HTML cleaning for description and requirement fields.
@@ -250,7 +252,7 @@ The scraper test suite covers:
 A scraper release is not ready until:
 
 - Unit tests pass for changed modules.
-- Source contract fixture tests pass for all four sources.
+- Source contract fixture tests pass for all supported sources.
 - Normalized contract tests pass against Backend API expectations.
 - Quarantine and freshness tests pass when mapper or freshness behavior changes.
 - Persistence and sync tests pass against an isolated test DB when DB behavior changes.

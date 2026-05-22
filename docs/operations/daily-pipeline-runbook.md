@@ -52,6 +52,7 @@ PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage scrape
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source glints --stage scrape
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source jobstreet --stage scrape
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source kalibrr --stage scrape
+PYTHONPATH=src uv run python -m cli.smoke dry-run --source kitalulus --stage scrape
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage normalize
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage enrich
 PYTHONPATH=src uv run python -m cli.smoke dry-run --source dealls --stage sync
@@ -98,7 +99,7 @@ Execute sync semantics:
 Pipeline command rules:
 
 - `--stage` accepts `full`, `scrape`, `normalize`, `enrich`, `sync`, and `notify-handoff`.
-- `--source` accepts `all`, `dealls`, `glints`, `jobstreet`, and `kalibrr`.
+- `--source` accepts `all`, `dealls`, `glints`, `jobstreet`, `kalibrr`, and `kitalulus`.
 - exactly one mode flag is required: `--dry-run` or `--execute`.
 - `--limit` must be between `1` and `100` and limits each keyword, not the whole run. Total fetched/synced rows may be much larger because the run fans out across sources and keywords.
 - `--keyword` may be repeated for individual keyword overrides.
