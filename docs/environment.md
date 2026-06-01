@@ -23,7 +23,7 @@ The repository includes `.env.example` for local development and `.env.productio
 | --- | --- |
 | Application | Runtime mode, service identity, HTTP port |
 | Database | Local scraper DB and main DB sync target |
-| Queue/scheduler | Worker broker, daily windows, concurrency |
+| Queue/scheduler | DB-backed stage jobs, daily windows, concurrency |
 | AI enrichment | OpenAI-compatible provider config for skills and requirement structuring |
 | Source config | Per-source headers, tokens, build id refresh, rate limits |
 | Security | Internal credentials, CORS if exposed, request limits |
@@ -37,6 +37,7 @@ The repository includes `.env.example` for local development and `.env.productio
 | `APP_ENV` | Yes | `local` | `local`, `test`, `staging`, `production` |
 | `PORT` | If HTTP exposed | `3003` | Internal API port |
 | `APP_PORT` | If Compose exposes HTTP | `3003` | Host port used by Docker Compose and deploy health checks |
+| `APP_BIND_ADDRESS` | If Compose publishes HTTP | `127.0.0.1` | Host bind address for Docker Compose published port |
 | `API_PREFIX` | If HTTP exposed | `/api/v1` | Versioned internal API prefix |
 
 ## Database Variables
@@ -67,7 +68,6 @@ Rules:
 
 | Variable | Required | Rule |
 | --- | --- | --- |
-| `QUEUE_BROKER_URL` | Yes when workers enabled | Redis/Celery/RQ broker URL |
 | `SCRAPE_SCHEDULE_CRON` | Yes | Daily scrape schedule |
 | `NORMALIZE_SCHEDULE_CRON` | Yes | Daily normalize schedule |
 | `ENRICH_SCHEDULE_CRON` | Yes | Daily enrichment schedule |
@@ -217,6 +217,8 @@ The Frontend UI must not receive or use scraper service credentials.
 
 Logs must redact source credentials and raw payload bodies.
 
+Stage-job queue state currently lives in scraper database tables such as `stage_jobs`. No `QUEUE_BROKER_URL` setting is required for current runtime behavior.
+
 ## `.env.example` Rules
 
 - Include every required variable.
@@ -231,6 +233,7 @@ Logs must redact source credentials and raw payload bodies.
 - Use `.env.production.example` only as a shape reference.
 - Set `APP_ENV` to the deployment target expected by the workflow.
 - Set `PORT` to the container port and `APP_PORT` to the host port when they differ.
+- Set `APP_BIND_ADDRESS` when the published host interface must differ from `127.0.0.1`.
 - Store the full runtime payload in the GitHub `DEPLOY_ENV_FILE` environment secret for VPS deployment.
 
 ## Related Docs

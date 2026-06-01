@@ -39,7 +39,7 @@ External Job Platforms
 | `services/queue` | Local stage job dispatch and retry tracking | Stage payload and correlation id | Completed, failed, or dead-letter stage job | Worker unavailable, retry exhaustion |
 | `services/sync` | Main DB upsert preparation | Staging rows | Upserted normalized records | Partial chunk failure, FK mismatch |
 | `services/pipeline` | Orchestration | Run config | Ingestion run state | Stage dependency failure |
-| `workers` | Scheduled/background execution | Cron/Celery task | Batch execution | Worker unavailable, overlapping run |
+| `workers` | Scheduled/background execution | APScheduler trigger + DB-backed stage jobs | Batch execution | Worker unavailable, overlapping run |
 
 ## Daily Baseline
 
@@ -77,6 +77,7 @@ When a source lacks a single external id, use the most stable source value:
 | Glints | GraphQL job `id` |
 | JobStreet | numeric/string `id` |
 | Kalibrr | numeric `id`, with `slug` as secondary |
+| Kitalulus | string `id`, with `slug` as secondary |
 
 Cross-source merge is future scope.
 

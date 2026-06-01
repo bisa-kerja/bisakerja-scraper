@@ -22,8 +22,8 @@ This path explains what scraper documentation means for product scope.
 
 ## Product Meaning
 
-- Scraper enables job discovery by collecting jobs from Dealls, Glints, JobStreet, and Kalibrr.
-- MVP may start with fewer active sources while keeping schema support for all four.
+- Scraper enables job discovery by collecting jobs from Dealls, Glints, JobStreet, Kalibrr, and Kitalulus.
+- MVP may start with fewer active sources while keeping schema support for all supported source slugs.
 - Source data quality affects salary filters, location filters, job detail completeness, and AI job fit context.
 - Some sources provide rich list data; some require fallback to public job URLs.
 - Missing salary or partial detail is expected and should be represented honestly in product behavior.

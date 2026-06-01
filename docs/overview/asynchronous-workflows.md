@@ -17,7 +17,7 @@ Scraper work runs as scheduled and retryable jobs. User-facing Backend API reque
 
 | Workflow | Trigger | Input | Output | Owner | Failure mode |
 | --- | --- | --- | --- | --- | --- |
-| Daily scrape | Cron/Celery Beat at 00:00 | Source list config | Raw captures | Scraper workers | Source unavailable, auth/header rejected |
+| Daily scrape | APScheduler cron at 00:00 | Source list config | Raw captures | Scraper scheduler + workers | Source unavailable, auth/header rejected |
 | Normalize batch | Scheduled after scrape at 02:00 | Raw captures | Staging jobs | Normalizer worker | Mapper mismatch, missing identity |
 | Enrichment batch | Scheduled at 04:00 | Safe staging text | Skills and structured requirements | Enrichment worker | Provider timeout, rate limit |
 | Sync batch | Scheduled at 06:00 | Valid staging rows | Main DB upserts | Sync worker | Constraint conflict, partial chunk failure |

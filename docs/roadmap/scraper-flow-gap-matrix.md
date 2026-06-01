@@ -18,7 +18,7 @@ This matrix compares the target scraper flow with the current service implementa
 | Step | Target capability | Current implementation | Status | Owner | Evidence | Remaining gap |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Scheduled daily trigger | APScheduler shell and cron configuration are present | implemented | Data ingestion owner | `src/jobs/scheduler.py`, `docs/environment.md` | Production worker deployment and lock observability remain operational concerns |
-| 2 | Run scraper per platform | Source adapters exist for Dealls, Glints, JobStreet, and Kalibrr | implemented | Data ingestion owner | `src/integrations/sources/**` | Keep source contract fixtures fresh |
+| 2 | Run scraper per platform | Source adapters exist for Dealls, Glints, JobStreet, Kalibrr, and Kitalulus | implemented | Data ingestion owner | `src/integrations/sources/**` | Keep source contract fixtures fresh |
 | 3 | Store raw source data | Raw records persist in local scraper DB with source identity and payload hash | implemented | Data ingestion owner | `src/modules/persistence/models.py`, `src/modules/persistence/repositories.py` | Raw payload retention and purge policy need operational enforcement |
 | 4 | Transform to backend-compatible schema | Source mappers produce canonical job records | implemented | Data ingestion owner | `src/integrations/sources/*/mapper.py`, `src/modules/jobs/schemas.py` | Backend final schema resolver still needs end-to-end contract testing |
 | 5 | Deduplicate by source identity | Raw and normalized records use source platform plus external id uniqueness | implemented | Data ingestion owner | `src/modules/deduplication/engine.py`, `src/modules/persistence/models.py` | Cross-source merge remains out of scope |

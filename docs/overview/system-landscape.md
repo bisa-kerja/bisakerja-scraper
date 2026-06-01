@@ -28,7 +28,7 @@ The Bisakerja Scraper service is the ingestion layer for external job listings. 
 
 | Area | Ownership |
 | --- | --- |
-| Source adapters | Scraper API owns Dealls, Glints, JobStreet, and Kalibrr adapters |
+| Source adapters | Scraper API owns Dealls, Glints, JobStreet, Kalibrr, and Kitalulus adapters |
 | Raw payloads | Scraper API stores and redacts raw capture artifacts |
 | Normalized jobs | Scraper API maps source data into Backend API-compatible records |
 | Deduplication | Scraper API owns source-local identity and upsert preparation |
@@ -63,6 +63,7 @@ Rules:
 | Glints | Unofficial GraphQL | List-first source, no captured detail endpoint | GraphQL drift and browser-header dependency |
 | JobStreet | GraphQL with bearer auth | List and detail-ready source fields with rich UI metadata | Token/session requirement and UI noise |
 | Kalibrr | Next.js `_next/data` | List payload includes detail HTML fields | Dynamic `buildId` and HTML sanitization |
+| Kitalulus | GraphQL | List and detail-by-slug source with HTML description fields | GraphQL drift, browser-header dependency, and benefits-vs-requirements cleanup |
 
 ## Platform Rule
 

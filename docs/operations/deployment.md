@@ -68,6 +68,12 @@ RUNTIME_ENV_FILE=.env.production \
 docker compose --env-file .env.production up -d
 ```
 
+Optional Compose overrides:
+
+- `APP_BIND_ADDRESS` controls published host bind address (`127.0.0.1` default).
+- `APP_PORT` controls published host port.
+- `COMPOSE_PROJECT_NAME` controls Compose project name.
+
 Render deployment config from the example env file without resolving service env files:
 
 ```bash

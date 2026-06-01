@@ -72,7 +72,7 @@ Supported query fields:
 | --- | --- | --- |
 | `page` | `1` | Minimum `1` |
 | `limit` | `20` | Minimum `1`, maximum `100` |
-| `sourcePlatform` | none | `dealls`, `glints`, `jobstreet`, or `kalibrr` |
+| `sourcePlatform` | none | `dealls`, `glints`, `jobstreet`, `kalibrr`, or `kitalulus` |
 | `freshness` | none | `active`, `inactive`, `expired`, or `unknown` |
 | `location` | none | Case-insensitive local payload search |
 | `keyword` | none | Case-insensitive title, company, and local payload search |
@@ -183,7 +183,7 @@ Allowed body fields:
 
 | Field | Type | Required | Rule |
 | --- | --- | --- | --- |
-| `sourcePlatform` | string | No | One of `dealls`, `glints`, `jobstreet`, `kalibrr`; omitted means all configured sources |
+| `sourcePlatform` | string | No | One of `dealls`, `glints`, `jobstreet`, `kalibrr`, `kitalulus`; omitted means all configured sources |
 | `stage` | string | No | `scrape`, `normalize`, `enrich`, `sync`, or `full`; default should be explicit in config |
 | `limit` | number | No | Bounded positive integer for controlled manual runs |
 | `force` | boolean | No | Requires operator permission; never default true |

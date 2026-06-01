@@ -18,7 +18,7 @@ Use this checklist before treating scraper docs as release-ready or before publi
 | Area | Required state |
 | --- | --- |
 | Overview | Start here, system landscape, data flow, service interactions, glossary present |
-| Integrations | Dealls, Glints, JobStreet, Kalibrr source contracts present |
+| Integrations | Dealls, Glints, JobStreet, Kalibrr, Kitalulus source contracts present |
 | References | Raw payload contract, field mapping, domain entities present |
 | Modules | Ingestion, parsing-normalization, deduplication, persistence, freshness present |
 | Operations | Security, observability, testing, deployment, sync, release checklist present |
@@ -55,9 +55,9 @@ Use this checklist before treating scraper docs as release-ready or before publi
 | --- | --- |
 | `bisakerja-product-idea.md` | Docs keep MVP focus on job aggregation, decision support, AI job fit, and skill gap support |
 | `bisakerja-feature-flow.md` | Scraper docs support job list/detail, bookmarks, tracker, AI CV analyzer, and notification handoff as downstream needs |
-| `bisakerja-project-plan.md` | Docs reflect capstone scope, team ownership, and four job sources |
+| `bisakerja-project-plan.md` | Docs reflect capstone scope, team ownership, and supported job sources |
 | `scraper-flow.md` | Docs preserve `scrape -> normalize -> enrich -> sync -> notify` baseline |
-| `dealls.md`, `glints.md`, `jobstreet.md`, `kalibrr.md` | Source contract docs reflect captured endpoint and auth/header reality |
+| `dealls.md`, `glints.md`, `jobstreet.md`, `kalibrr.md`, and `docs/integrations/sources/kitalulus.md` | Source contract docs reflect captured endpoint and auth/header reality |
 | `raw-response-*.txt` | Raw payload docs describe fields without publishing unsanitized credentials |
 
 ## Release Gate

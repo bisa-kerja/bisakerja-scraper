@@ -45,7 +45,7 @@ The Backend API owns user workflows, authentication, authorization, user-owned r
 MVP documentation prioritizes:
 
 - Daily ingestion pipeline.
-- Dealls, Glints, JobStreet, and Kalibrr source contract reality.
+- Dealls, Glints, JobStreet, Kalibrr, and Kitalulus source contract reality.
 - Raw-to-normalized job field handling.
 - Source-local identity and deduplication.
 - Sanitized documentation examples with no credentials, cookies, session ids, or bearer tokens.

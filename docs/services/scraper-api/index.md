@@ -17,7 +17,7 @@ The Scraper API collects external job data and adapts it into the normalized Bis
 
 | Area | Scraper API owns |
 | --- | --- |
-| Source adapters | Dealls REST, Glints GraphQL, JobStreet GraphQL, Kalibrr Next.js data |
+| Source adapters | Dealls REST, Glints GraphQL, JobStreet GraphQL, Kalibrr Next.js data, Kitalulus GraphQL |
 | Raw capture | Store source payloads for debug, replay, and mapper validation |
 | Normalization | Map source fields to Backend API database-compatible job records |
 | Deduplication | Use `sourcePlatform + externalJobId/slug/id` as source-local identity |
@@ -54,15 +54,16 @@ The Scraper API collects external job data and adapts it into the normalized Bis
 
 ## Implementation Shape
 
-Use the existing recommended scraper structure:
+Current repository structure centers on `src/`:
 
 ```text
-app/services/scraper -> per-source adapters
-app/services/normalizer -> raw-to-normalized mapping
-app/services/enrichment -> AI enrichment clients/workers
-app/services/sync -> main DB upsert preparation
-app/services/pipeline -> orchestration
-app/workers -> scheduled/background execution
+src/api -> internal HTTP routes and app factory
+src/cli -> operator entrypoints and smoke/pipeline commands
+src/integrations/sources -> per-source adapters
+src/integrations/ai -> OpenAI-compatible client boundary
+src/integrations/backend -> backend sync and notification clients
+src/jobs -> pipeline orchestration and scheduler
+src/modules -> persistence, enrichment, sync, queue, freshness, deduplication
 ```
 
 Do not mix scraping, persistence, normalization, and sync logic in one module.

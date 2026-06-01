@@ -31,7 +31,7 @@ This page locks the initial documentation boundary for the Bisakerja Scraper ser
 
 | In MVP | Future or external |
 | --- | --- |
-| Aggregate jobs from 1-2 initial sources while keeping four-source schema support | Cross-source duplicate merge |
+| Aggregate jobs from 1-2 initial sources while keeping supported source slug/schema support | Cross-source duplicate merge |
 | Preserve current source slugs: `dealls`, `glints`, `jobstreet`, `kalibrr`, `kitalulus`; control live source execution with enablement flags | Direct ATS integration |
 | Normalize list/detail fields into Backend API-compatible job records | Auto-apply |
 | Use source-local identity: `sourcePlatform + externalJobId/slug/id` | Employer dashboard |
@@ -67,7 +67,7 @@ This page locks the initial documentation boundary for the Bisakerja Scraper ser
 | `bisakerja-feature-flow.md` | User journey, job search/detail, bookmark, tracker, AI CV analyzer, notification touchpoints |
 | `bisakerja-project-plan.md` | Capstone scope, team ownership, MVP/future boundary |
 | `scraper-flow.md` | Daily pipeline, FastAPI scraper boundary, staging DB, enrichment, sync |
-| `example-folder-structure.md` | Existing scraper module structure and adapter/pipeline/repository patterns |
+| `src/`, `pyproject.toml`, and `docker-compose.yml` | Current scraper module structure, runtime entrypoints, and deployment shape |
 | `dealls.md` | Dealls REST contract and field expectations |
 | `glints.md` | Glints GraphQL list contract and detail limitation |
 | `jobstreet.md` | JobStreet GraphQL auth, list contract, UI-oriented fields |

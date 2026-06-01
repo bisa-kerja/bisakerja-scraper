@@ -17,8 +17,8 @@ Normalization execution path:
 
 - Source mapper always produces baseline canonical output.
 - When OpenAI provider is enabled in execute mode, pipeline also runs AI-assisted normalization using an embedded standalone prompt contract.
-- AI failure policy is fail-open by default in pipeline config, so mapper output remains available when provider calls fail.
-- Pipeline can be configured fail-closed to quarantine records when AI normalization fails.
+- When OpenAI provider is enabled in execute mode, normalization is fail-closed per item.
+- AI normalization failures are quarantined with safe error metadata; successful items in same batch still persist.
 
 ## Responsibility
 
